@@ -89,22 +89,23 @@ constexpr BodySpec gutLyreBody {
 
 // pluckPosition: the CC0 lyre harp reference (Freesound 722897, A4) lacks its
 // 4th and 8th harmonics, a pluck a quarter of the way from the bridge; the
-// gut lyre's is assumed. outputGain puts each preset's hardest playing (A4
-// at full velocity on a lyre harp, the gut lyre's strummed demo) near -3 dBFS;
-// it is the one free gain, not a loudness claim.
+// gut lyre's is assumed. outputGain and piezoGain are the free gains, not
+// loudness claims: each puts the preset's loudest playing, a glissando over
+// every string at full velocity with sustain held, at -3 dBFS at its own
+// controls (AculyreEngineTests), so even that leaves the limiter alone.
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 16, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.25, 0.25, 2.0, 0.35, 0.40
+    Technique::Finger, 0.25, 0.25, 2.0, 0.35, 0.145, 0.124
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {
     "Nylon Lyre Harp", nylonMonofilament, 16, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.25, 0.25, 2.0, 0.35, 0.36
+    Technique::Finger, 0.25, 0.25, 2.0, 0.35, 0.189, 0.135
 };
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 6, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.22, 0.3, 2.5, 0.35, 1.1
+    Technique::Finger, 0.22, 0.3, 2.5, 0.35, 0.314, 0.152
 };
 
 inline constexpr std::array<const InstrumentSpec*, 3> presets {{

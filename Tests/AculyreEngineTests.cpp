@@ -474,6 +474,58 @@ int main()
         }
     }
 
+    // Headroom: the loudest playing, a glissando over every string at full
+    // velocity four times with sustain held, peaks at -3 dBFS on each
+    // instrument at its own controls (outputGain), and on the piezo alone
+    // (piezoGain), so it never reaches the limiter. The piezo is mono and
+    // hears no room.
+    {
+        const auto glissandi = [] (const aculyre::InstrumentSpec& preset, double piezo, double room)
+        {
+            aculyre::AculyreEngine engine;
+            engine.prepare(48000.0);
+            engine.setInstrument(preset);
+            aculyre::PlayingControls controls = engine.controls();
+            controls.piezo = piezo;
+            if (room >= 0.0)
+                controls.room = room;
+            engine.setControls(controls);
+            engine.setSustain(true);
+            std::vector<float> l(120000), r(120000);
+            for (int position = 0; position < 120000; position += 64)
+            {
+                for (int stroke = 0; stroke < 4; ++stroke)
+                    for (int index = 0; index < preset.stringCount; ++index)
+                    {
+                        const int at = 2400 + stroke * 28800 + index * 576;
+                        if (at >= position && at < position + 64)
+                            engine.noteOn(preset.strings[static_cast<std::size_t>(index)].midiNote, 1.0f);
+                    }
+                engine.process(l.data() + position, r.data() + position, 64);
+            }
+            return std::make_pair(l, r);
+        };
+        const auto peak = [] (const std::vector<float>& x)
+        {
+            double top = 0.0;
+            for (float sample : x)
+                top = std::max(top, static_cast<double>(std::abs(sample)));
+            return 20.0 * std::log10(top);
+        };
+        for (const auto* preset : aculyre::presets)
+        {
+            const auto mics = glissandi(*preset, 0.0, -1.0);
+            const auto pickup = glissandi(*preset, 1.0, -1.0);
+            const double micPeak = std::max(peak(mics.first), peak(mics.second));
+            const double piezoPeak = peak(pickup.first);
+            std::printf("%-16s glissandi peak: microphones %+.1f, piezo %+.1f dBFS\n", preset->name, micPeak, piezoPeak);
+            check(std::abs(micPeak + 3.0) < 1.0, "the loudest playing peaks at -3 dBFS on the microphones");
+            check(std::abs(piezoPeak + 3.0) < 1.0, "the loudest playing peaks at -3 dBFS on the piezo");
+            check(pickup.first == pickup.second, "the piezo is mono");
+            check(glissandi(*preset, 1.0, 1.0).first == pickup.first, "the piezo hears no room");
+        }
+    }
+
     std::printf(failures == 0 ? "all passed\n" : "%d failed\n", failures);
     return failures == 0 ? 0 : 1;
 }

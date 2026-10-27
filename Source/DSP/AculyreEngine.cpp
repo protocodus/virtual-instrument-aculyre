@@ -1057,6 +1057,13 @@ struct AculyreEngine::State
     double previousRight { 0.0 };
     Room room {};
     double outputGain { 1.0 };
+    // The piezo's coupling into its preamp (prepare()), as a bilinear
+    // one-pole high-pass: y = piezoScale (x - x[n-1]) + piezoPole y[n-1].
+    double piezoGain { 0.0 };
+    double piezoScale { 0.0 };
+    double piezoPole { 0.0 };
+    double piezoPreviousForce { 0.0 };
+    double piezoPrevious { 0.0 };
     bool sustain { false };
     Random random {};
     PluckReport lastPluck {};
@@ -1074,8 +1081,9 @@ struct AculyreEngine::State
     double muteRate { 0.0 };
     double bendTarget { 1.0 };
     double bend { 1.0 };
-    std::array<double, 4> outputTarget {};  // room send, direct and crossed gain, volume
-    std::array<double, 4> output {};
+    // Room send, direct and crossed gain, volume, piezo blend.
+    std::array<double, 5> outputTarget {};
+    std::array<double, 5> output {};
     double outputSmoothing { 0.0 };
     double bendSmoothing { 0.0 };
 };
@@ -1089,6 +1097,20 @@ void AculyreEngine::prepare(double sampleRate)
         ? sampleRate : 48000.0;
     state_->room.prepare(sampleRate_);
     state_->outputSmoothing = 1.0 - std::exp(-1.0 / (0.01 * sampleRate_));
+    // The piezo is Aculele's pickup system (Acustra's documented chain): an
+    // element of 0.2 V/N at 1.45 nF, 3 m of cable, the ESP Project 202
+    // preamp at a gain of 1.62 and a 1 MOhm DI. At a lyre's bridge forces it
+    // stays linear: its op-amps reach their limits at about 13 N, and a
+    // glissando at full velocity on any factory patch presses at most 7.6 N.
+    // Linear, the chain is flat but for its coupling capacitors, and only C3
+    // into R5 || R6 (220 nF into 23.5 kOhm) lies above 2 Hz: a first-order
+    // high-pass at 31 Hz. Its level is InstrumentSpec::piezoGain.
+    {
+        const double corner = 1.0 / (2.0 * pi * 23.5e3 * 220.0e-9);
+        const double k = std::tan(pi * corner / sampleRate_);
+        state_->piezoScale = 1.0 / (1.0 + k);
+        state_->piezoPole = (1.0 - k) / (1.0 + k);
+    }
     state_->bendSmoothing = 1.0 - std::exp(-controlPeriod / (0.01 * sampleRate_));
     if (stringCount_ > 0)
         setInstrument(state_->instrument);
@@ -1620,6 +1642,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     }
 
     s.outputGain = instrument.outputGain;
+    s.piezoGain = instrument.piezoGain;
     PlayingControls controls {};
     controls.technique = instrument.technique;
     controls.pluckPosition = instrument.pluckPosition;
@@ -1649,6 +1672,7 @@ void AculyreEngine::reset() noexcept
     s.modalPastStale = true;
     s.massPast = {};
     s.previousLeft = s.previousRight = 0.0;
+    s.piezoPreviousForce = s.piezoPrevious = 0.0;
     s.room.reset();
     s.sustain = false;
     s.idle = true;
@@ -1737,6 +1761,7 @@ void AculyreEngine::setControls(const PlayingControls& controls) noexcept
     c.sympathy = unitClamp(c.sympathy);
     c.room = unitClamp(c.room);
     c.width = 2.0 * unitClamp(0.5 * c.width);
+    c.piezo = unitClamp(c.piezo);
     c.volume = c.volume >= 0.0 && c.volume <= 4.0 ? c.volume : (c.volume > 4.0 ? 4.0 : 0.0);
     c.pitchBend = c.pitchBend >= -12.0 && c.pitchBend <= 12.0 ? c.pitchBend
                                                                : (c.pitchBend > 12.0 ? 12.0 : 0.0);
@@ -1751,7 +1776,7 @@ void AculyreEngine::setControls(const PlayingControls& controls) noexcept
     if (c.pitchBend != previous.pitchBend)
         s.bendTarget = std::pow(2.0, c.pitchBend / 12.0);
     // Mid/side: width 1 is the two microphones as they are.
-    s.outputTarget = { 0.5 * c.room, 0.5 * (1.0 + c.width), 0.5 * (1.0 - c.width), c.volume };
+    s.outputTarget = { 0.5 * c.room, 0.5 * (1.0 + c.width), 0.5 * (1.0 - c.width), c.volume, c.piezo };
     if (!c.levers && previous.levers)
         for (int index = 0; index < stringCount_; ++index)
             if (s.strings[static_cast<std::size_t>(index)].raised)
@@ -1998,6 +2023,7 @@ void AculyreEngine::sleep() noexcept
     s.massPast = {};
     s.lastGeneralizedVelocity = {};
     s.previousLeft = s.previousRight = 0.0;
+    s.piezoPreviousForce = s.piezoPrevious = 0.0;
     s.room.reset();
     s.idle = true;
 }
@@ -2138,17 +2164,31 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         const double pressureRight = (radiatedRight - s.previousRight) * s.radiationScale;
         s.previousLeft = radiatedLeft;
         s.previousRight = radiatedRight;
-        for (std::size_t i = 0; i < 4; ++i)
+        for (std::size_t i = 0; i < s.output.size(); ++i)
             s.output[i] += (s.outputTarget[i] - s.output[i]) * s.outputSmoothing;
         // The room runs even unsent, so turning it up meets a live tail.
         double wetLeft = 0.0, wetRight = 0.0;
         s.room.process(0.5 * (pressureLeft + pressureRight), wetLeft, wetRight);
-        const double level = s.outputGain * std::max(std::max(std::abs(pressureLeft), std::abs(pressureRight)),
-                                                     std::max(std::abs(wetLeft), std::abs(wetRight)));
+        // The piezo strip under the bar presses with the bar's whole force on
+        // the top, so it hears the heave and not the rock; it runs unheard
+        // too, for the same reason as the room.
+        const double piezo = s.piezoScale * (plateForce[0] - s.piezoPreviousForce) + s.piezoPole * s.piezoPrevious;
+        s.piezoPreviousForce = plateForce[0];
+        s.piezoPrevious = piezo;
+        const double level = std::max(s.outputGain * std::max(std::max(std::abs(pressureLeft), std::abs(pressureRight)),
+                                                              std::max(std::abs(wetLeft), std::abs(wetRight))),
+                                      s.piezoGain * std::abs(piezo));
         s.quietSamples = level > idleLevel ? 0 : s.quietSamples + 1;
         const double outLeft = pressureLeft + s.output[0] * wetLeft;
         const double outRight = pressureRight + s.output[0] * wetRight;
-        const double gain = s.outputGain * s.output[3];
+        const double micLeft = s.outputGain * (s.output[1] * outLeft + s.output[2] * outRight);
+        const double micRight = s.outputGain * (s.output[1] * outRight + s.output[2] * outLeft);
+        // Which way the element is wired is a choice: this way round, a
+        // blend with the microphones adds in the low mids instead of
+        // cancelling there.
+        const double pickup = -s.piezoGain * piezo;
+        const double blend = s.output[4];
+        const double volume = s.output[3];
         const auto limit = [] (double x)
         {
             const double magnitude = x < 0.0 ? -x : x;
@@ -2157,8 +2197,8 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             const double limited = 0.9 + 0.1 * std::tanh((magnitude - 0.9) / 0.1);
             return x < 0.0 ? -limited : limited;
         };
-        left[sample] = static_cast<float>(limit(gain * (s.output[1] * outLeft + s.output[2] * outRight)));
-        right[sample] = static_cast<float>(limit(gain * (s.output[1] * outRight + s.output[2] * outLeft)));
+        left[sample] = static_cast<float>(limit(volume * (micLeft + blend * (pickup - micLeft))));
+        right[sample] = static_cast<float>(limit(volume * (micRight + blend * (pickup - micRight))));
         if (s.quietSamples >= static_cast<int>(0.5 * sampleRate_))
         {
             sleep();

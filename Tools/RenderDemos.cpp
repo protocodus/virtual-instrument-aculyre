@@ -1,7 +1,7 @@
 // Renders a standard MIDI file through Aculyre to a 48 kHz 24-bit stereo WAV.
 //
 //   RenderAculyreDemo <preset 0-2> <input.mid> <output.wav>
-//       [--dry] [--no-sympathy] [--no-glide] [--tail seconds] [--rate hz]
+//       [--dry] [--no-sympathy] [--no-glide] [--piezo 0-1] [--tail seconds] [--rate hz]
 //   RenderAculyreDemo --report <preset>
 //
 // Note on/off and CC64 (sustain) drive the engine at their sample; everything
@@ -202,14 +202,14 @@ int main(int argc, char** argv)
         if (argc < 4)
         {
             std::cerr << "usage: RenderAculyreDemo <preset 0-2> <input.mid> <output.wav> "
-                         "[--dry] [--no-sympathy] [--no-glide] [--tail seconds] [--rate hz]\n";
+                         "[--dry] [--no-sympathy] [--no-glide] [--piezo 0-1] [--tail seconds] [--rate hz]\n";
             return 2;
         }
         const int preset = std::clamp(std::atoi(argv[1]), 0, 2);
         const std::string input = argv[2];
         const std::string output = argv[3];
         bool dry = false, sympathy = true, glide = true;
-        double tail = 2.5;
+        double tail = 2.5, piezo = 0.0;
         int rate = 48000;
         for (int i = 4; i < argc; ++i)
         {
@@ -217,6 +217,7 @@ int main(int argc, char** argv)
             if (option == "--dry") dry = true;
             else if (option == "--no-sympathy") sympathy = false;
             else if (option == "--no-glide") glide = false;
+            else if (option == "--piezo" && i + 1 < argc) piezo = std::atof(argv[++i]);
             else if (option == "--tail" && i + 1 < argc) tail = std::atof(argv[++i]);
             else if (option == "--rate" && i + 1 < argc) rate = std::atoi(argv[++i]);
         }
@@ -228,6 +229,7 @@ int main(int argc, char** argv)
             controls.room = 0.0;
         if (!sympathy)
             controls.sympathy = 0.0;
+        controls.piezo = piezo;
         engine->setControls(controls);
         engine->setTensionModulation(glide);
 

@@ -6,7 +6,8 @@
 // carry the strings' motion normal to the soundboard, its sway the motion
 // parallel to it. Idle strings stay in the junction, so they ring in
 // sympathy. The soundbox radiates through its plate modes and its air
-// resonance into a small room.
+// resonance into a small room; a piezo strip under the bar picks up the
+// force the bar presses into the top.
 //
 // This is a feasibility prototype (README, Known gaps), not a product: setup
 // calls allocate nothing but are not real-time safe; process(), the note
@@ -96,6 +97,7 @@ struct InstrumentSpec
     double pluckForce;     // N held before release at full velocity
     double room;           // room send, 0-1
     double outputGain;     // digital full scale per pascal at the microphones
+    double piezoGain;      // digital full scale per newton on the piezo
 };
 
 // What a player and the room change while the instrument sounds. Every
@@ -117,6 +119,9 @@ struct PlayingControls
     double sympathy { 1.0 };
     double room { 0.35 };       // room send, 0-1
     double width { 1.0 };       // stereo width, 0 (mono) to 2
+    // The pickup: 0, the microphones; 1, the piezo under the bridge bar
+    // alone; between, a blend of the two. The piezo hears no room.
+    double piezo { 0.0 };
     double volume { 1.0 };      // gain on the instrument's outputGain
     double pitchBend { 0.0 };   // semitones, on every string
     // Sharping levers at the yoke follow the notes played: a note a semitone

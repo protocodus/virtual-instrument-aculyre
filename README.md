@@ -22,6 +22,11 @@ reference recording below.
 
 ## Version history
 
+- **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
+  blended with the microphones from none to the piezo alone. Every
+  instrument leaves headroom: a glissando over every string at full velocity
+  peaks at -3 dBFS, where it used to reach the limiter, so each instrument
+  plays 6-11 dB quieter than 0.4.0.
 - **0.4.0** (prototype, not released): the instruments run at 1x, 2x or 4x
   the host rate (1x by default). Nylon and gut strings are damped as
   measured harp strings are. Plucks scatter in point, force, angle and slip
@@ -102,6 +107,19 @@ radiation efficiency, with a seeded sign at each of the two microphones; the
 far-field pressure at 0.5 m is rho/(4 pi r) times the volume acceleration. A
 small feedback-delay room follows.
 
+**Piezo.** A pickup strip under the bridge bar presses with the bar's whole
+force on the top, so it hears the bar's heave and not its rock, and it hears no
+room. Its element, cable, preamp and DI are Aculele's, which are Acustra's
+documented chain: an element of 0.2 V/N at 1.45 nF, the ESP Project 202 preamp
+and a 1 MOhm DI. At a lyre's bridge forces that chain stays linear. A
+glissando at full velocity presses at most 7.6 N on any factory patch, and the
+preamp's op-amps limit at about 13 N. So the chain reduces to its 31 Hz input
+coupling. `PlayingControls::piezo` blends from the microphones to the piezo
+alone. The element is wired so that a blend adds in the low mids instead of
+cancelling there; half and half is about 2 dB quieter than either alone on
+the steel lyre harp phrase. Against the microphones, the piezo carries more of
+the strings' fundamentals and of the top two octaves.
+
 **Presets.** The steel lyre harp has 16 strings G3-A5 in C major, 0.44-0.22 m,
 gauges 0.022-0.010 inch, 54-63 N, over a 20 x 30 cm spruce top on a 5 cm box
 with a 6 cm soundhole: its air mode is 212 Hz and its first top mode 467 Hz.
@@ -148,6 +166,12 @@ long-term spectrum within about 1 dB of 1x below 6 kHz (2.4 dB at
 1.25 kHz) and lifts the top octave 4-11 dB; 2x lands within 0.5 dB of 4x
 below 12.5 kHz and 2 dB short at 20 kHz.
 
+**Level.** `outputGain` and `piezoGain` put each instrument's loudest
+playing, a glissando over every string at full velocity with sustain held, at
+-3 dBFS at its own controls, on the microphones and on the piezo alike. A
+single note at full velocity peaks 7-17 dB lower, depending on the string. A
+soft limiter above -0.9 dBFS stays as a guard that playing does not reach.
+
 **Cost.** The steel lyre harp (32 waveguides, 234 modes and the room) renders
 about 20 times faster than real time on one core of a cloud container at 1x,
 4 times at 4x. The modes run in one pass a compiler can vectorize. Once
@@ -174,10 +198,14 @@ sleeps, and a sleeping instance costs next to nothing until the next pluck.
 - No plucking-hand model beyond a contact width and a release time, no
   buzzing, no string-to-string contact, no hand damping gestures beyond
   note-off.
+- The piezo's element is taken as rigid under the bar and its preamp as
+  linear: there is no mounting resonance (Acustra's saddle sits on its element
+  at 6 kHz) and no overload at settings past the factory patches. The pickup
+  system is a guitar's; no lyre pickup is measured.
 - Designing an instrument is not real-time safe; the Performer designs all
   three at startup, which a front end must allow for.
-- No plug-in yet. The Rack Extension adapter has passed its authored host
-  simulation, not a Jukebox SDK build or Reason.
+- No plug-in yet. The Rack Extension's 0.4.0d1 has been played in Recon
+  from a local build; it has not been through Reason Studios' acceptance.
 
 ## Build
 

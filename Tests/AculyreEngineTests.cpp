@@ -97,13 +97,8 @@ int main()
     {
         for (int index : { 0, preset->stringCount / 2, preset->stringCount - 1 })
         {
-            // The plucked string alone: the strings an octave, a twelfth and
-            // two octaves below ring partials within 15 cents of the note, and
-            // the steel A5 sits at the bar's mobile end, where its normal
-            // polarisation fades at about 45 dB/s and a sympathetic partial
-            // outlasts it in the second the scan reads.
             const int note = preset->strings[static_cast<std::size_t>(index)].midiNote;
-            const auto audio = renderNote(*preset, note, 3.0, 64, false, false);
+            const auto audio = renderNote(*preset, note, 3.0, 64);
             bool finite = true;
             for (float sample : audio)
                 finite = finite && std::isfinite(sample);
@@ -124,7 +119,7 @@ int main()
     // to one high partial put them 30 to 120 cents sharp.
     {
         // Plucked near the bridge, so no partial up to the 12th is missing,
-        // on a 1 kg bridge, so the body's coupling (up to about 14 cents on
+        // on a 1 kg bridge, so the body's coupling (up to about 11 cents on
         // the 6 g one) moves none of them.
         aculyre::InstrumentSpec spec = aculyre::lyreHarpSteel;
         spec.pluckPosition = 0.13;
@@ -146,21 +141,14 @@ int main()
     }
 
     // The steel lyre harp's pluck a quarter of the way from the bridge leaves
-    // out the 4th harmonic, as in the CC0 reference recording. Measured
-    // against the same partial plucked at an eighth, where it is strongest,
-    // so the body passes both alike. At the A4 string's point of the bending
-    // bar the body passes its 3rd, 4th and 5th harmonics unevenly (0.036,
-    // 0.003 and 0.017 m/s/N), so the neighbours no longer measure the notch.
+    // out the 4th harmonic, as in the CC0 reference recording.
     {
-        const auto quarter = renderNote(aculyre::lyreHarpSteel, 69, 0.5, 64, false, false,
-                                        [] (aculyre::PlayingControls& c) { c.pluckPosition = 0.25; });
-        const auto eighth = renderNote(aculyre::lyreHarpSteel, 69, 0.5, 64, false, false,
-                                       [] (aculyre::PlayingControls& c) { c.pluckPosition = 0.125; });
-        const double h4 = peakNear(quarter, 960, 12000, 1760.0).magnitude;
-        const double open = peakNear(eighth, 960, 12000, 1760.0).magnitude;
-        std::printf("A4 plucked at a quarter: H4 %.1f dB below the pluck at an eighth\n",
-                    20.0 * std::log10(open / h4));
-        check(h4 < 0.18 * open, "a quarter-length pluck leaves out the 4th harmonic");
+        const auto audio = renderNote(aculyre::lyreHarpSteel, 69, 0.5, 64, false, false);
+        const auto level = [&] (int n) { return peakNear(audio, 960, 12000, 440.0 * n).magnitude; };
+        const double h3 = level(3), h4 = level(4), h5 = level(5);
+        std::printf("A4 plucked at a quarter: H4 %.1f dB below H3, %.1f dB below H5\n",
+                    20.0 * std::log10(h3 / h4), 20.0 * std::log10(h5 / h4));
+        check(h4 < 0.18 * h3 && h4 < 0.18 * h5, "a quarter-length pluck leaves out the 4th harmonic");
     }
 
     // Determinism and block-partition invariance.

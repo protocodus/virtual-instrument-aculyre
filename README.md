@@ -3,7 +3,7 @@
 Aculyre is an experimental physically modelled lyre, forked in method (not in
 code history) from [Acustra](https://github.com/protocodus/virtual-instrument-acustra):
 a row of open strings, each a pair of stiff-string waveguides, all ending on
-one bridge bar that bends with a modal soundbox, so idle strings ring in
+one bridge bar that stands on a modal soundbox, so idle strings ring in
 sympathy. It plays three instruments: a modern 16-string steel lyre harp, the
 same harp strung in nylon, and a six-string gut lyre after the Anglo-Saxon
 reconstructions. It is a feasibility prototype: there is no plug-in and no
@@ -22,12 +22,9 @@ reference recording below.
 
 ## Version history
 
-- **0.3.0** (prototype, not released): the bridge bar bends with the
-  soundboard, so each string drives the soundbox at its own point and the
-  treble reaches the air; the pluck's held force unloads exponentially as the
-  string slides off the finger. Against a lyre harp recording the steel harp's
-  shortfall from 1.25 to 5 kHz falls from 10.0 to 5.4 dB. With every string
-  ringing it costs about twice the CPU of 0.2.0.
+- **0.3.0** (prototype, not released): the pluck's held force unloads
+  exponentially as the string slides off the finger, so the steel lyre harp's
+  treble comes 2.4 dB closer to a lyre harp recording from 1.25 to 5 kHz.
 - **0.2.0** (prototype, not released): playing controls that change while
   the instrument sounds (technique, pluck position and angle, how long a
   let-go string rings, a palm mute, sympathetic strings, room, stereo width,
@@ -70,25 +67,16 @@ a little in position, force and direction. A finger meeting a sounding string
 stops most of it first. Tension modulation raises the pitch of a hard pluck
 for its first moments.
 
-**Bridge and body.** All strings end on one bridge bar glued across the top
-of a modal soundbox: an orthotropic plate (Warburton's clamped-plate
-frequencies, simply-supported shapes), coupled through the cavity's stiffness
-to a Helmholtz air plug when the box has a soundhole. The bar is no rigid
-body: the lyre harp's 24 cm, 6 g maple bar would bend freely at about 785 Hz,
-and above a kilohertz the top's modes change sign along it. It is an
-Euler-Bernoulli beam whose mass, tipping inertia and bending stiffness join
-the plate's in the basis of the plate's own shapes (Rayleigh-Ritz), so the
-combined modes carry the bar's stiffening along its line. Each string drives
-them at its own point with its motion normal to the top; the motion parallel
-to the top tips the bar about its foot, one port that every string shares.
-At the lyre harp's middle string the bridge's mobility runs from 0.003 to
-0.06 m/s/N between 1 and 5 kHz, mode by mode, where the rigid bar of 0.2.0
-averaged the top's modes away to 0.002-0.007 m/s/N from 1.6 to 5 kHz. Mode
+**Bridge and body.** All strings end on one rigid bar with three degrees of
+freedom: heave and rock carry the strings' motion normal to the top, sway the
+motion parallel to it, through the bar's height. The bar stands on a modal
+soundbox: an orthotropic plate (Warburton's clamped-plate frequencies,
+simply-supported shapes for the bar's participation), coupled through the
+cavity's stiffness to a Helmholtz air plug when the box has a soundhole. Mode
 Qs are authored from the spread of Acustra's measured guitar bridge (16-75
 below 1.5 kHz, 5-36 above 2 kHz): 40 at 300 Hz falling to 12 at 10 kHz, and 20
-for the air mode. The junction, one port per string and the tipping, is
-solved implicitly every sample, so it is passive and every string, played or
-idle, is coupled to every other.
+for the air mode. The junction is solved implicitly every sample, so it
+is passive and every string, played or idle, is coupled to every other.
 
 **Radiation and room.** Each mode radiates its net volume change as a
 monopole, plus an equivalent volume for its edge and corner radiation, from a
@@ -98,28 +86,26 @@ small feedback-delay room follows.
 
 **Presets.** The steel lyre harp has 16 strings G3-A5 in C major, 0.44-0.22 m,
 gauges 0.022-0.010 inch, 54-63 N, over a 20 x 30 cm spruce top on a 5 cm box
-with a 6 cm soundhole: its air mode is 212 Hz and its first top modes 455 and
-483 Hz.
+with a 6 cm soundhole: its air mode is 212 Hz and its first top mode 467 Hz.
 The nylon harp uses the same frame with 1.30-0.47 mm monofilament at 29-44 N.
 The gut lyre has six 50 cm strings D3 E3 G3 A3 B3 D4 at about 37 N over a
-closed maple box whose first mode is 347 Hz. Dimensions are typical of each
+closed maple box whose first mode is 343 Hz. Dimensions are typical of each
 kind of instrument, not measurements of one.
 
 **Measured against recordings.** On the A4 of a CC0 lyre harp note (Freesound
 722897), the model at the reference's quarter-length pluck point is close in
-spectral centroid over the first 250 ms (482 Hz against 465 Hz), and both lack
-the 4th harmonic. Its apparent inharmonicity over partials 2-12 is higher
-(B = 4.8e-4 against 3.9e-4, the string's own 2.4e-4 plus the body's pull), and
-it decays faster over 80-450 ms (50 against 30 dB/s; 43 in 0.2.0): A4 sits
-beside the assumed body's 455 Hz top mode, which the bending bar couples to
-the A4 string's point more strongly than the rigid bar did. Replaying a lyre
-harp phrase note for note (Freesound 649925, CC BY), the model's 1/3-octave
-long-term spectrum falls short of the recording's by 5.4 dB on average from
-1.25 to 5 kHz (10.0 dB in 0.2.0). Over a CC0 Iron Age lyre recording
-(Freesound 191883, another instrument and tuning), the gut lyre's notes are
-about as bright (centroid 527-548 Hz against 557 Hz; 429-490 Hz in 0.2.0) but
-decay faster (median 23-27 against 18 dB/s over 80-550 ms; 18-22 dB/s in
-0.2.0). These are order-of-magnitude checks, not a calibration.
+spectral centroid over the first 250 ms (482 Hz against 465 Hz) and in the
+apparent inharmonicity of partials 2-12 (B = 3.86e-4 against 3.93e-4, the
+string's own 2.36e-4 plus the body's pull), and both lack the 4th harmonic.
+The model's note decays faster over 80-450 ms (43 against 30 dB/s): A4 sits
+beside the assumed body's 467 Hz top mode. Replaying a lyre harp phrase note
+for note (Freesound 649925, CC BY), the model's 1/3-octave long-term spectrum
+falls short of the recording's by 7.6 dB on average from 1.25 to 5 kHz
+(10.0 dB in 0.2.0). Over a CC0 Iron Age lyre recording (Freesound 191883,
+another instrument and tuning), the gut lyre's notes decay at a similar rate
+(median 18-22 against 18 dB/s over 80-550 ms) and are a little darker
+(centroid 448-496 Hz against 557 Hz). These are order-of-magnitude checks,
+not a calibration.
 
 **Playing.** `PlayingControls` holds what a player and the room change while
 the instrument sounds; the plucking fields apply at the next pluck, the rest at
@@ -134,10 +120,8 @@ instruments once, outside real time, so choosing one is a real-time switch:
 the old instrument fades out over 20 ms while the new one starts, and every
 front end (the Rack adapter now, a plug-in later) plays through it.
 
-**Cost.** The steel lyre harp (32 waveguides, 217 modes, 17 bridge ports and
-the room) renders about 7 times faster than real time on one core of a cloud
-container with every string ringing, half the speed of 0.2.0's rigid bar:
-every mode meets every string's port each sample.
+**Cost.** The steel lyre harp (32 waveguides, 234 modes and the room) renders
+about 12 times faster than real time on one core of a cloud container.
 
 ## Known gaps
 
@@ -146,15 +130,14 @@ every mode meets every string's port each sample.
   sets which notes are loud, which are dead and how fast they decay.
 - The nylon and gut loss angles and bending losses are estimates; only steel
   carries Acustra's fitted values. Acustra retired its own nylon voice.
-- The parallel polarisation drives one port for all strings, the bar's mean
-  tipping; a bar that twists along its length would let each string tip it
-  differently. On the 6 g bar the body pulls the bass string's partials up
-  to about 14 cents from the stiff-string law.
-- The bar's dimensions and wood are assumed, and the top under it adds no
-  stiffness of its own. Its free ends are its most mobile points, so the
-  outer strings lose energy fastest (the steel A5's normal polarisation fades
-  at about 45 dB/s); no lyre harp has been measured string by string to
-  check it.
+- The bridge bar is rigid, so above a kilohertz it averages the top's modes
+  away and the steel lyre harp stays 7.6 dB darker than a lyre harp recording
+  from 1.25 to 5 kHz. A bar that bends with the top (commit f209037) closed
+  more of that gap, but by ear it sounded much like the release change alone
+  and it doubled the CPU ([decisions](Docs/decisions.md)).
+- The sway coupling of the parallel polarisation through the bar's height is
+  simple geometry; with the 6 g bar it moves some partials by up to about
+  11 cents.
 - The dispersion fit stops at the 12th partial.
 - No plucking-hand model beyond a contact width and a release time, no
   buzzing, no string-to-string contact, no hand damping gestures beyond

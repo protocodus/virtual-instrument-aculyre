@@ -223,8 +223,12 @@ int main(int argc, char** argv)
         auto engine = std::make_unique<aculyre::AculyreEngine>();
         engine->prepare(rate);
         engine->setInstrument(*aculyre::presets[static_cast<std::size_t>(preset)]);
-        engine->setRoomEnabled(!dry);
-        engine->setSympatheticStrings(sympathy);
+        aculyre::PlayingControls controls = engine->controls();
+        if (dry)
+            controls.room = 0.0;
+        if (!sympathy)
+            controls.sympathy = 0.0;
+        engine->setControls(controls);
         engine->setTensionModulation(glide);
 
         const std::vector<Event> events = readMidi(input);

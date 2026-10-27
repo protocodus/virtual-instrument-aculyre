@@ -6,8 +6,10 @@ a row of open strings, each a pair of stiff-string waveguides, all ending on
 one bridge bar that stands on a modal soundbox, so idle strings ring in
 sympathy. It plays three instruments: a modern 16-string steel lyre harp, the
 same harp strung in nylon, and a six-string gut lyre after the Anglo-Saxon
-reconstructions. It is a DSP-only feasibility prototype: there is no plug-in,
-no interface and no release.
+reconstructions. It is a feasibility prototype: there is no plug-in and no
+release. A Reason Rack Extension adapter plays it from the private
+`protocodus/reason-rack-extensions` repository (source only, not yet built
+against the SDK).
 
 ## Audio demos
 
@@ -20,6 +22,12 @@ reference recording below.
 
 ## Version history
 
+- **0.2.0** (prototype, not released): playing controls that change while
+  the instrument sounds (technique, pluck position and angle, how long a
+  let-go string rings, a palm mute, sympathetic strings, room, stereo width,
+  volume, pitch bend), sharping levers that follow the notes played, a
+  Performer that switches between the three instruments with a 20 ms
+  crossfade, and each string's activity for a front end to draw.
 - **0.1.0** (prototype, not released): the engine, three presets, the demo
   renderer and the engine contracts.
 
@@ -91,6 +99,19 @@ at a similar rate (median 16.5 against 17.8 dB/s over 80-550 ms) and are a
 little darker (centroid 503 against 557 Hz). These are order-of-magnitude
 checks, not a calibration.
 
+**Playing.** `PlayingControls` holds what a player and the room change while
+the instrument sounds; the plucking fields apply at the next pluck, the rest at
+once. Release sets how a let-go string sounds on, from the playing hand
+stopping it (a 30 ms amplitude time constant) to ringing until it dies away;
+mute rests a palm across every string; sympathy rests a hand on the strings
+nobody plucked. With the sharping levers on, a note a semitone above a
+string's own raises that string's lever, which shortens its speaking length
+by a semitone, and the string's own note lowers it again, as a lyre harp
+player sets the levers by hand. `AculyrePerformer` designs all three
+instruments once, outside real time, so choosing one is a real-time switch:
+the old instrument fades out over 20 ms while the new one starts, and every
+front end (the Rack adapter now, a plug-in later) plays through it.
+
 **Cost.** The steel lyre harp (32 waveguides, 234 modes and the room) renders
 about 12 times faster than real time on one core of a cloud container.
 
@@ -108,7 +129,12 @@ about 12 times faster than real time on one core of a cloud container.
 - No plucking-hand model beyond a contact width and a release time, no
   buzzing, no string-to-string contact, no hand damping gestures beyond
   note-off.
-- Setup is not real-time safe; the engine is not yet a plug-in.
+- Designing an instrument is not real-time safe; the Performer designs all
+  three at startup, which a front end must allow for.
+- The engine never idles: every string, the body and the room run whether or
+  not anything sounds, so a silent instance costs as much as a playing one.
+- No plug-in yet. The Rack Extension adapter has passed its authored host
+  simulation, not a Jukebox SDK build or Reason.
 
 ## Build
 

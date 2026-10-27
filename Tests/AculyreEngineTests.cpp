@@ -1,8 +1,9 @@
 // Contracts for the prototype engine: tuning, the stiff string's partials,
-// the pluck point, stability, determinism, block partition invariance and
-// sympathetic coupling.
+// the pluck point, stability, determinism, block partition invariance,
+// sympathetic coupling, the playing controls and the Performer.
 
 #include "AculyreEngine.h"
+#include "AculyrePerformer.h"
 #include "AculyrePresets.h"
 
 #include <algorithm>
@@ -26,13 +27,20 @@ void check(bool condition, const char* what)
 }
 
 std::vector<float> renderNote(const aculyre::InstrumentSpec& preset, int note, double seconds,
-                              int block, bool room = false, bool sympathy = true)
+                              int block, bool room = false, bool sympathy = true,
+                              void (*adjust)(aculyre::PlayingControls&) = nullptr)
 {
     auto engine = std::make_unique<aculyre::AculyreEngine>();
     engine->prepare(48000.0);
     engine->setInstrument(preset);
-    engine->setRoomEnabled(room);
-    engine->setSympatheticStrings(sympathy);
+    aculyre::PlayingControls controls = engine->controls();
+    if (!room)
+        controls.room = 0.0;
+    if (!sympathy)
+        controls.sympathy = 0.0;
+    if (adjust)
+        adjust(controls);
+    engine->setControls(controls);
     engine->noteOn(note, 0.7f);
     const auto total = static_cast<int>(seconds * 48000.0);
     std::vector<float> left(static_cast<std::size_t>(total)), right(static_cast<std::size_t>(total));
@@ -166,6 +174,97 @@ int main()
                     10.0 * std::log10(octave / played), 10.0 * std::log10(ninth / played));
         check(octave > 4.0 * ninth, "the octave string rings in sympathy more than the ninth");
         check(octave < played, "a sympathetic string stays below the played one");
+    }
+
+    // A raised sharping lever sounds the semitone above its string; with
+    // the levers off that note has no string.
+    {
+        const auto raised = renderNote(aculyre::lyreHarpSteel, 61, 2.0, 64, false, true,
+                                       [] (aculyre::PlayingControls& c) { c.levers = true; });
+        const double nominal = 440.0 * std::pow(2.0, (61 - 69) / 12.0);
+        const double cents = 1200.0 * std::log2(peakNear(raised, 24000, 48000, nominal).frequency / nominal);
+        std::printf("C#4 on the C4 string, lever up: %+.2f cents\n", cents);
+        check(std::abs(cents) < 6.0, "a raised lever sounds the semitone above (within 6 cents)");
+        const auto none = renderNote(aculyre::lyreHarpSteel, 61, 0.5, 64);
+        check(rms(none, 0, 24000) < 1.0e-9, "without levers a note between strings is silent");
+    }
+
+    // The pitch bend moves every string; two semitones up lands on B4 from
+    // A4.
+    {
+        const auto bent = renderNote(aculyre::lyreHarpSteel, 69, 2.0, 64, false, true,
+                                     [] (aculyre::PlayingControls& c) { c.pitchBend = 2.0; });
+        const double nominal = 440.0 * std::pow(2.0, 2.0 / 12.0);
+        const double cents = 1200.0 * std::log2(peakNear(bent, 24000, 48000, nominal).frequency / nominal);
+        std::printf("A4 bent up two semitones: %+.2f cents from B4\n", cents);
+        check(std::abs(cents) < 6.0, "the pitch bend retunes the string");
+        const auto down = renderNote(aculyre::lyreHarpSteel, 55, 2.0, 64, false, true,
+                                     [] (aculyre::PlayingControls& c) { c.pitchBend = -2.0; });
+        const double low = 440.0 * std::pow(2.0, (53 - 69) / 12.0);
+        const double downCents = 1200.0 * std::log2(peakNear(down, 24000, 48000, low).frequency / low);
+        std::printf("G3 bent down two semitones: %+.2f cents from F3\n", downCents);
+        check(std::abs(downCents) < 6.0, "the pitch bend retunes the bass string down");
+    }
+
+    // The hands: a full palm shortens the note; letting a released string
+    // ring keeps it sounding where the playing hand would stop it.
+    {
+        const auto open = renderNote(aculyre::lyreHarpSteel, 69, 1.0, 64);
+        const auto muted = renderNote(aculyre::lyreHarpSteel, 69, 1.0, 64, false, true,
+                                      [] (aculyre::PlayingControls& c) { c.mute = 1.0; });
+        check(rms(muted, 24000, 4800) < 0.01 * rms(open, 24000, 4800), "the palm mute stops the strings");
+        // The other strings ring on in sympathy either way, so this looks
+        // at the played string itself.
+        double energy[2] {};
+        for (int ring = 0; ring < 2; ++ring)
+        {
+            aculyre::AculyreEngine engine;
+            engine.prepare(48000.0);
+            engine.setInstrument(aculyre::lyreHarpSteel);
+            aculyre::PlayingControls controls = engine.controls();
+            controls.release = ring;
+            engine.setControls(controls);
+            engine.noteOn(69, 0.7f);
+            std::vector<float> l(24000), r(24000);
+            engine.process(l.data(), r.data(), 4800);
+            engine.noteOff(69);
+            engine.process(l.data(), r.data(), 24000);
+            energy[ring] = engine.stringEnergy(engine.stringForNote(69));
+        }
+        check(energy[1] > 1000.0 * energy[0], "release lets a let-go string ring");
+    }
+
+    // The Performer switches instruments in real time: the old one fades,
+    // the output stays finite and does not depend on the block size.
+    {
+        const auto play = [] (int block)
+        {
+            auto performer = std::make_unique<aculyre::Performer>();
+            performer->prepare(48000.0);
+            std::vector<float> l(48000), r(48000);
+            for (int position = 0; position < 48000; position += block)
+            {
+                if (position == 0)
+                    performer->noteOn(67, 0.8f);
+                if (position == 9600)
+                {
+                    performer->setInstrument(2);
+                    performer->noteOn(62, 0.8f);
+                }
+                if (position == 19200)
+                    performer->setInstrument(0);
+                performer->process(l.data() + position, r.data() + position, block);
+            }
+            return l;
+        };
+        const auto a = play(64), b = play(32);
+        bool finite = true;
+        for (float sample : a)
+            finite = finite && std::isfinite(sample);
+        check(finite, "the Performer's output is finite across switches");
+        check(a == b, "the Performer's switches do not depend on the block size");
+        check(rms(a, 9600 + 1200, 2400) > 0.0 && rms(a, 19200 + 1200, 2400) < rms(a, 19200 - 2400, 2400),
+              "an instrument switch fades the old instrument out");
     }
 
     std::printf(failures == 0 ? "all passed\n" : "%d failed\n", failures);

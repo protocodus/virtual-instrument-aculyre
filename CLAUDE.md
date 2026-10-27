@@ -3,13 +3,13 @@
 ## Architecture
 
 This is Aculyre's canonical repository: an experimental physically modelled
-lyre whose DSP engine lives in `Source/DSP/`. It is a DSP-only feasibility
-prototype (README, Known gaps): there is no JUCE plug-in, no interface, no CI
-and no release yet, and no Reason Rack Extension. If one is added, it lives
-in the private `protocodus/reason-rack-extensions` repository as a thin
-adapter that mounts this repository as the pinned submodule
-`Examples/Aculyre/Instrument` and compiles `Source/DSP/*.cpp` directly. DSP
-and playing-model changes land here first; the Rack pin then advances.
+lyre whose DSP engine and its Performer live in `Source/DSP/`. It is a
+feasibility prototype (README, Known gaps): there is no JUCE plug-in, no CI
+and no release yet. The Reason Rack Extension in the private
+`protocodus/reason-rack-extensions` repository is a thin adapter that mounts
+this repository as the pinned submodule `Examples/Aculyre/Instrument` and
+compiles `Source/DSP/*.cpp` directly, playing through `aculyre::Performer`.
+DSP and playing-model changes land here first; the Rack pin then advances.
 Reason property mapping, MIDI/CV, routing, host latency, patches and panels
 stay in the adapter.
 
@@ -24,8 +24,10 @@ README parts).
   up. A Rack device would take the same `X.Y.Z` plus its own stage suffix.
 - `Source/DSP/` is JUCE-free and C++17 (the Rack toolchain); the
   `AculyreDSPCxx17` target proves it. No allocation, file I/O, locks or
-  exceptions in `process()` or the note calls. Setup (`prepare`,
-  `setInstrument`) designs the strings and the body and is not real-time.
+  exceptions in `process()`, the note calls or `setControls()`. Setup
+  (`prepare`, `setInstrument`) designs the strings and the body and is not
+  real-time; `Performer::setInstrument` is, because `Performer::prepare`
+  designs all three instruments up front.
 - The string loss sections and the Thiran design are copied from Acustra
   1.9.0 and marked so in the source. Change them in Acustra first when the
   change is a correction to the physics they share.

@@ -380,29 +380,53 @@ DispersionDesign designDispersion(double fundamental, double inharmonicity, doub
     {
         return (1.0 - a * a) / (1.0 + 2.0 * a * std::cos(omega) + a * a);
     };
+    const double infinity = std::numeric_limits<double>::infinity();
+    // The worst partial's error in cents with coefficient a = -0.0025 step.
+    const auto worstAt = [&] (int stages, int step)
+    {
+        const double a = -0.0025 * step;
+        const double delay = (2.0 * pi - stages * lag(a, omega1)) / omega1;
+        // The line, its Thiran section and the loss filters need some.
+        if (delay < 8.0)
+            return infinity;
+        double worst = 0.0;
+        for (int n = 2; n <= partials; ++n)
+        {
+            const double target = omega1 * stretchedPartial(n, inharmonicity);
+            double omega = target;
+            for (int iteration = 0; iteration < 4; ++iteration)
+                omega -= (omega * delay + stages * lag(a, omega) - 2.0 * pi * n)
+                       / (delay + stages * groupDelay(a, omega));
+            worst = std::max(worst, std::abs(1200.0 * std::log2(omega / target)));
+        }
+        return worst;
+    };
+    // Coarse steps of 0.02, then every 0.0025 step around the best: a sixth
+    // of the evaluations of the full grid (the setup of three instruments,
+    // levers included, fits in about half a second).
+    constexpr int lastStep = 380, coarse = 8;
     std::array<DispersionDesign, maxDispersionStages + 1> best {};
     for (int stages = 1; stages <= maxDispersionStages; ++stages)
     {
-        best[static_cast<std::size_t>(stages)].worstCents = std::numeric_limits<double>::infinity();
-        for (int step = 0; step <= 380; ++step)
+        DispersionDesign& found = best[static_cast<std::size_t>(stages)];
+        found.worstCents = infinity;
+        int centre = 0;
+        for (int step = 0; step <= lastStep; step += coarse)
         {
-            const double a = -0.0025 * step;
-            const double delay = (2.0 * pi - stages * lag(a, omega1)) / omega1;
-            // The line, its Thiran section and the loss filters need some.
-            if (delay < 8.0)
+            const double worst = worstAt(stages, step);
+            if (worst == infinity)
                 break;
-            double worst = 0.0;
-            for (int n = 2; n <= partials; ++n)
+            if (worst < found.worstCents)
             {
-                const double target = omega1 * stretchedPartial(n, inharmonicity);
-                double omega = target;
-                for (int iteration = 0; iteration < 4; ++iteration)
-                    omega -= (omega * delay + stages * lag(a, omega) - 2.0 * pi * n)
-                           / (delay + stages * groupDelay(a, omega));
-                worst = std::max(worst, std::abs(1200.0 * std::log2(omega / target)));
+                found = { stages, -0.0025 * step, worst };
+                centre = step;
             }
-            if (worst < best[static_cast<std::size_t>(stages)].worstCents)
-                best[static_cast<std::size_t>(stages)] = { stages, a, worst };
+        }
+        for (int step = std::max(0, centre - coarse + 1); step < std::min(lastStep + 1, centre + coarse); ++step)
+        {
+            const double worst = worstAt(stages, step);
+            if (worst < found.worstCents)
+                found = { stages, -0.0025 * step, worst };
         }
     }
     // The fewest sections within a cent; otherwise the closest fit.
@@ -459,6 +483,44 @@ struct UnitDcSection
     }
 };
 
+// The frequency ratios, -2 to +2 semitones, at which setup measures each
+// loop's phase lag for the pitch bend and the tension glide.
+constexpr std::array<double, 5> bendRatios {
+    0.8908987181403393, 0.9438743126816935, 1.0, 1.0594630943592953, 1.122462048309373
+};
+
+// What sets one polarisation's pitch: its frequency, its filters and the
+// line that tunes them. A sharping lever swaps one for another.
+struct LoopDesign
+{
+    double frequency { 0.0 };
+    double gain { 1.0 };
+    int dispersionStages { 0 };
+    double dispersion { 0.0 };
+    double dispersionCents { 0.0 };  // the design's worst partial error
+    LossSectionDesign constantDesign {};
+    LossSectionDesign bendingDesign {};
+    // The line delay at rest (whole + fraction) and the whole loop's delay
+    // at the fundamental, both in samples.
+    double restLineDelay { 68.0 };
+    double loopDelay { 70.0 };
+    // The phase lag, in cycles, of everything but the line's delay (the
+    // filters' dispersion and the bridge's reflection) at bendRatios.
+    std::array<double, 5> lagCycles {};
+
+    // Phase lag of everything in the loop but the line's whole samples and
+    // the Thiran section, at omega (rad/sample).
+    double filterLag(double omega) const noexcept
+    {
+        double lag = 0.0;
+        for (int stage = 0; stage < dispersionStages; ++stage)
+            lag += allpassLag(1, dispersion, 0.0, omega);
+        lag -= std::arg(lossSectionResponse(constantDesign, omega));
+        lag -= std::arg(lossSectionResponse(bendingDesign, omega));
+        return lag;
+    }
+};
+
 // One polarisation of one string: the round trip from the bridge to the yoke
 // and back, holding the velocity wave that will next arrive at the bridge.
 // The yoke's inversion is folded into what the bridge writes.
@@ -492,6 +554,7 @@ struct Loop
     // at the fundamental, both in samples.
     double restLineDelay { 68.0 };
     double loopDelay { 70.0 };
+    std::array<double, 5> lagCycles {};
 
     void reset() noexcept
     {
@@ -515,7 +578,8 @@ struct Loop
         double newFraction = samples - newWhole;
         if (newFraction < 1.1 || newFraction >= 5.1)
         {
-            newWhole = static_cast<int>(std::floor(samples - 4.0));
+            // Truncation is floor here: every line is longer than 6 samples.
+            newWhole = static_cast<int>(samples - 4.0);
             newFraction = samples - newWhole;
         }
         newWhole = std::clamp(newWhole, 1, delayCapacity - 8);
@@ -572,16 +636,41 @@ struct Loop
             damping = target;
     }
 
-    // Phase lag of everything in the loop but the line's whole samples and
-    // the Thiran section, at omega (rad/sample).
-    double filterLag(double omega) const noexcept
+    // The line delay that keeps the loop resonant at `ratio` times its own
+    // frequency, (1 - lag) loopDelay / ratio, the lag interpolated between
+    // the semitones setup measured (extrapolated beyond two). Scaling the
+    // line alone would leave the dispersion's phase delay at its own
+    // frequency: 11 cents flat of a two-semitone bend on A4.
+    double lineDelayAt(double ratio) const noexcept
     {
-        double lag = 0.0;
-        for (int stage = 0; stage < dispersionStages; ++stage)
-            lag += allpassLag(1, dispersion, 0.0, omega);
-        lag -= std::arg(lossSectionResponse(constantDesign, omega));
-        lag -= std::arg(lossSectionResponse(bendingDesign, omega));
-        return lag;
+        if (ratio == 1.0)
+            return restLineDelay;
+        std::size_t k = 0;
+        while (k < 3 && ratio > bendRatios[k + 1])
+            ++k;
+        const double t = (ratio - bendRatios[k]) / (bendRatios[k + 1] - bendRatios[k]);
+        const double lag = lagCycles[k] + t * (lagCycles[k + 1] - lagCycles[k]);
+        return (1.0 - lag) * loopDelay / ratio;
+    }
+
+    // Takes a new pitch while the wave keeps travelling.
+    void apply(const LoopDesign& design) noexcept
+    {
+        // Sections the old design left idle hold stale state.
+        for (int stage = dispersionStages; stage < design.dispersionStages; ++stage)
+            dispersionState[static_cast<std::size_t>(stage)] = 0.0;
+        gain = design.gain;
+        dispersionStages = design.dispersionStages;
+        dispersion = design.dispersion;
+        dispersionCents = design.dispersionCents;
+        constantDesign = design.constantDesign;
+        bendingDesign = design.bendingDesign;
+        constantLoss.design(constantDesign);
+        bendingLoss.design(bendingDesign);
+        restLineDelay = design.restLineDelay;
+        loopDelay = design.loopDelay;
+        lagCycles = design.lagCycles;
+        setLineDelay(restLineDelay);
     }
 };
 
@@ -881,29 +970,46 @@ struct AculyreEngine::State
 {
     InstrumentSpec instrument {};
 
+    // A string's pitch with its lever down or up: the lever shortens the
+    // speaking length a semitone's worth at the same tension.
+    struct PitchDesign
+    {
+        std::array<LoopDesign, 2> planes {};  // normal, parallel
+        double length { 0.0 };
+        double parallelLength { 0.0 };
+        double inharmonicity { 0.0 };
+        double intrinsicT60 { 0.0 };
+        double glidePerEnergy { 0.0 };
+        double energySmoothing { 0.0 };
+    };
+
     struct StringVoice
     {
         Loop normal {};
         Loop parallel {};
+        std::array<PitchDesign, 2> pitch {};  // lever down, lever up
+        // The sounding pitch (pitch[raised ? 1 : 0]).
         double frequency { 0.0 };
         double parallelFrequency { 0.0 };
         double length { 0.0 };
         double parallelLength { 0.0 };
-        double tension { 0.0 };
-        double impedance { 0.0 };
-        double linearMass { 0.0 };
         double inharmonicity { 0.0 };
-        double lever { 0.0 };
         double intrinsicT60 { 0.0 };
         // Delta f / f per unit of the loop's mean squared wave velocity.
         double glidePerEnergy { 0.0 };
-        double energy { 0.0 };
         double energySmoothing { 0.0 };
+        double tension { 0.0 };
+        double impedance { 0.0 };
+        double linearMass { 0.0 };
+        double lever { 0.0 };  // bridge position, -1 bass end to +1 treble end
+        double energy { 0.0 };
         bool keyDown { false };
         bool sustained { false };
-        bool ringing { false };
-        bool sympatheticDamped { false };
-        int midiNote { -1 };
+        bool plucked { false };   // played, and still sounding from that pluck
+        bool raised { false };    // the sharping lever is up
+        bool dampingDirty { true };
+        int midiNote { -1 };      // its own note, lever down
+        int ownerNote { -1 };     // the note that last plucked it
     };
     std::array<StringVoice, maxStrings> strings {};
 
@@ -924,12 +1030,25 @@ struct AculyreEngine::State
     double previousLeft { 0.0 };
     double previousRight { 0.0 };
     Room room {};
-    double roomSend { 0.0 };
     double outputGain { 1.0 };
     bool sustain { false };
     Random random {};
     int controlCountdown { 0 };
     std::array<double, 3> lastGeneralizedVelocity {};
+    std::array<double, delayCapacity> pluckWave {};
+
+    // PlayingControls as the signal path uses them. The hands' damping as
+    // decay rates (1/s, they add); the output gains glide to their targets
+    // over about 10 ms (per sample), the bend at the control rate.
+    double releaseRate { 0.0 };
+    double sympathyRate { 0.0 };
+    double muteRate { 0.0 };
+    double bendTarget { 1.0 };
+    double bend { 1.0 };
+    std::array<double, 4> outputTarget {};  // room send, direct and crossed gain, volume
+    std::array<double, 4> output {};
+    double outputSmoothing { 0.0 };
+    double bendSmoothing { 0.0 };
 };
 
 AculyreEngine::AculyreEngine() : state_(std::make_unique<State>()) {}
@@ -940,6 +1059,8 @@ void AculyreEngine::prepare(double sampleRate)
     sampleRate_ = std::isfinite(sampleRate) && sampleRate >= 22050.0 && sampleRate <= 192000.0
         ? sampleRate : 48000.0;
     state_->room.prepare(sampleRate_);
+    state_->outputSmoothing = 1.0 - std::exp(-1.0 / (0.01 * sampleRate_));
+    state_->bendSmoothing = 1.0 - std::exp(-controlPeriod / (0.01 * sampleRate_));
     if (stringCount_ > 0)
         setInstrument(state_->instrument);
 }
@@ -1202,62 +1323,69 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
 
     // ---- The strings ----------------------------------------------------
     const StringMaterial& material = instrument.material;
+    // A sharping lever shortens the speaking length to raise the note a
+    // semitone; the tension stays, so the string's impedance does too.
+    const double leverRatio = std::pow(2.0, -1.0 / 12.0);
     for (int index = 0; index < stringCount_; ++index)
     {
         State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
         voice = {};
         const StringSpec& spec = instrument.strings[static_cast<std::size_t>(index)];
         voice.midiNote = spec.midiNote;
-        voice.frequency = 440.0 * std::pow(2.0, (spec.midiNote - 69) / 12.0);
-        voice.length = spec.length;
         const double area = 0.25 * pi * spec.diameter * spec.diameter;
         voice.linearMass = material.density * area;
-        const double waveSpeed = 2.0 * spec.length * voice.frequency;
+        const double waveSpeed = 2.0 * spec.length * 440.0 * std::pow(2.0, (spec.midiNote - 69) / 12.0);
         voice.tension = voice.linearMass * waveSpeed * waveSpeed;
         voice.impedance = std::sqrt(voice.tension * voice.linearMass);
         const double secondMoment = pi * std::pow(spec.diameter, 4.0) / 64.0;
-        voice.inharmonicity = pi * pi * material.youngModulus * secondMoment
-                            / (voice.tension * spec.length * spec.length);
         // Strings sit evenly across the bridge, bass at the u = -1 end.
         voice.lever = stringCount_ > 1
             ? -0.9 + 1.8 * index / (stringCount_ - 1) : 0.0;
-        // The plane parallel to the soundboard is longer by about one string
-        // diameter (Woodhouse, Acta Acustica 90 (2004) 945, Sec. 4.3; Acustra
-        // ships the same end correction).
-        voice.parallelLength = spec.length + spec.diameter;
-        voice.parallelFrequency = voice.frequency * spec.length / voice.parallelLength;
-        voice.glidePerEnergy = material.youngModulus * area
-                             / (2.0 * voice.tension * waveSpeed * waveSpeed);
-        // Air damping (Valette, in Mechanics of Musical Instruments, 1995):
-        // R = 2 pi eta + 2 pi d sqrt(pi eta rho f), decay rate R / (2 mu).
-        const double airResistance = 2.0 * pi * airViscosity
-            + 2.0 * pi * spec.diameter * std::sqrt(pi * airViscosity * airDensity * voice.frequency);
-        const double airDecay = airResistance / (2.0 * voice.linearMass);
-        const double intrinsicDecay = airDecay
-            + pi * voice.frequency * material.constantLoss
-            - std::log(yokeRoundTripGain) * voice.frequency;
-        voice.intrinsicT60 = 3.0 * std::log(10.0) / intrinsicDecay;
-        voice.energySmoothing = std::exp(-voice.frequency / fs);
 
-        for (int plane = 0; plane < 2; ++plane)
+        for (int raised = 0; raised < 2; ++raised)
         {
-            Loop& loop = plane == 0 ? voice.normal : voice.parallel;
-            const double f0 = plane == 0 ? voice.frequency : voice.parallelFrequency;
-            loop.gain = std::exp(-airDecay / f0) * yokeRoundTripGain;
-            loop.constantDesign = constantLossSection(material.constantLoss,
-                                                      voice.inharmonicity, f0, fs);
-            loop.bendingDesign = bendingLossSection(material.bendingLoss,
-                                                    voice.inharmonicity, f0, fs);
-            loop.constantLoss.design(loop.constantDesign);
-            loop.bendingLoss.design(loop.bendingDesign);
-            // Dispersion (designDispersion), the line then solved so the
-            // fundamental is exact once the junction exists and the bridge's
-            // reflection phase is known (tuneStrings below).
-            const DispersionDesign design = designDispersion(f0, voice.inharmonicity, fs);
-            loop.dispersionStages = design.stages;
-            loop.dispersion = design.coefficient;
-            loop.dispersionCents = design.worstCents;
-            loop.loopDelay = fs / f0;
+            State::PitchDesign& pitch = voice.pitch[static_cast<std::size_t>(raised)];
+            pitch.length = raised ? spec.length * leverRatio : spec.length;
+            const double frequency = waveSpeed / (2.0 * pitch.length);
+            pitch.inharmonicity = pi * pi * material.youngModulus * secondMoment
+                                / (voice.tension * pitch.length * pitch.length);
+            // The plane parallel to the soundboard is longer by about one
+            // string diameter (Woodhouse, Acta Acustica 90 (2004) 945, Sec.
+            // 4.3; Acustra ships the same end correction).
+            pitch.parallelLength = pitch.length + spec.diameter;
+            pitch.glidePerEnergy = material.youngModulus * area
+                                 / (2.0 * voice.tension * waveSpeed * waveSpeed);
+            // Air damping (Valette, in Mechanics of Musical Instruments,
+            // 1995): R = 2 pi eta + 2 pi d sqrt(pi eta rho f), decay rate
+            // R / (2 mu).
+            const double airResistance = 2.0 * pi * airViscosity
+                + 2.0 * pi * spec.diameter * std::sqrt(pi * airViscosity * airDensity * frequency);
+            const double airDecay = airResistance / (2.0 * voice.linearMass);
+            const double intrinsicDecay = airDecay
+                + pi * frequency * material.constantLoss
+                - std::log(yokeRoundTripGain) * frequency;
+            pitch.intrinsicT60 = 3.0 * std::log(10.0) / intrinsicDecay;
+            pitch.energySmoothing = std::exp(-frequency / fs);
+
+            for (int plane = 0; plane < 2; ++plane)
+            {
+                LoopDesign& loop = pitch.planes[static_cast<std::size_t>(plane)];
+                const double f0 = plane == 0 ? frequency : frequency * pitch.length / pitch.parallelLength;
+                loop.frequency = f0;
+                loop.gain = std::exp(-airDecay / f0) * yokeRoundTripGain;
+                loop.constantDesign = constantLossSection(material.constantLoss,
+                                                          pitch.inharmonicity, f0, fs);
+                loop.bendingDesign = bendingLossSection(material.bendingLoss,
+                                                        pitch.inharmonicity, f0, fs);
+                // Dispersion (designDispersion), the line then solved so the
+                // fundamental is exact once the junction exists and the
+                // bridge's reflection phase is known (tuning below).
+                const DispersionDesign design = designDispersion(f0, pitch.inharmonicity, fs);
+                loop.dispersionStages = design.stages;
+                loop.dispersion = design.coefficient;
+                loop.dispersionCents = design.worstCents;
+                loop.loopDelay = fs / f0;
+            }
         }
     }
 
@@ -1301,10 +1429,12 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     for (int index = 0; index < stringCount_; ++index)
     {
         State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
-        for (int plane = 0; plane < 2; ++plane)
+        for (int design = 0; design < 4; ++design)
         {
-            Loop& loop = plane == 0 ? voice.normal : voice.parallel;
-            const double f0 = plane == 0 ? voice.frequency : voice.parallelFrequency;
+            const int plane = design & 1;
+            LoopDesign& loop = voice.pitch[static_cast<std::size_t>(design >> 1)]
+                                    .planes[static_cast<std::size_t>(plane)];
+            const double f0 = loop.frequency;
             // The port's admittance with every other port loading the bar.
             const auto reflectionLead = [&] (double frequency)
             {
@@ -1398,14 +1528,24 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             };
             const double omega0 = 2.0 * pi * f0 / fs;
             loop.restLineDelay = solveLine(omega0, 1.0);
-            loop.loopDelay = fs / f0;
-            loop.whole = static_cast<int>(std::floor(loop.restLineDelay - 4.0));
-            loop.reset();
+            for (std::size_t k = 0; k < bendRatios.size(); ++k)
+            {
+                const double omega = omega0 * bendRatios[k];
+                loop.lagCycles[k] = (lagAt(omega, loop.restLineDelay) - omega * loop.restLineDelay) / (2.0 * pi);
+            }
         }
+        voice.normal.whole = static_cast<int>(voice.pitch[0].planes[0].restLineDelay - 4.0);
+        voice.parallel.whole = static_cast<int>(voice.pitch[0].planes[1].restLineDelay - 4.0);
+        applyPitch(index, false);
     }
 
-    s.roomSend = std::clamp(instrument.room, 0.0, 1.0) * 0.5;
     s.outputGain = instrument.outputGain;
+    PlayingControls controls {};
+    controls.technique = instrument.technique;
+    controls.pluckPosition = instrument.pluckPosition;
+    controls.normalShare = instrument.normalShare;
+    controls.room = instrument.room;
+    setControls(controls);
     reset();
 }
 
@@ -1415,10 +1555,14 @@ void AculyreEngine::reset() noexcept
     for (int index = 0; index < stringCount_; ++index)
     {
         auto& voice = s.strings[static_cast<std::size_t>(index)];
+        if (voice.raised)
+            applyPitch(index, false);
         voice.normal.reset();
         voice.parallel.reset();
         voice.energy = 0.0;
-        voice.keyDown = voice.sustained = voice.ringing = voice.sympatheticDamped = false;
+        voice.keyDown = voice.sustained = voice.plucked = false;
+        voice.ownerNote = -1;
+        voice.dampingDirty = true;
     }
     for (int index = 0; index < s.modeCount; ++index)
         s.modes[static_cast<std::size_t>(index)].s1 = s.modes[static_cast<std::size_t>(index)].s2 = 0.0;
@@ -1428,7 +1572,11 @@ void AculyreEngine::reset() noexcept
     s.sustain = false;
     s.controlCountdown = 0;
     s.random.seed(0x5eed1ac0ffeeull);
+    s.bend = s.bendTarget;
+    s.output = s.outputTarget;
 }
+
+const InstrumentSpec& AculyreEngine::instrument() const noexcept { return state_->instrument; }
 
 int AculyreEngine::stringForNote(int midiNote) const noexcept
 {
@@ -1440,28 +1588,108 @@ int AculyreEngine::stringForNote(int midiNote) const noexcept
 
 namespace
 {
-// The hand resting on a string: an amplitude time constant of 30 ms.
-constexpr double handDampingSeconds = 0.03;
-
-double dampingPerRoundTrip(double frequency) noexcept
+// A hand control as a decay rate (1/s): 0, a hand resting on the string, an
+// amplitude time constant of 30 ms (Acustra's); 1, no hand at all. Between,
+// the time constant grows geometrically, to 6 s just short of 1.
+double handRate(double setting) noexcept
 {
-    return std::exp(-1.0 / (handDampingSeconds * frequency));
+    return setting >= 1.0 ? 0.0 : 1.0 / (0.03 * std::pow(200.0, setting));
 }
+
+double unitClamp(double x) noexcept { return x > 1.0 ? 1.0 : (x >= 0.0 ? x : 0.0); }
+
+// Below this mean squared wave velocity a released string has stopped
+// sounding from its pluck.
+constexpr double silentEnergy = 1.0e-6;
 } // namespace
+
+void AculyreEngine::applyPitch(int string, bool raised) noexcept
+{
+    State::StringVoice& voice = state_->strings[static_cast<std::size_t>(string)];
+    const State::PitchDesign& pitch = voice.pitch[raised ? 1u : 0u];
+    voice.raised = raised;
+    voice.frequency = pitch.planes[0].frequency;
+    voice.parallelFrequency = pitch.planes[1].frequency;
+    voice.length = pitch.length;
+    voice.parallelLength = pitch.parallelLength;
+    voice.inharmonicity = pitch.inharmonicity;
+    voice.intrinsicT60 = pitch.intrinsicT60;
+    voice.glidePerEnergy = pitch.glidePerEnergy;
+    voice.energySmoothing = pitch.energySmoothing;
+    voice.normal.apply(pitch.planes[0]);
+    voice.parallel.apply(pitch.planes[1]);
+    voice.dampingDirty = true;
+}
+
+// Every hand on the string, as one loss per round trip reached over a round
+// trip: the palm on all strings, and on a string nobody holds, the playing
+// hand (plucked) or the resting hand (idle).
+void AculyreEngine::updateDamping(int string) noexcept
+{
+    const State& s = *state_;
+    State::StringVoice& voice = state_->strings[static_cast<std::size_t>(string)];
+    voice.dampingDirty = false;
+    double rate = s.muteRate;
+    if (!voice.keyDown && !voice.sustained)
+        rate += voice.plucked ? s.releaseRate : s.sympathyRate;
+    voice.normal.setDamping(rate > 0.0 ? std::exp(-rate / voice.frequency) : 1.0);
+    voice.parallel.setDamping(rate > 0.0 ? std::exp(-rate / voice.parallelFrequency) : 1.0);
+}
+
+void AculyreEngine::setControls(const PlayingControls& controls) noexcept
+{
+    State& s = *state_;
+    const PlayingControls previous = controls_;
+    PlayingControls& c = controls_;
+    c = controls;
+    c.pluckPosition = std::clamp(unitClamp(c.pluckPosition), 0.05, 0.7);
+    c.normalShare = std::clamp(unitClamp(c.normalShare), 0.01, 0.9);
+    c.release = unitClamp(c.release);
+    c.mute = unitClamp(c.mute);
+    c.sympathy = unitClamp(c.sympathy);
+    c.room = unitClamp(c.room);
+    c.width = 2.0 * unitClamp(0.5 * c.width);
+    c.volume = c.volume >= 0.0 && c.volume <= 4.0 ? c.volume : (c.volume > 4.0 ? 4.0 : 0.0);
+    c.pitchBend = c.pitchBend >= -12.0 && c.pitchBend <= 12.0 ? c.pitchBend
+                                                               : (c.pitchBend > 12.0 ? 12.0 : 0.0);
+
+    s.releaseRate = handRate(c.release);
+    s.sympathyRate = handRate(c.sympathy);
+    // A full palm: an amplitude time constant of about 33 ms. Authored.
+    s.muteRate = 30.0 * c.mute * c.mute;
+    if (c.release != previous.release || c.sympathy != previous.sympathy || c.mute != previous.mute)
+        for (int index = 0; index < stringCount_; ++index)
+            s.strings[static_cast<std::size_t>(index)].dampingDirty = true;
+    if (c.pitchBend != previous.pitchBend)
+        s.bendTarget = std::pow(2.0, c.pitchBend / 12.0);
+    // Mid/side: width 1 is the two microphones as they are.
+    s.outputTarget = { 0.5 * c.room, 0.5 * (1.0 + c.width), 0.5 * (1.0 - c.width), c.volume };
+    if (!c.levers && previous.levers)
+        for (int index = 0; index < stringCount_; ++index)
+            if (s.strings[static_cast<std::size_t>(index)].raised)
+                applyPitch(index, false);
+}
 
 void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
 {
-    const int index = stringForNote(midiNote);
+    int index = stringForNote(midiNote);
+    bool raise = false;
+    if (index < 0 && controls_.levers)
+    {
+        index = stringForNote(midiNote - 1);
+        raise = true;
+    }
     if (index < 0 || !(velocity > 0.0f))
         return;
     State& s = *state_;
     State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
     const InstrumentSpec& instrument = s.instrument;
+    const PlayingControls& controls = controls_;
     const double v = std::clamp(static_cast<double>(velocity), 0.0, 1.0);
 
     // A finger meeting a sounding string stops most of it before it lets go
     // (Acustra's picking-hand contact, about 10 ms, as one step).
-    if (voice.ringing || voice.energy > 1.0e-6)
+    if (voice.keyDown || voice.sustained || voice.energy > silentEnergy)
         for (Loop* loop : { &voice.normal, &voice.parallel })
         {
             for (float& sample : loop->line)
@@ -1469,19 +1697,22 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             for (float& sample : loop->pending)
                 sample *= 0.3f;
         }
+    // The other hand sets the lever before the pluck.
+    if (voice.raised != raise)
+        applyPitch(index, raise);
 
     // Each pluck differs a little: where the finger meets the string, how
     // hard, and which way it lets go. Authored spreads.
-    const double position = std::clamp(instrument.pluckPosition + 0.02 * s.random.bipolar(), 0.05, 0.7);
+    const double position = std::clamp(controls.pluckPosition + 0.02 * s.random.bipolar(), 0.05, 0.7);
     const double force = instrument.pluckForce * std::pow(v, 1.4)
                        * std::pow(10.0, 0.75 * s.random.bipolar() / 20.0);
-    const double normalShare = std::clamp(instrument.normalShare + 0.05 * s.random.bipolar(), 0.05, 0.6);
+    const double normalShare = std::clamp(controls.normalShare + 0.05 * s.random.bipolar(), 0.01, 0.9);
 
     // Contact width and release time of the technique: the fingertip's pad,
     // a nail's or a plectrum's edge. The string slides off faster from a
     // harder stroke, so it leaves brighter. Authored values.
     double contact = 0.005, release = 0.10e-3;
-    switch (instrument.technique)
+    switch (controls.technique)
     {
         case Technique::Finger: contact = 0.005; release = 0.10e-3; break;
         case Technique::Nail: contact = 0.0012; release = 0.035e-3; break;
@@ -1489,12 +1720,11 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     }
     release *= 1.3 - 0.6 * v;
 
-    voice.normal.setDamping(1.0);
-    voice.parallel.setDamping(1.0);
     voice.keyDown = true;
     voice.sustained = false;
-    voice.ringing = true;
-    voice.sympatheticDamped = false;
+    voice.plucked = true;
+    voice.ownerNote = midiNote;
+    updateDamping(index);
 
     std::array<double, 3> preload {};
     for (int plane = 0; plane < 2; ++plane)
@@ -1523,7 +1753,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         const double period = loop.loopDelay;
         const int count = static_cast<int>(std::ceil(period));
         const double cellLength = 2.0 * length / period;
-        std::array<double, delayCapacity> wave {};
+        std::array<double, delayCapacity>& wave = s.pluckWave;
         double mean = 0.0;
         for (int k = 0; k < count; ++k)
         {
@@ -1574,22 +1804,16 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
 
 void AculyreEngine::noteOff(int midiNote) noexcept
 {
-    const int index = stringForNote(midiNote);
-    if (index < 0)
-        return;
     State& s = *state_;
-    State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
-    if (!voice.keyDown)
-        return;
-    voice.keyDown = false;
-    if (s.sustain)
+    for (int index = 0; index < stringCount_; ++index)
     {
-        voice.sustained = true;
-        return;
+        State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+        if (!voice.keyDown || voice.ownerNote != midiNote)
+            continue;
+        voice.keyDown = false;
+        voice.sustained = s.sustain;
+        updateDamping(index);
     }
-    voice.ringing = false;
-    voice.normal.setDamping(dampingPerRoundTrip(voice.frequency));
-    voice.parallel.setDamping(dampingPerRoundTrip(voice.parallelFrequency));
 }
 
 void AculyreEngine::setSustain(bool down) noexcept
@@ -1604,9 +1828,7 @@ void AculyreEngine::setSustain(bool down) noexcept
         if (voice.sustained)
         {
             voice.sustained = false;
-            voice.ringing = false;
-            voice.normal.setDamping(dampingPerRoundTrip(voice.frequency));
-            voice.parallel.setDamping(dampingPerRoundTrip(voice.parallelFrequency));
+            updateDamping(index);
         }
     }
 }
@@ -1620,34 +1842,32 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
     const Matrix3& y0 = s.immediateMobility;
     const Matrix3& zg = s.stringImpedance;
     const Matrix3& solve = s.solve;
-    const double fs = sampleRate_;
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
         if (s.controlCountdown-- <= 0)
         {
             s.controlCountdown = controlPeriod - 1;
+            s.bend += (s.bendTarget - s.bend) * s.bendSmoothing;
             for (int index = 0; index < count; ++index)
             {
                 State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
-                // Off, a resting hand keeps idle strings from ringing in
-                // sympathy (an ablation, not a playing style).
-                const bool hold = !sympathetic_ && !voice.ringing;
-                if (hold != voice.sympatheticDamped)
+                // A released string that has died away is idle again: the
+                // playing hand has left it.
+                if (voice.plucked && !voice.keyDown && !voice.sustained && voice.energy < silentEnergy)
                 {
-                    voice.sympatheticDamped = hold;
-                    voice.normal.setDamping(hold ? dampingPerRoundTrip(voice.frequency) : 1.0);
-                    voice.parallel.setDamping(hold ? dampingPerRoundTrip(voice.parallelFrequency) : 1.0);
+                    voice.plucked = false;
+                    voice.dampingDirty = true;
                 }
+                if (voice.dampingDirty)
+                    updateDamping(index);
                 // Tension modulation (Kirchhoff-Carrier): the string's mean
-                // squared slope stretches it, Delta f / f = EA <y'^2> / (4T).
-                const double ratio = tensionModulation_
-                    ? 1.0 + voice.glidePerEnergy * voice.energy : 1.0;
+                // squared slope stretches it, Delta f / f = EA <y'^2> / (4T);
+                // the pitch bend scales every string alike.
+                const double ratio = (tensionModulation_
+                    ? 1.0 + voice.glidePerEnergy * voice.energy : 1.0) * s.bend;
                 for (Loop* loop : { &voice.normal, &voice.parallel })
-                {
-                    const double shortening = loop->loopDelay * (1.0 - 1.0 / ratio);
-                    loop->setLineDelay(loop->restLineDelay - shortening);
-                }
+                    loop->setLineDelay(loop->lineDelayAt(ratio));
             }
         }
 
@@ -1720,24 +1940,24 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         const double pressureRight = (radiatedRight - s.previousRight) * s.radiationScale;
         s.previousLeft = radiatedLeft;
         s.previousRight = radiatedRight;
-        double outLeft = pressureLeft, outRight = pressureRight;
-        if (roomEnabled_ && s.roomSend > 0.0)
-        {
-            double wetLeft = 0.0, wetRight = 0.0;
-            s.room.process(0.5 * (pressureLeft + pressureRight), wetLeft, wetRight);
-            outLeft += s.roomSend * wetLeft;
-            outRight += s.roomSend * wetRight;
-        }
+        for (std::size_t i = 0; i < 4; ++i)
+            s.output[i] += (s.outputTarget[i] - s.output[i]) * s.outputSmoothing;
+        // The room runs even unsent, so turning it up meets a live tail.
+        double wetLeft = 0.0, wetRight = 0.0;
+        s.room.process(0.5 * (pressureLeft + pressureRight), wetLeft, wetRight);
+        const double outLeft = pressureLeft + s.output[0] * wetLeft;
+        const double outRight = pressureRight + s.output[0] * wetRight;
+        const double gain = s.outputGain * s.output[3];
         const auto limit = [] (double x)
         {
-            const double magnitude = std::abs(x);
+            const double magnitude = x < 0.0 ? -x : x;
             if (magnitude <= 0.9)
                 return x;
-            return std::copysign(0.9 + 0.1 * std::tanh((magnitude - 0.9) / 0.1), x);
+            const double limited = 0.9 + 0.1 * std::tanh((magnitude - 0.9) / 0.1);
+            return x < 0.0 ? -limited : limited;
         };
-        left[sample] = static_cast<float>(limit(outLeft * s.outputGain));
-        right[sample] = static_cast<float>(limit(outRight * s.outputGain));
-        (void) fs;
+        left[sample] = static_cast<float>(limit(gain * (s.output[1] * outLeft + s.output[2] * outRight)));
+        right[sample] = static_cast<float>(limit(gain * (s.output[1] * outRight + s.output[2] * outLeft)));
     }
 }
 
@@ -1766,6 +1986,14 @@ double AculyreEngine::stringEnergy(int string) const noexcept
     if (string < 0 || string >= stringCount_)
         return 0.0;
     return state_->strings[static_cast<std::size_t>(string)].energy;
+}
+
+AculyreEngine::StringActivity AculyreEngine::stringActivity(int string) const noexcept
+{
+    if (string < 0 || string >= stringCount_)
+        return {};
+    const auto& voice = state_->strings[static_cast<std::size_t>(string)];
+    return { voice.energy, voice.keyDown || voice.sustained, voice.plucked, voice.raised };
 }
 
 int AculyreEngine::modeCount() const noexcept { return state_->modeCount; }

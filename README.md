@@ -23,10 +23,11 @@ reference recording below.
 ## Version history
 
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
-  blended with the microphones from none to the piezo alone. Every
-  instrument leaves headroom: a glissando over every string at full velocity
-  peaks at -3 dBFS, where it used to reach the limiter, so each instrument
-  plays 6-11 dB quieter than 0.4.0.
+  blended with the microphones from none to the piezo alone. Levels follow
+  Reason's VU meter: typical playing reads about -7 VU on every instrument,
+  on the microphones and the piezo alike, and a new output stage keeps the
+  hardest chords out of the red and every sample under -1.5 dBFS. The output
+  is 2 ms later for the stage's look-ahead.
 - **0.4.0** (prototype, not released): the instruments run at 1x, 2x or 4x
   the host rate (1x by default). Nylon and gut strings are damped as
   measured harp strings are. Plucks scatter in point, force, angle and slip
@@ -166,11 +167,19 @@ long-term spectrum within about 1 dB of 1x below 6 kHz (2.4 dB at
 1.25 kHz) and lifts the top octave 4-11 dB; 2x lands within 0.5 dB of 4x
 below 12.5 kHz and 2 dB short at 20 kHz.
 
-**Level.** `outputGain` and `piezoGain` put each instrument's loudest
-playing, a glissando over every string at full velocity with sustain held, at
--3 dBFS at its own controls, on the microphones and on the piezo alike. A
-single note at full velocity peaks 7-17 dB lower, depending on the string. A
-soft limiter above -0.9 dBFS stays as a guard that playing does not reach.
+**Level.** Levels are set on Reason's VU meter, which reads the RMS over
+300 ms with 0 VU at -12 dBFS (the Big Meter's default offset). `outputGain`
+puts each instrument's typical playing, each string alone and three- and
+four-note chords at velocities 70-110, at a median of -7 VU at its own
+controls; `piezoGain` puts the piezo alone within 1 dB of that. Unchecked,
+the hardest playing, chords of up to six strings at full velocity with a
+plectrum, would read up to +10 VU and peak at +12 dBFS. So the Performer
+ends in an output stage: a compressor with ballistics near the meter's
+(80 ms attack, 300 ms release, ratio 10, knee centred at -2 VU), then a peak
+limiter that looks 2 ms ahead and holds every sample under -1.5 dBFS. Single
+notes pass it untouched, typical chords read about 2 dB lower, mostly from
+their attacks, and the hardest chords stay under 0 VU. The look-ahead delays
+the output by 2 ms (96 samples at 48 kHz).
 
 **Cost.** The steel lyre harp (32 waveguides, 234 modes and the room) renders
 about 20 times faster than real time on one core of a cloud container at 1x,

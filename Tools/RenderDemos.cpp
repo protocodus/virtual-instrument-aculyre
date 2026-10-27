@@ -1,13 +1,15 @@
 // Renders a standard MIDI file through Aculyre to a 48 kHz 24-bit stereo WAV.
 //
 //   RenderAculyreDemo <preset 0-2> <input.mid> <output.wav>
-//       [--dry] [--no-sympathy] [--no-glide] [--piezo 0-1] [--tail seconds] [--rate hz]
+//       [--dry] [--no-sympathy] [--piezo 0-1] [--tail seconds] [--rate hz]
 //   RenderAculyreDemo --report <preset>
 //
-// Note on/off and CC64 (sustain) drive the engine at their sample; everything
-// else in the file is ignored.
+// Note on/off and CC64 (sustain) drive the Performer, the shipping signal
+// path with its output stage, at their sample; everything else in the file
+// is ignored. The Performer's latency is trimmed off the start.
 
 #include "../Source/DSP/AculyreEngine.h"
+#include "../Source/DSP/AculyrePerformer.h"
 #include "../Source/DSP/AculyrePresets.h"
 
 #include <algorithm>
@@ -202,13 +204,13 @@ int main(int argc, char** argv)
         if (argc < 4)
         {
             std::cerr << "usage: RenderAculyreDemo <preset 0-2> <input.mid> <output.wav> "
-                         "[--dry] [--no-sympathy] [--no-glide] [--piezo 0-1] [--tail seconds] [--rate hz]\n";
+                         "[--dry] [--no-sympathy] [--piezo 0-1] [--tail seconds] [--rate hz]\n";
             return 2;
         }
         const int preset = std::clamp(std::atoi(argv[1]), 0, 2);
         const std::string input = argv[2];
         const std::string output = argv[3];
-        bool dry = false, sympathy = true, glide = true;
+        bool dry = false, sympathy = true;
         double tail = 2.5, piezo = 0.0;
         int rate = 48000;
         for (int i = 4; i < argc; ++i)
@@ -216,26 +218,25 @@ int main(int argc, char** argv)
             const std::string option = argv[i];
             if (option == "--dry") dry = true;
             else if (option == "--no-sympathy") sympathy = false;
-            else if (option == "--no-glide") glide = false;
             else if (option == "--piezo" && i + 1 < argc) piezo = std::atof(argv[++i]);
             else if (option == "--tail" && i + 1 < argc) tail = std::atof(argv[++i]);
             else if (option == "--rate" && i + 1 < argc) rate = std::atoi(argv[++i]);
         }
-        auto engine = std::make_unique<aculyre::AculyreEngine>();
-        engine->prepare(rate);
-        engine->setInstrument(*aculyre::presets[static_cast<std::size_t>(preset)]);
-        aculyre::PlayingControls controls = engine->controls();
+        auto performer = std::make_unique<aculyre::Performer>();
+        performer->prepare(rate);
+        performer->setInstrument(preset);
+        aculyre::PlayingControls controls = aculyre::Performer::defaultControls(preset);
         if (dry)
             controls.room = 0.0;
         if (!sympathy)
             controls.sympathy = 0.0;
         controls.piezo = piezo;
-        engine->setControls(controls);
-        engine->setTensionModulation(glide);
+        performer->setControls(controls);
+        const auto latency = static_cast<std::size_t>(performer->latency());
 
         const std::vector<Event> events = readMidi(input);
         const double lastSeconds = events.empty() ? 0.0 : events.back().seconds;
-        const auto total = static_cast<std::size_t>(std::ceil((lastSeconds + tail) * rate));
+        const auto total = static_cast<std::size_t>(std::ceil((lastSeconds + tail) * rate)) + latency;
         std::vector<float> left(total), right(total);
         constexpr int blockSize = 64;
         std::size_t next = 0;
@@ -248,30 +249,40 @@ int main(int argc, char** argv)
                 const Event& e = events[next++];
                 const std::uint8_t kind = e.status & 0xf0u;
                 if (kind == 0x90 && e.data2 > 0)
-                    engine->noteOn(e.data1, e.data2 / 127.0f);
+                    performer->noteOn(e.data1, e.data2 / 127.0f);
                 else if (kind == 0x80 || (kind == 0x90 && e.data2 == 0))
-                    engine->noteOff(e.data1);
+                    performer->noteOff(e.data1);
                 else if (kind == 0xb0 && e.data1 == 64)
-                    engine->setSustain(e.data2 >= 64);
+                    performer->setSustain(e.data2 >= 64);
             }
             std::size_t blockEnd = std::min(total, position + blockSize);
             if (next < events.size())
                 blockEnd = std::min(blockEnd, std::max(position + 1,
                     static_cast<std::size_t>(std::llround(events[next].seconds * rate))));
-            engine->process(left.data() + position, right.data() + position,
-                            static_cast<int>(blockEnd - position));
+            performer->process(left.data() + position, right.data() + position,
+                               static_cast<int>(blockEnd - position));
             position = blockEnd;
         }
-        double peak = 0.0, sum = 0.0;
-        for (std::size_t i = 0; i < total; ++i)
+        left.erase(left.begin(), left.begin() + static_cast<std::ptrdiff_t>(latency));
+        right.erase(right.begin(), right.begin() + static_cast<std::ptrdiff_t>(latency));
+        // Reason's VU meter: the RMS over 300 ms, 0 VU at -12 dBFS.
+        const std::size_t frames = left.size(), window = static_cast<std::size_t>(0.3 * rate);
+        double peak = 0.0, sum = 0.0, windowSum = 0.0, loudest = 0.0;
+        for (std::size_t i = 0; i < frames; ++i)
         {
             peak = std::max(peak, static_cast<double>(std::max(std::abs(left[i]), std::abs(right[i]))));
-            sum += 0.5 * (left[i] * left[i] + right[i] * right[i]);
+            const double power = 0.5 * (left[i] * left[i] + right[i] * right[i]);
+            sum += power;
+            windowSum += power;
+            if (i >= window)
+                windowSum -= 0.5 * (left[i - window] * left[i - window] + right[i - window] * right[i - window]);
+            loudest = std::max(loudest, windowSum / static_cast<double>(window));
         }
         writeWav24(output, left, right, rate);
-        std::printf("%s: %.2f s, peak %.2f dBFS, rms %.2f dBFS\n", output.c_str(),
-                    static_cast<double>(total) / rate, 20.0 * std::log10(peak + 1e-12),
-                    10.0 * std::log10(sum / static_cast<double>(total) + 1e-24));
+        std::printf("%s: %.2f s, peak %.2f dBFS, rms %.2f dBFS, VU max %+.1f\n", output.c_str(),
+                    static_cast<double>(frames) / rate, 20.0 * std::log10(peak + 1e-12),
+                    10.0 * std::log10(sum / static_cast<double>(frames) + 1e-24),
+                    10.0 * std::log10(loudest + 1e-24) + 12.0);
         return 0;
     }
     catch (const std::exception& error)

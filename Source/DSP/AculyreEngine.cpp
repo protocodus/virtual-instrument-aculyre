@@ -2189,16 +2189,10 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         const double pickup = -s.piezoGain * piezo;
         const double blend = s.output[4];
         const double volume = s.output[3];
-        const auto limit = [] (double x)
-        {
-            const double magnitude = x < 0.0 ? -x : x;
-            if (magnitude <= 0.9)
-                return x;
-            const double limited = 0.9 + 0.1 * std::tanh((magnitude - 0.9) / 0.1);
-            return x < 0.0 ? -limited : limited;
-        };
-        left[sample] = static_cast<float>(limit(volume * (micLeft + blend * (pickup - micLeft))));
-        right[sample] = static_cast<float>(limit(volume * (micRight + blend * (pickup - micRight))));
+        // Unlimited: the Performer's output stage keeps it under full scale.
+        // Written so that either end of the blend is exactly one source.
+        left[sample] = static_cast<float>(volume * ((1.0 - blend) * micLeft + blend * pickup));
+        right[sample] = static_cast<float>(volume * ((1.0 - blend) * micRight + blend * pickup));
         if (s.quietSamples >= static_cast<int>(0.5 * sampleRate_))
         {
             sleep();

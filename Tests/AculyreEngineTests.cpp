@@ -441,8 +441,8 @@ int main()
         check(factor(48000.0, 4) == 4 && factor(44100.0, 2) == 2 && factor(48000.0, 3) == 2
                   && factor(96000.0, 4) == 2 && factor(192000.0, 4) == 1 && factor(48000.0, 0) == 1,
               "oversampling is 1, 2 or 4 and keeps the engine at or below 192 kHz");
-        check(performer.latency() == 0 && factor(48000.0, 2) == 2 && performer.latency() == 31,
-              "the decimator delays by 31 host samples, and 1x by none");
+        check(performer.latency() == 96 && factor(48000.0, 2) == 2 && performer.latency() == 96 + 31,
+              "the decimator delays by 31 host samples, and 1x by none, after the limiter's 96");
 
         const auto play = [] (int oversampling, int block)
         {
@@ -474,56 +474,177 @@ int main()
         }
     }
 
-    // Headroom: the loudest playing, a glissando over every string at full
-    // velocity four times with sustain held, peaks at -3 dBFS on each
-    // instrument at its own controls (outputGain), and on the piezo alone
-    // (piezoGain), so it never reaches the limiter. The piezo is mono and
-    // hears no room.
+    // Level, as Reason's VU meter reads it: the RMS over 300 ms, 0 VU at
+    // -12 dBFS (the Big Meter's default offset). Typical playing, each
+    // string alone and three- and four-note chords at velocities 70, 90 and
+    // 110, has a median of -7 VU on each instrument at its own controls
+    // (outputGain), and the piezo alone reads within 1 dB of the
+    // microphones (piezoGain). The hardest playing, chords of up to six
+    // strings at full velocity with a plectrum, stays out of the red: under
+    // 0 VU, every sample under -1.5 dBFS. The piezo is mono and hears no
+    // room.
     {
-        const auto glissandi = [] (const aculyre::InstrumentSpec& preset, double piezo, double room)
+        struct Reading
         {
-            aculyre::AculyreEngine engine;
-            engine.prepare(48000.0);
-            engine.setInstrument(preset);
-            aculyre::PlayingControls controls = engine.controls();
-            controls.piezo = piezo;
-            if (room >= 0.0)
-                controls.room = room;
-            engine.setControls(controls);
-            engine.setSustain(true);
-            std::vector<float> l(120000), r(120000);
-            for (int position = 0; position < 120000; position += 64)
+            double vu, peak;
+            std::vector<float> left, right;
+        };
+        const auto play = [] (aculyre::Performer& performer, const std::vector<int>& notes, int velocity,
+                              double seconds)
+        {
+            performer.reset();
+            for (int note : notes)
+                performer.noteOn(note, static_cast<float>(velocity) / 127.0f);
+            const auto total = static_cast<std::size_t>(seconds * 48000.0);
+            Reading reading { 0.0, 0.0, std::vector<float>(total), std::vector<float>(total) };
+            for (std::size_t position = 0; position < total; position += 64)
+                performer.process(reading.left.data() + position, reading.right.data() + position,
+                                  static_cast<int>(std::min<std::size_t>(64, total - position)));
+            const std::size_t window = 14400;
+            double sum = 0.0, loudest = 0.0, peak = 0.0;
+            for (std::size_t i = 0; i < total; ++i)
             {
-                for (int stroke = 0; stroke < 4; ++stroke)
-                    for (int index = 0; index < preset.stringCount; ++index)
-                    {
-                        const int at = 2400 + stroke * 28800 + index * 576;
-                        if (at >= position && at < position + 64)
-                            engine.noteOn(preset.strings[static_cast<std::size_t>(index)].midiNote, 1.0f);
-                    }
-                engine.process(l.data() + position, r.data() + position, 64);
+                const auto power = [&reading] (std::size_t k)
+                {
+                    return 0.5 * (static_cast<double>(reading.left[k]) * reading.left[k]
+                                  + static_cast<double>(reading.right[k]) * reading.right[k]);
+                };
+                sum += power(i) - (i >= window ? power(i - window) : 0.0);
+                loudest = std::max(loudest, sum / static_cast<double>(window));
+                peak = std::max({ peak, static_cast<double>(std::abs(reading.left[i])),
+                                  static_cast<double>(std::abs(reading.right[i])) });
             }
-            return std::make_pair(l, r);
+            reading.vu = 10.0 * std::log10(loudest + 1e-30) + 12.0;
+            reading.peak = 20.0 * std::log10(peak + 1e-30);
+            return reading;
         };
-        const auto peak = [] (const std::vector<float>& x)
+        const auto median = [] (std::vector<double> values)
         {
-            double top = 0.0;
-            for (float sample : x)
-                top = std::max(top, static_cast<double>(std::abs(sample)));
-            return 20.0 * std::log10(top);
+            std::sort(values.begin(), values.end());
+            return values[values.size() / 2];
         };
-        for (const auto* preset : aculyre::presets)
+        for (int index = 0; index < aculyre::Performer::instrumentCount; ++index)
         {
-            const auto mics = glissandi(*preset, 0.0, -1.0);
-            const auto pickup = glissandi(*preset, 1.0, -1.0);
-            const double micPeak = std::max(peak(mics.first), peak(mics.second));
-            const double piezoPeak = peak(pickup.first);
-            std::printf("%-16s glissandi peak: microphones %+.1f, piezo %+.1f dBFS\n", preset->name, micPeak, piezoPeak);
-            check(std::abs(micPeak + 3.0) < 1.0, "the loudest playing peaks at -3 dBFS on the microphones");
-            check(std::abs(piezoPeak + 3.0) < 1.0, "the loudest playing peaks at -3 dBFS on the piezo");
-            check(pickup.first == pickup.second, "the piezo is mono");
-            check(glissandi(*preset, 1.0, 1.0).first == pickup.first, "the piezo hears no room");
+            const aculyre::InstrumentSpec& preset = *aculyre::presets[static_cast<std::size_t>(index)];
+            const int count = preset.stringCount;
+            std::vector<int> strings;
+            for (int i = 0; i < count; ++i)
+                strings.push_back(preset.strings[static_cast<std::size_t>(i)].midiNote);
+            auto performer = std::make_unique<aculyre::Performer>();
+            performer->prepare(48000.0);
+            performer->setInstrument(index);
+            const auto typical = [&] (double piezo)
+            {
+                aculyre::PlayingControls controls = aculyre::Performer::defaultControls(index);
+                controls.piezo = piezo;
+                performer->setControls(controls);
+                std::vector<double> readings;
+                for (int velocity : { 70, 90, 110 })
+                {
+                    for (int note : strings)
+                        readings.push_back(play(*performer, { note }, velocity, 0.8).vu);
+                    for (int i = 0; i + 4 < count; i += 2)
+                    {
+                        readings.push_back(play(*performer, { strings[i], strings[i + 2], strings[i + 4] },
+                                                velocity, 0.8).vu);
+                        if (i + 6 < count)
+                            readings.push_back(play(*performer, { strings[i], strings[i + 2], strings[i + 4],
+                                                                  strings[i + 6] }, velocity, 0.8).vu);
+                    }
+                }
+                return median(readings);
+            };
+            const double mics = typical(0.0), pickup = typical(1.0);
+            double redVu = -99.0, redPeak = -99.0;
+            for (double piezo : { 0.0, 1.0 })
+            {
+                aculyre::PlayingControls controls = aculyre::Performer::defaultControls(index);
+                controls.technique = aculyre::Technique::Plectrum;
+                controls.piezo = piezo;
+                performer->setControls(controls);
+                std::vector<std::vector<int>> chords;
+                for (int i = 0; i + 6 < count; ++i)
+                    chords.push_back({ strings[i], strings[i + 2], strings[i + 4], strings[i + 6] });
+                for (int i = 0; i + 11 < count; ++i)
+                    chords.push_back({ strings[i], strings[i + 2], strings[i + 4], strings[i + 7], strings[i + 9],
+                                       strings[i + 11] });
+                if (chords.empty())
+                    chords.push_back(strings);
+                for (const auto& chord : chords)
+                {
+                    const Reading reading = play(*performer, chord, 127, 1.0);
+                    redVu = std::max(redVu, reading.vu);
+                    redPeak = std::max(redPeak, reading.peak);
+                }
+            }
+            std::printf("%-16s typical: microphones %+.1f VU, piezo %+.1f VU; hardest chords %+.1f VU, peak %+.1f dBFS\n",
+                        preset.name, mics, pickup, redVu, redPeak);
+            check(std::abs(mics + 7.0) < 0.5, "typical playing reads -7 VU on the microphones");
+            check(std::abs(pickup - mics) <= 1.0, "the piezo reads within 1 dB of the microphones");
+            check(redVu < 0.0, "the hardest chords stay under 0 VU");
+            check(redPeak <= -1.5 + 1e-6, "no sample passes -1.5 dBFS");
+
+            // Fresh Performers, so both draw the same plucks.
+            const auto pickupAlone = [&] (double room)
+            {
+                auto fresh = std::make_unique<aculyre::Performer>();
+                fresh->prepare(48000.0);
+                fresh->setInstrument(index);
+                aculyre::PlayingControls controls = aculyre::Performer::defaultControls(index);
+                controls.piezo = 1.0;
+                controls.room = room;
+                fresh->setControls(controls);
+                return play(*fresh, { strings[0], strings[count / 2] }, 100, 0.5);
+            };
+            const Reading dry = pickupAlone(0.0);
+            check(dry.left == dry.right, "the piezo is mono");
+            check(pickupAlone(1.0).left == dry.left, "the piezo hears no room");
         }
+    }
+
+    // The output stage leaves quiet playing bit for bit as the engine makes
+    // it, only later by the look-ahead, and holds a far too loud one under
+    // -1.5 dBFS.
+    {
+        aculyre::Performer performer;
+        performer.prepare(48000.0);
+        const int lookahead = performer.latency();
+        check(lookahead == 96, "the limiter looks 2 ms ahead");
+        aculyre::AculyreEngine engine;
+        engine.prepare(48000.0);
+        engine.setInstrument(aculyre::lyreHarpSteel);
+        const aculyre::PlayingControls controls = aculyre::Performer::defaultControls(0);
+        engine.setControls(controls);
+        engine.reset();
+        performer.setControls(controls);
+        engine.noteOn(69, 0.5f);
+        performer.noteOn(69, 0.5f);
+        std::vector<float> l(24000), r(24000), el(24000), er(24000);
+        for (int position = 0; position < 24000; position += 64)
+        {
+            performer.process(l.data() + position, r.data() + position, 64);
+            engine.process(el.data() + position, er.data() + position, 64);
+        }
+        bool same = true;
+        for (int i = 0; i + lookahead < 24000; ++i)
+            same = same && l[static_cast<std::size_t>(i + lookahead)] == el[static_cast<std::size_t>(i)];
+        check(same, "the output stage passes quiet playing through untouched");
+
+        aculyre::PlayingControls loud = controls;
+        loud.volume = 4.0;
+        performer.reset();
+        performer.setControls(loud);
+        for (int note : { 55, 59, 62, 67, 71, 74 })
+            performer.noteOn(note, 1.0f);
+        double peak = 0.0;
+        for (int position = 0; position < 24000; position += 64)
+        {
+            performer.process(l.data() + position, r.data() + position, 64);
+            for (int i = position; i < position + 64; ++i)
+                peak = std::max({ peak, static_cast<double>(std::abs(l[static_cast<std::size_t>(i)])),
+                                  static_cast<double>(std::abs(r[static_cast<std::size_t>(i)])) });
+        }
+        check(peak > 0.8 && peak <= 0.8414, "the limiter holds the hardest chord 12 dB too loud under -1.5 dBFS");
     }
 
     std::printf(failures == 0 ? "all passed\n" : "%d failed\n", failures);

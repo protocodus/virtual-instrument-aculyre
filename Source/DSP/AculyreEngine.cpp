@@ -559,7 +559,9 @@ struct Loop
     double loopDelay { 70.0 };
     std::array<double, 5> lagCycles {};
 
-    void reset() noexcept
+    // Stops the wave and everything still on its way, keeping the pitch and
+    // the hand's damping.
+    void silence() noexcept
     {
         line.fill(0.0f);
         pending.fill(0.0f);
@@ -567,6 +569,11 @@ struct Loop
         dispersionState.fill(0.0);
         constantLoss.reset();
         bendingLoss.reset();
+    }
+
+    void reset() noexcept
+    {
+        silence();
         damping = dampingTarget = 1.0;
         dampingStep = 0.0;
         setLineDelay(restLineDelay);
@@ -1697,11 +1704,20 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     const PlayingControls& controls = controls_;
     const double v = std::clamp(static_cast<double>(velocity), 0.0, 1.0);
 
-    // A finger meeting a sounding string stops most of it before it lets go
-    // (Acustra's picking-hand contact, about 10 ms, as one step).
+    // A finger meeting a sounding string stops it before it lets go: a
+    // harpist's finger holds the string 56 to 431 ms (Chadefaux et al., JASA
+    // 131 (2012) 844, Table II), several times the 10 ms in which a finger's
+    // contact silences a plucked string (Laurson et al., CMJ 25(3) 2001). A
+    // plectrum glances off and stops most of it (Acustra's picking-hand
+    // contact, as one step).
     if (voice.keyDown || voice.sustained || voice.energy > silentEnergy)
         for (Loop* loop : { &voice.normal, &voice.parallel })
         {
+            if (controls.technique != Technique::Plectrum)
+            {
+                loop->silence();
+                continue;
+            }
             for (float& sample : loop->line)
                 sample *= 0.3f;
             for (float& sample : loop->pending)

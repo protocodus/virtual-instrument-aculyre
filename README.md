@@ -68,7 +68,9 @@ reaches the bridge over the first round trip is loaded as one full period of
 the loop (cell-averaged slopes, so the release is band-limited). The soundbox starts deflected under the held
 force, so only the release reaches it and the top springs back. Plucks vary
 a little in position, force and direction. A finger meeting a sounding string
-stops most of it first. Tension modulation raises the pitch of a hard pluck
+stops it first, as a harpist's finger holds the string 56 to 431 ms before
+letting go (Chadefaux et al., Table II); a plectrum glances off and stops most
+of it. Tension modulation raises the pitch of a hard pluck
 for its first moments.
 
 **Bridge and body.** All strings end on one rigid bar with three degrees of

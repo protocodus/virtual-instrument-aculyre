@@ -234,6 +234,35 @@ int main()
         check(energy[1] > 1000.0 * energy[0], "release lets a let-go string ring");
     }
 
+    // A finger re-plucking a sounding string stops it first; a plectrum
+    // leaves some of the old note ringing. The reference plucks another
+    // string first, so the second pluck takes the same random draws.
+    {
+        const auto plucked = [] (aculyre::Technique technique, int first)
+        {
+            aculyre::AculyreEngine engine;
+            engine.prepare(48000.0);
+            engine.setInstrument(aculyre::lyreHarpSteel);
+            aculyre::PlayingControls controls = engine.controls();
+            controls.technique = technique;
+            engine.setControls(controls);
+            std::vector<float> l(12000), r(12000);
+            engine.noteOn(first, 0.9f);
+            engine.process(l.data(), r.data(), 12000);
+            engine.noteOn(69, 0.1f);
+            // 25 ms: the energy tracker has settled, and the ringing
+            // instrument has not yet fed much back into the stopped string.
+            engine.process(l.data(), r.data(), 1200);
+            return engine.stringEnergy(engine.stringForNote(69));
+        };
+        const double finger = plucked(aculyre::Technique::Finger, 69) / plucked(aculyre::Technique::Finger, 60);
+        const double plectrum = plucked(aculyre::Technique::Plectrum, 69) / plucked(aculyre::Technique::Plectrum, 60);
+        std::printf("soft re-pluck of a loud A4, string energy re a fresh pluck: finger %.2f, plectrum %.2f\n",
+                    finger, plectrum);
+        check(finger < 1.5, "a finger stops the string it re-plucks");
+        check(plectrum > 2.0, "a plectrum leaves some of the old note");
+    }
+
     // The Performer switches instruments in real time: the old one fades,
     // the output stays finite and does not depend on the block size.
     {

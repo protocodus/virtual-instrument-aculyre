@@ -757,6 +757,12 @@ struct Random
     {
         return static_cast<double>(next() >> 11) * (2.0 / 9007199254740992.0) - 1.0;
     }
+    // Standard normal (Box-Muller), cut at three deviations.
+    double gaussian() noexcept
+    {
+        const double u = (static_cast<double>(next() >> 11) + 1.0) * (1.0 / 9007199254740992.0);
+        return std::clamp(std::sqrt(-2.0 * std::log(u)) * std::cos(pi * bipolar()), -3.0, 3.0);
+    }
 };
 
 double normalCdf(double u) noexcept { return 0.5 * std::erfc(-u / std::sqrt(2.0)); }
@@ -1037,6 +1043,7 @@ struct AculyreEngine::State
     double outputGain { 1.0 };
     bool sustain { false };
     Random random {};
+    PluckReport lastPluck {};
     int controlCountdown { 0 };
     std::array<double, 3> lastGeneralizedVelocity {};
     std::array<double, delayCapacity> pluckWave {};
@@ -1727,12 +1734,23 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     if (voice.raised != raise)
         applyPitch(index, raise);
 
-    // Each pluck differs a little: where the finger meets the string, how
-    // hard, and which way it lets go. Authored spreads.
-    const double position = std::clamp(controls.pluckPosition + 0.02 * s.random.bipolar(), 0.05, 0.7);
-    const double force = instrument.pluckForce * std::pow(v, 1.4)
-                       * std::pow(10.0, 0.75 * s.random.bipolar() / 20.0);
-    const double normalShare = std::clamp(controls.normalShare + 0.05 * s.random.bipolar(), 0.01, 0.9);
+    // Each pluck differs as a harpist's do (Chadefaux et al., JASA 131 (2012)
+    // 844). Where the finger meets the string: Fig. 7's spread of the pluck
+    // point over the string's length, 0.012 on a 17.6 cm string to 0.022 on
+    // a 97.5 cm one, pooled over nine harpists and so at most one player's.
+    // How hard: one player's string displacement at release spreads by about
+    // 14% (Fig. 8, 95% intervals of about 15% over five to seven plucks).
+    // Which way: the angle the string leaves at, measured from the strings'
+    // plane (on a lyre, the top's), by about 4 degrees (Table VI, median 95%
+    // interval 5 degrees over five plucks), around the angle the normal
+    // share sets: the share is the angle's sine squared.
+    const double positionSpread = std::clamp(0.012 + 0.010 * (voice.length - 0.176) / (0.975 - 0.176),
+                                             0.012, 0.022);
+    const double position = std::clamp(controls.pluckPosition + positionSpread * s.random.gaussian(), 0.05, 0.7);
+    const double force = instrument.pluckForce * std::pow(v, 1.4) * std::exp(0.14 * s.random.gaussian());
+    const double angle = std::asin(std::sqrt(std::clamp(controls.normalShare, 0.0, 1.0)))
+                       + 4.0 * pi / 180.0 * s.random.gaussian();
+    const double normalShare = std::clamp(std::sin(angle) * std::sin(angle), 0.01, 0.9);
 
     // Contact width and release time of the technique: the fingertip's pad,
     // a nail's or a plectrum's edge. The string slides off faster from a
@@ -1747,6 +1765,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         case Technique::Plectrum: contact = 0.0008; release = 0.025e-3; break;
     }
     release *= 1.3 - 0.6 * v;
+    s.lastPluck = { position, force, normalShare, release };
 
     voice.keyDown = true;
     voice.sustained = false;
@@ -2029,6 +2048,8 @@ AculyreEngine::StringReport AculyreEngine::stringReport(int string) const noexce
     report.dispersionCents = voice.normal.dispersionCents;
     return report;
 }
+
+AculyreEngine::PluckReport AculyreEngine::lastPluck() const noexcept { return state_->lastPluck; }
 
 double AculyreEngine::stringEnergy(int string) const noexcept
 {

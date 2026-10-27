@@ -182,6 +182,16 @@ public:
     };
     [[nodiscard]] StringReport stringReport(int string) const noexcept;
 
+    // The last pluck as drawn around the playing controls.
+    struct PluckReport
+    {
+        double position;     // fraction of the speaking length from the bridge
+        double force;        // N, held before the release
+        double normalShare;  // share of the pluck's energy normal to the top
+        double release;      // s, the held force's unloading time
+    };
+    [[nodiscard]] PluckReport lastPluck() const noexcept;
+
     struct ModeReport
     {
         double frequency;

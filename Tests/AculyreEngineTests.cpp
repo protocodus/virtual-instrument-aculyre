@@ -360,6 +360,41 @@ int main()
         check(plectrum > 2.0, "a plectrum leaves some of the old note");
     }
 
+    // A silent engine sleeps: it starts asleep, a pluck wakes it, and once
+    // everything has died away it sleeps again and writes exact silence.
+    {
+        aculyre::AculyreEngine engine;
+        engine.prepare(48000.0);
+        engine.setInstrument(aculyre::gutLyre);
+        aculyre::PlayingControls controls = engine.controls();
+        controls.release = 0.0;
+        controls.sympathy = 0.0;
+        engine.setControls(controls);
+        check(engine.idle(), "a fresh engine sleeps");
+        std::vector<float> l(24000), r(24000);
+        engine.noteOn(57, 0.8f);
+        check(!engine.idle(), "a pluck wakes the engine");
+        engine.process(l.data(), r.data(), 4800);
+        engine.noteOff(57);
+        double asleep = -1.0;
+        for (int half = 1; half <= 40 && asleep < 0.0; ++half)
+        {
+            engine.process(l.data(), r.data(), 24000);
+            if (engine.idle())
+                asleep = 0.5 * half;
+        }
+        std::printf("a stopped A3 sends the gut lyre to sleep after %.1f s\n", asleep);
+        check(asleep > 0.0, "the engine sleeps once everything has died away");
+        engine.process(l.data(), r.data(), 24000);
+        check(rms(l, 0, 24000) == 0.0 && rms(r, 0, 24000) == 0.0, "a sleeping engine writes silence");
+        engine.noteOn(57, 0.8f);
+        engine.process(l.data(), r.data(), 24000);
+        bool finite = true;
+        for (float sample : l)
+            finite = finite && std::isfinite(sample);
+        check(finite && rms(l, 0, 24000) > 1.0e-3, "a pluck after sleeping sounds");
+    }
+
     // The Performer switches instruments in real time: the old one fades,
     // the output stays finite and does not depend on the block size.
     {

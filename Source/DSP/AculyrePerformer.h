@@ -77,6 +77,9 @@ private:
     std::array<std::unique_ptr<AculyreEngine>, instrumentCount> engines_;
     std::array<Decimator, 2> decimators_ {};
     std::array<std::array<float, 64 * maxOversampling>, 2> fast_ {};
+    // Fast samples of silence pushed while the engines slept; once they
+    // fill the decimators, those hold only zeros and are skipped.
+    int silentPushes_ { 0 };
     int factor_ { 1 };
     PlayingControls controls_ {};
     int active_ { 0 };

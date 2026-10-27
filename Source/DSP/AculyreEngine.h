@@ -164,6 +164,10 @@ public:
         bool raised;    // its sharping lever is up
     };
     [[nodiscard]] StringActivity stringActivity(int string) const noexcept;
+    // Asleep: everything has died away below -170 dBFS, so process() writes
+    // silence without running the strings, the body or the room until the
+    // next pluck.
+    [[nodiscard]] bool idle() const noexcept;
     [[nodiscard]] int stringCount() const noexcept { return stringCount_; }
     [[nodiscard]] double sampleRate() const noexcept { return sampleRate_; }
 
@@ -210,6 +214,7 @@ private:
     struct State;
     void applyPitch(int string, bool raised) noexcept;
     void updateDamping(int string) noexcept;
+    void sleep() noexcept;
 
     std::unique_ptr<State> state_;
     PlayingControls controls_ {};

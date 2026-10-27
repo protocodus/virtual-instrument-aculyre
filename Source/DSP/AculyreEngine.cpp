@@ -1060,6 +1060,8 @@ struct AculyreEngine::State
     bool sustain { false };
     Random random {};
     PluckReport lastPluck {};
+    bool idle { true };
+    int quietSamples { 0 };
     int controlCountdown { 0 };
     std::array<double, 3> lastGeneralizedVelocity {};
     std::array<double, delayCapacity> pluckWave {};
@@ -1649,6 +1651,8 @@ void AculyreEngine::reset() noexcept
     s.previousLeft = s.previousRight = 0.0;
     s.room.reset();
     s.sustain = false;
+    s.idle = true;
+    s.quietSamples = 0;
     s.controlCountdown = 0;
     s.random.seed(0x5eed1ac0ffeeull);
     s.bend = s.bendTarget;
@@ -1680,6 +1684,11 @@ double unitClamp(double x) noexcept { return x > 1.0 ? 1.0 : (x >= 0.0 ? x : 0.0
 // Below this mean squared wave velocity a released string has stopped
 // sounding from its pluck.
 constexpr double silentEnergy = 1.0e-6;
+// The engine sleeps once its output, before the volume and with the room's
+// whole tail, has stayed below -170 dBFS for half a second and every
+// string's energy is below one where a ringing string radiates about that.
+constexpr double idleLevel = 3.0e-9;
+constexpr double idleEnergy = 1.0e-12;
 } // namespace
 
 void AculyreEngine::applyPitch(int string, bool raised) noexcept
@@ -1761,6 +1770,12 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     if (index < 0 || !(velocity > 0.0f))
         return;
     State& s = *state_;
+    if (s.idle)
+    {
+        s.idle = false;
+        s.controlCountdown = 0;
+    }
+    s.quietSamples = 0;
     State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
     const InstrumentSpec& instrument = s.instrument;
     const PlayingControls& controls = controls_;
@@ -1962,9 +1977,44 @@ void AculyreEngine::setSustain(bool down) noexcept
     }
 }
 
+void AculyreEngine::sleep() noexcept
+{
+    State& s = *state_;
+    for (int index = 0; index < stringCount_; ++index)
+    {
+        auto& voice = s.strings[static_cast<std::size_t>(index)];
+        voice.normal.silence();
+        voice.parallel.silence();
+        voice.energy = 0.0;
+        if (voice.plucked)
+        {
+            voice.plucked = false;
+            voice.dampingDirty = true;
+        }
+    }
+    s.bank.s1.fill(0.0);
+    s.bank.s2.fill(0.0);
+    s.modalPastStale = true;
+    s.massPast = {};
+    s.lastGeneralizedVelocity = {};
+    s.previousLeft = s.previousRight = 0.0;
+    s.room.reset();
+    s.idle = true;
+}
+
+bool AculyreEngine::idle() const noexcept { return state_->idle; }
+
 void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
 {
     State& s = *state_;
+    if (s.idle)
+    {
+        std::fill(left, left + numSamples, 0.0f);
+        std::fill(right, right + numSamples, 0.0f);
+        s.output = s.outputTarget;
+        s.bend = s.bendTarget;
+        return;
+    }
     const int count = stringCount_;
     std::array<double, maxStrings> normalIn {};
     std::array<double, maxStrings> parallelIn {};
@@ -1990,6 +2040,8 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                 }
                 if (voice.dampingDirty)
                     updateDamping(index);
+                if (voice.keyDown || voice.sustained || voice.energy > idleEnergy)
+                    s.quietSamples = 0;
                 // Tension modulation (Kirchhoff-Carrier): the string's mean
                 // squared slope stretches it, Delta f / f = EA <y'^2> / (4T);
                 // the pitch bend scales every string alike.
@@ -2091,6 +2143,9 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         // The room runs even unsent, so turning it up meets a live tail.
         double wetLeft = 0.0, wetRight = 0.0;
         s.room.process(0.5 * (pressureLeft + pressureRight), wetLeft, wetRight);
+        const double level = s.outputGain * std::max(std::max(std::abs(pressureLeft), std::abs(pressureRight)),
+                                                     std::max(std::abs(wetLeft), std::abs(wetRight)));
+        s.quietSamples = level > idleLevel ? 0 : s.quietSamples + 1;
         const double outLeft = pressureLeft + s.output[0] * wetLeft;
         const double outRight = pressureRight + s.output[0] * wetRight;
         const double gain = s.outputGain * s.output[3];
@@ -2104,6 +2159,13 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         };
         left[sample] = static_cast<float>(limit(gain * (s.output[1] * outLeft + s.output[2] * outRight)));
         right[sample] = static_cast<float>(limit(gain * (s.output[1] * outRight + s.output[2] * outLeft)));
+        if (s.quietSamples >= static_cast<int>(0.5 * sampleRate_))
+        {
+            sleep();
+            std::fill(left + sample + 1, left + numSamples, 0.0f);
+            std::fill(right + sample + 1, right + numSamples, 0.0f);
+            return;
+        }
     }
 }
 

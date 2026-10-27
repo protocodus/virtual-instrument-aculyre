@@ -133,7 +133,10 @@ the old instrument fades out over 20 ms while the new one starts, and every
 front end (the Rack adapter now, a plug-in later) plays through it.
 
 **Cost.** The steel lyre harp (32 waveguides, 234 modes and the room) renders
-about 12 times faster than real time on one core of a cloud container.
+about 20 times faster than real time on one core of a cloud container at 1x,
+5 times at 4x. The modes run in one pass a compiler can vectorize. Once
+everything has died away below -170 dBFS for half a second the engine
+sleeps, and a sleeping instance costs next to nothing until the next pluck.
 
 ## Known gaps
 
@@ -157,8 +160,6 @@ about 12 times faster than real time on one core of a cloud container.
   note-off.
 - Designing an instrument is not real-time safe; the Performer designs all
   three at startup, which a front end must allow for.
-- The engine never idles: every string, the body and the room run whether or
-  not anything sounds, so a silent instance costs as much as a playing one.
 - No plug-in yet. The Rack Extension adapter has passed its authored host
   simulation, not a Jukebox SDK build or Reason.
 

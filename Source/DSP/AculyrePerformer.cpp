@@ -43,6 +43,7 @@ void Performer::prepare(double sampleRate, int oversampling)
     }
     fadeLength_ = std::max(1, static_cast<int>(0.02 * engines_[0]->sampleRate()));
     fading_ = -1;
+    silentPushes_ = 0;
 }
 
 void Performer::reset() noexcept
@@ -52,6 +53,7 @@ void Performer::reset() noexcept
     for (auto& decimator : decimators_)
         decimator.clear();
     fading_ = -1;
+    silentPushes_ = 0;
 }
 
 void Performer::setInstrument(int index) noexcept
@@ -97,11 +99,20 @@ void Performer::process(float* left, float* right, int numSamples) noexcept
         render(left, right, numSamples);
         return;
     }
+    if (fading_ < 0 && engines_[static_cast<std::size_t>(active_)]->idle()
+        && silentPushes_ >= decimators_[0].length)
+    {
+        std::fill(left, left + numSamples, 0.0f);
+        std::fill(right, right + numSamples, 0.0f);
+        return;
+    }
     const int chunk = static_cast<int>(fast_[0].size()) / factor_;
     for (int done = 0; done < numSamples;)
     {
         const int count = std::min(chunk, numSamples - done);
+        const bool silent = fading_ < 0 && engines_[static_cast<std::size_t>(active_)]->idle();
         render(fast_[0].data(), fast_[1].data(), count * factor_);
+        silentPushes_ = silent ? silentPushes_ + count * factor_ : 0;
         for (int i = 0; i < count; ++i)
         {
             for (int k = 0; k < factor_; ++k)

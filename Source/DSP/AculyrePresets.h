@@ -91,21 +91,21 @@ constexpr BodySpec gutLyreBody {
 // 4th and 8th harmonics, a pluck a quarter of the way from the bridge; the
 // gut lyre's is assumed. outputGain and piezoGain are the free gains, not
 // loudness claims: outputGain puts the preset's typical playing at a median
-// of -7 on Reason's VU meter at its own controls, and piezoGain puts the
+// of -9 on Reason's VU meter at its own controls, and piezoGain puts the
 // piezo alone within 1 dB of that (AculyreEngineTests, README Level).
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 16, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.25, 0.25, 2.0, 0.35, 0.710, 0.406
+    Technique::Finger, 0.25, 0.25, 2.0, 0.35, 0.564, 0.322
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {
     "Nylon Lyre Harp", nylonMonofilament, 16, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.25, 0.25, 2.0, 0.35, 0.744, 0.382
+    Technique::Finger, 0.25, 0.25, 2.0, 0.35, 0.591, 0.303
 };
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 6, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.22, 0.3, 2.5, 0.35, 1.435, 0.341
+    Technique::Finger, 0.22, 0.3, 2.5, 0.35, 1.140, 0.271
 };
 
 inline constexpr std::array<const InstrumentSpec*, 3> presets {{

@@ -86,7 +86,7 @@ private:
         // The compressor, on the mean square of the two channels with
         // ballistics near the VU meter's: its knee is centred at -2 dB on
         // Reason's meter (0 VU at -12 dBFS RMS), so it holds hard chords out
-        // of the red and leaves typical playing, at -7 VU, mostly alone.
+        // of the red and leaves typical playing, at -9 VU, mostly alone.
         static constexpr double thresholdDb = -14.0, kneeDb = 4.0, ratio = 10.0;
         static constexpr double attackSeconds = 0.08, releaseSeconds = 0.3;
         static constexpr double ceiling = 0.8413951416451951;   // -1.5 dBFS

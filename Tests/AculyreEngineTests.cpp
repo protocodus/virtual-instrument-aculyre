@@ -477,7 +477,7 @@ int main()
     // Level, as Reason's VU meter reads it: the RMS over 300 ms, 0 VU at
     // -12 dBFS (the Big Meter's default offset). Typical playing, each
     // string alone and three- and four-note chords at velocities 70, 90 and
-    // 110, has a median of -7 VU on each instrument at its own controls
+    // 110, has a median of -9 VU on each instrument at its own controls
     // (outputGain), and the piezo alone reads within 1 dB of the
     // microphones (piezoGain). The hardest playing, chords of up to six
     // strings at full velocity with a plectrum, stays out of the red: under
@@ -579,7 +579,7 @@ int main()
             }
             std::printf("%-16s typical: microphones %+.1f VU, piezo %+.1f VU; hardest chords %+.1f VU, peak %+.1f dBFS\n",
                         preset.name, mics, pickup, redVu, redPeak);
-            check(std::abs(mics + 7.0) < 0.5, "typical playing reads -7 VU on the microphones");
+            check(std::abs(mics + 9.0) < 0.5, "typical playing reads -9 VU on the microphones");
             check(std::abs(pickup - mics) <= 1.0, "the piezo reads within 1 dB of the microphones");
             check(redVu < 0.0, "the hardest chords stay under 0 VU");
             check(redPeak <= -1.5 + 1e-6, "no sample passes -1.5 dBFS");

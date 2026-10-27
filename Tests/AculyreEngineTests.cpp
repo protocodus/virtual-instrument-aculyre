@@ -184,8 +184,9 @@ int main()
 
     // Plucks scatter as harpists' do (Chadefaux et al., JASA 131 (2012) 844):
     // the pluck point by 0.012 of the length on a 17.6 cm string to 0.022 on
-    // a 97.5 cm one (Fig. 7), the force by 14% (Fig. 8), the angle from the
-    // top by 4 degrees (Table VI), each about the control.
+    // a 97.5 cm one (Fig. 7), the force by 14% and the release time by 20%
+    // (Fig. 8), the angle from the top by 4 degrees (Table VI), each about
+    // the control. A finger's release at velocity 0.7 is 0.1 ms x 0.88.
     for (int note : { 55, 81 })
     {
         aculyre::AculyreEngine engine;
@@ -195,24 +196,25 @@ int main()
         const double length = aculyre::lyreHarpSteel.strings[static_cast<std::size_t>(engine.stringForNote(note))].length;
         const double angle = std::asin(std::sqrt(controls.normalShare));
         constexpr int plucks = 2000;
-        double sum[3] {}, squares[3] {};
+        double sum[4] {}, squares[4] {};
         for (int k = 0; k < plucks; ++k)
         {
             engine.noteOn(note, 0.7f);
             const auto pluck = engine.lastPluck();
-            const double deviation[3] = { pluck.position - controls.pluckPosition,
+            const double deviation[4] = { pluck.position - controls.pluckPosition,
                                           std::log(pluck.force / (aculyre::lyreHarpSteel.pluckForce * std::pow(0.7, 1.4))),
-                                          std::asin(std::sqrt(pluck.normalShare)) - angle };
-            for (int i = 0; i < 3; ++i)
+                                          std::asin(std::sqrt(pluck.normalShare)) - angle,
+                                          std::log(pluck.release / (0.10e-3 * (1.3 - 0.6 * 0.7))) };
+            for (int i = 0; i < 4; ++i)
             {
                 sum[i] += deviation[i];
                 squares[i] += deviation[i] * deviation[i];
             }
         }
-        const double spread[3] = { 0.012 + (0.022 - 0.012) * (length - 0.176) / (0.975 - 0.176), 0.14,
-                                   4.0 * 3.14159265358979 / 180.0 };
-        const char* names[3] = { "position", "log force", "angle" };
-        for (int i = 0; i < 3; ++i)
+        const double spread[4] = { 0.012 + (0.022 - 0.012) * (length - 0.176) / (0.975 - 0.176), 0.14,
+                                   4.0 * 3.14159265358979 / 180.0, 0.2 };
+        const char* names[4] = { "position", "log force", "angle", "log release" };
+        for (int i = 0; i < 4; ++i)
         {
             const double mean = sum[i] / plucks;
             const double deviation = std::sqrt(squares[i] / plucks - mean * mean);

@@ -1764,7 +1764,11 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         case Technique::Nail: contact = 0.0012; release = 0.035e-3; break;
         case Technique::Plectrum: contact = 0.0008; release = 0.025e-3; break;
     }
-    release *= 1.3 - 0.6 * v;
+    // The slip's speed scatters more than the displacement does: one
+    // harpist's release velocity by about 25%, the displacement by 14%
+    // (Chadefaux et al., Fig. 8), so the release time takes the rest, about
+    // 20%, and each pluck's brightness with it.
+    release *= (1.3 - 0.6 * v) * std::exp(0.2 * s.random.gaussian());
     s.lastPluck = { position, force, normalShare, release };
 
     voice.keyDown = true;

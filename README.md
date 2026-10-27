@@ -68,9 +68,9 @@ reaches the bridge over the first round trip is loaded as one full period of
 the loop (cell-averaged slopes, so the release is band-limited). The soundbox starts deflected under the held
 force, so only the release reaches it and the top springs back. Plucks
 scatter as harpists' do (Chadefaux et al.): the pluck point by 0.012 of the
-length on a short string to 0.022 on a long one, the force by 14% and the
-angle the string leaves at by 4 degrees, each a normal spread about the
-control. A finger meeting a sounding string
+length on a short string to 0.022 on a long one, the force by 14%, the
+angle the string leaves at by 4 degrees and the release time, so the
+brightness, by 20%, each a normal spread about the control. A finger meeting a sounding string
 stops it first, as a harpist's finger holds the string 56 to 431 ms before
 letting go (Chadefaux et al., Table II); a plectrum glances off and stops most
 of it. Tension modulation raises the pitch of a hard pluck

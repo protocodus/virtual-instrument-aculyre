@@ -3,6 +3,63 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-27: five realism changes ship on published measurements; the by-ear verdict is pending (0.4.0)
+
+**What was decided.** The owner asked for five audible steps towards the real
+instrument, including natural randomness grounded in reality. Each of the
+five rests on a published measurement or a recording:
+
+- **Nylon and gut damping.** Woodhouse and Lynch-Aird's fit to measured harp
+  strings (Acta Acustica 105 (2019) 516) replaces estimated loss values.
+- **Re-pluck stop.** A finger or nail re-plucking a sounding string stops
+  it first: a harpist's finger holds the string 56-431 ms (Chadefaux et al.,
+  JASA 131 (2012) 844, Table II).
+- **Pluck scatter.** Plucks scatter in point, force and angle as nine
+  harpists' did (same paper, Fig. 7, Fig. 8 and Table VI).
+- **Slip scatter.** The release time scatters by the share of the release
+  velocity's spread that the displacement does not explain (Fig. 8).
+- **Hand tuning.** Strings sit off their notes by the spread measured between
+  the six strings of a lyre harp phrase (Freesound 649925), 4.1 cents. That
+  spread is a pinning, and the kanklės tune's 1 cent is the other defensible
+  one.
+
+**What the measurements say.**
+
+- **Nylon and gut damping:**
+  - The nylon bass is darker and decays faster: G3's centroid falls from 585
+    to 488 Hz, and its fundamental decays at 12.8 dB/s instead of 8.1.
+  - The nylon treble is brighter: G5's centroid rises from 1336 to 1493 Hz.
+  - The gut lyre is brighter: D4's centroid rises from 794 to 975 Hz.
+- **Re-pluck stop:** a soft finger re-pluck of a loud A4 leaves 1.1 times a
+  fresh pluck's string energy 25 ms later, against 32 times before.
+- **Pluck scatter:** 2000 drawn plucks match the published spreads within 2%.
+- **Lyre harp phrase:** replaying the phrase (Freesound 649925), the scatter
+  and the re-pluck stop leave its 1.25-5 kHz shortfall 0.6 dB larger on
+  average over eight seeds (8.0 against 7.4 dB). That is within one seed's
+  range of the other.
+
+**Listening test.** All three instruments play one phrase: repeated notes, a
+chord, an octave, an arpeggio and repeated bass notes. The renders are 48 kHz
+and matched on whole-file RMS. The set and its key are in the project files
+(`aculyre/listening-2026-10-27-realism/`).
+
+| Letter | Engine |
+| --- | --- |
+| A | 0.4.0 at 1x as shipped (117b9b5) |
+| B | the re-pluck stop alone |
+| C | all five, 4.1-cent tuning spread (81d56a4) |
+| D | the nylon and gut damping alone (not on steel, which it leaves unchanged) |
+| E | all five, every string exactly in tune |
+| F | the pluck and slip scatter alone |
+| G | all five, 1-cent tuning spread |
+
+**Verdict, by ear.** Pending: the owner has not listened yet. Until then, C
+ships, chosen from the measurements and not by ear.
+
+**What it licenses.** The measured damping, spreads and re-pluck stop. For
+the tuning, a choice between 0, 1 and 4.1 cents. It does not license
+tuning any spread by ear beyond those measured values.
+
 ## 2026-10-27: the exponential pluck release ships; the bending bridge bar does not (0.3.0)
 
 **What was decided.** Which of two changes aimed at the steel lyre harp

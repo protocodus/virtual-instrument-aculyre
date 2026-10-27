@@ -22,6 +22,12 @@ reference recording below.
 
 ## Version history
 
+- **0.4.0** (prototype, not released): the instruments run at 1x, 2x or 4x
+  the host rate (1x by default). Nylon and gut strings are damped as
+  measured harp strings are. Plucks scatter in point, force, angle and slip
+  as harpists' do. A finger stops a sounding string before re-plucking it.
+  Each string is tuned by hand, a few cents off its note. The soundbox runs
+  about 30% faster, and a silent instance sleeps.
 - **0.3.0** (prototype, not released): the pluck's held force unloads
   exponentially as the string slides off the finger, so the steel lyre harp's
   treble comes 2.4 dB closer to a lyre harp recording from 1.25 to 5 kHz.
@@ -104,8 +110,8 @@ The gut lyre has six 50 cm strings D3 E3 G3 A3 B3 D4 at about 37 N over a
 closed maple box whose first mode is 343 Hz. Dimensions are typical of each
 kind of instrument, not measurements of one.
 
-**Measured against recordings.** On the A4 of a CC0 lyre harp note (Freesound
-722897), the model at the reference's quarter-length pluck point is close in
+**Measured against recordings** (0.3.0 unless noted). On the A4 of a CC0
+lyre harp note (Freesound 722897), the model at the reference's quarter-length pluck point is close in
 spectral centroid over the first 250 ms (482 Hz against 465 Hz) and in the
 apparent inharmonicity of partials 2-12 (B = 3.86e-4 against 3.93e-4, the
 string's own 2.36e-4 plus the body's pull), and both lack the 4th harmonic.
@@ -113,11 +119,15 @@ The model's note decays faster over 80-450 ms (43 against 30 dB/s): A4 sits
 beside the assumed body's 467 Hz top mode. Replaying a lyre harp phrase note
 for note (Freesound 649925, CC BY), the model's 1/3-octave long-term spectrum
 falls short of the recording's by 7.6 dB on average from 1.25 to 5 kHz
-(10.0 dB in 0.2.0). Over a CC0 Iron Age lyre recording (Freesound 191883,
+(10.0 dB in 0.2.0). With 0.4.0's scattered plucks the shortfall depends on
+the draws: 8.0 dB on average over eight seeds (7.1-8.9), against 7.4
+(7.1-7.9) for 0.3.0's authored spreads. Over a CC0 Iron Age lyre recording (Freesound 191883,
 another instrument and tuning), the gut lyre's notes decay at a similar rate
 (median 18-22 against 18 dB/s over 80-550 ms) and are a little darker
-(centroid 448-496 Hz against 557 Hz). These are order-of-magnitude checks,
-not a calibration.
+(centroid 448-496 Hz against 557 Hz); 0.4.0's measured gut damping
+brightens them (D4's centroid 794 to 975 Hz over its first 250 ms), not yet
+compared with that recording again. These are order-of-magnitude checks, not
+a calibration.
 
 **Playing.** `PlayingControls` holds what a player and the room change while
 the instrument sounds; the plucking fields apply at the next pluck, the rest at
@@ -130,11 +140,17 @@ by a semitone, and the string's own note lowers it again, as a lyre harp
 player sets the levers by hand. `AculyrePerformer` designs all three
 instruments once, outside real time, so choosing one is a real-time switch:
 the old instrument fades out over 20 ms while the new one starts, and every
-front end (the Rack adapter now, a plug-in later) plays through it.
+front end (the Rack adapter now, a plug-in later) plays through it. The
+Performer can run the instruments at 2x or 4x the host rate (at most
+192 kHz) and bring them down through a linear-phase Kaiser-windowed sinc,
+31 host samples late. Replaying the lyre harp phrase dry, 4x moves the
+long-term spectrum within about 1 dB of 1x below 6 kHz (2.4 dB at
+1.25 kHz) and lifts the top octave 4-11 dB; 2x lands within 0.5 dB of 4x
+below 12.5 kHz and 2 dB short at 20 kHz.
 
 **Cost.** The steel lyre harp (32 waveguides, 234 modes and the room) renders
 about 20 times faster than real time on one core of a cloud container at 1x,
-5 times at 4x. The modes run in one pass a compiler can vectorize. Once
+4 times at 4x. The modes run in one pass a compiler can vectorize. Once
 everything has died away below -170 dBFS for half a second the engine
 sleeps, and a sleeping instance costs next to nothing until the next pluck.
 

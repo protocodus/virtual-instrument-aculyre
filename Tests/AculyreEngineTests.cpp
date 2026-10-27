@@ -267,6 +267,52 @@ int main()
               "an instrument switch fades the old instrument out");
     }
 
+    // Oversampling: the factor stays within the engine's 192 kHz, the
+    // decimated note keeps its pitch and level, and the output does not
+    // depend on the block size.
+    {
+        aculyre::Performer performer;
+        const auto factor = [&performer] (double rate, int requested)
+        {
+            performer.prepare(rate, requested);
+            return performer.oversampling();
+        };
+        check(factor(48000.0, 4) == 4 && factor(44100.0, 2) == 2 && factor(48000.0, 3) == 2
+                  && factor(96000.0, 4) == 2 && factor(192000.0, 4) == 1 && factor(48000.0, 0) == 1,
+              "oversampling is 1, 2 or 4 and keeps the engine at or below 192 kHz");
+        check(performer.latency() == 0 && factor(48000.0, 2) == 2 && performer.latency() == 31,
+              "the decimator delays by 31 host samples, and 1x by none");
+
+        const auto play = [] (int oversampling, int block)
+        {
+            auto performer = std::make_unique<aculyre::Performer>();
+            performer->prepare(48000.0, oversampling);
+            aculyre::PlayingControls controls = aculyre::Performer::defaultControls(0);
+            controls.room = 0.0;
+            performer->setControls(controls);
+            performer->noteOn(69, 0.7f);
+            std::vector<float> l(48000), r(48000);
+            for (int position = 0; position < 48000; position += block)
+                performer->process(l.data() + position, r.data() + position, std::min(block, 48000 - position));
+            return l;
+        };
+        const auto once = play(1, 64);
+        for (int oversampling : { 2, 4 })
+        {
+            const auto fast = play(oversampling, 64);
+            bool finite = true;
+            for (float sample : fast)
+                finite = finite && std::isfinite(sample);
+            check(finite, "the oversampled output is finite");
+            const double cents = 1200.0 * std::log2(peakNear(fast, 9600, 16384, 440.0).frequency
+                                                     / peakNear(once, 9600, 16384, 440.0).frequency);
+            check(std::abs(cents) < 2.0, "oversampling keeps the note's pitch (within 2 cents)");
+            const double db = 20.0 * std::log10(rms(fast, 4800, 19200) / rms(once, 4800, 19200));
+            check(std::abs(db) < 1.0, "oversampling keeps the note's level (within 1 dB)");
+            check(fast == play(oversampling, 37), "the oversampled output does not depend on the block size");
+        }
+    }
+
     std::printf(failures == 0 ? "all passed\n" : "%d failed\n", failures);
     return failures == 0 ? 0 : 1;
 }

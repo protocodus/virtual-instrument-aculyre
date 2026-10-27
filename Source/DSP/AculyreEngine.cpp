@@ -37,7 +37,9 @@ constexpr int maxDispersionStages = 8;
 // of Valette's and Woodhouse's string damping models, 1/Q_n = eta B n^2 /
 // (1 + B n^2), as a unit-DC two-pole section, and a loss angle constant over
 // the band (Paté, Le Carrou and Fabre, JASA 135 (2014) 3045) as a unit-DC
-// two-pole two-zero section of two relaxations.
+// two-pole two-zero section of two relaxations. Aculyre's change: that
+// section also carries the measured air damping's rise over the
+// fundamental's (airRoot, see setInstrument).
 
 double stretchedPartial(double partial, double inharmonicity) noexcept
 {
@@ -167,11 +169,11 @@ LossSectionDesign bendingLossSection(double factor, double inharmonicity,
     return section;
 }
 
-LossSectionDesign constantLossSection(double delta, double inharmonicity,
+LossSectionDesign constantLossSection(double delta, double airRoot, double inharmonicity,
                                       double fundamental, double sampleRate) noexcept
 {
     LossSectionDesign section;
-    if (!(delta > 0.0) || !(inharmonicity >= 0.0) || !(fundamental > 0.0)
+    if (!(delta > 0.0 || airRoot > 0.0) || !(inharmonicity >= 0.0) || !(fundamental > 0.0)
         || !(sampleRate > 0.0))
         return section;
     constexpr double decibelsPerNeper = 8.685889638065035;
@@ -191,7 +193,8 @@ LossSectionDesign constantLossSection(double delta, double inharmonicity,
     const double top = below;
     const auto rateAt = [&] (double partial)
     {
-        return pi * fundamental * stretchedPartial(partial, inharmonicity) * delta;
+        const double frequency = fundamental * stretchedPartial(partial, inharmonicity);
+        return pi * frequency * delta + airRoot * (std::sqrt(frequency) - std::sqrt(fundamental));
     };
     const auto partialAt = [&] (double rate)
     {
@@ -1332,6 +1335,18 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         voice.tension = voice.linearMass * waveSpeed * waveSpeed;
         voice.impedance = std::sqrt(voice.tension * voice.linearMass);
         const double secondMoment = pi * std::pow(spec.diameter, 4.0) / 64.0;
+        const double modulus = material.youngModulus + material.modulusPerStress * voice.tension / area;
+        const double bendingLoss = material.lossModulus / modulus;
+        // Woodhouse and Lynch-Aird's air damping (Acta Acustica 105 (2019)
+        // 516, Equation (13) with their (d + 0.2) correction, d in mm): a
+        // loss factor (d + 0.2) 8 sqrt(2) rho_a / (rho d) sqrt(nu / (2 pi f)),
+        // so a decay rate pi f eta = airRoot sqrt(f) that rises with the
+        // partial. Valette's law (below) gives every partial the
+        // fundamental's rate.
+        const double airRoot = material.measuredAirDamping
+            ? pi * (spec.diameter * 1.0e3 + 0.2) * 8.0 * std::sqrt(2.0) * airDensity
+                / (material.density * spec.diameter) * std::sqrt(airViscosity / airDensity / (2.0 * pi))
+            : 0.0;
         // Strings sit evenly across the bridge, bass at the u = -1 end.
         voice.lever = stringCount_ > 1
             ? -0.9 + 1.8 * index / (stringCount_ - 1) : 0.0;
@@ -1341,20 +1356,21 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             State::PitchDesign& pitch = voice.pitch[static_cast<std::size_t>(raised)];
             pitch.length = raised ? spec.length * leverRatio : spec.length;
             const double frequency = waveSpeed / (2.0 * pitch.length);
-            pitch.inharmonicity = pi * pi * material.youngModulus * secondMoment
+            pitch.inharmonicity = pi * pi * modulus * secondMoment
                                 / (voice.tension * pitch.length * pitch.length);
             // The plane parallel to the soundboard is longer by about one
             // string diameter (Woodhouse, Acta Acustica 90 (2004) 945, Sec.
             // 4.3; Acustra ships the same end correction).
             pitch.parallelLength = pitch.length + spec.diameter;
-            pitch.glidePerEnergy = material.youngModulus * area
+            pitch.glidePerEnergy = modulus * area
                                  / (2.0 * voice.tension * waveSpeed * waveSpeed);
             // Air damping (Valette, in Mechanics of Musical Instruments,
             // 1995): R = 2 pi eta + 2 pi d sqrt(pi eta rho f), decay rate
             // R / (2 mu).
             const double airResistance = 2.0 * pi * airViscosity
                 + 2.0 * pi * spec.diameter * std::sqrt(pi * airViscosity * airDensity * frequency);
-            const double airDecay = airResistance / (2.0 * voice.linearMass);
+            const double airDecay = material.measuredAirDamping ? airRoot * std::sqrt(frequency)
+                                                                : airResistance / (2.0 * voice.linearMass);
             const double intrinsicDecay = airDecay
                 + pi * frequency * material.constantLoss
                 - std::log(yokeRoundTripGain) * frequency;
@@ -1367,9 +1383,9 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 const double f0 = plane == 0 ? frequency : frequency * pitch.length / pitch.parallelLength;
                 loop.frequency = f0;
                 loop.gain = std::exp(-airDecay / f0) * yokeRoundTripGain;
-                loop.constantDesign = constantLossSection(material.constantLoss,
+                loop.constantDesign = constantLossSection(material.constantLoss, airRoot,
                                                           pitch.inharmonicity, f0, fs);
-                loop.bendingDesign = bendingLossSection(material.bendingLoss,
+                loop.bendingDesign = bendingLossSection(bendingLoss,
                                                         pitch.inharmonicity, f0, fs);
                 // Dispersion (designDispersion), the line then solved so the
                 // fundamental is exact once the junction exists and the

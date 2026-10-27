@@ -45,12 +45,16 @@ None: this is a source-only prototype.
 **Strings.** Each string is two digital waveguides, one per polarisation, each
 holding the round trip from the bridge to the yoke and back. The plane parallel
 to the soundboard is longer by one string diameter (Woodhouse, Acta Acustica
-90 (2004)). The loop carries Acustra 1.9.0's string loss laws unchanged: a
-constant loss angle (dislocation damping in steel, viscoelastic loss in nylon
-and gut), Valette's and Woodhouse's bending loss, and Valette's air damping.
+90 (2004)). Steel carries Acustra 1.9.0's string loss laws unchanged: a
+constant loss angle for dislocation damping, Valette's and Woodhouse's bending
+loss, and Valette's air damping. Nylon and gut carry Woodhouse and
+Lynch-Aird's fit to measured harp strings (Acta Acustica 105 (2019) 516):
+nylon stiffens under tension, bending loses by each material's loss modulus,
+and air damping rises with the square root of frequency, with no constant
+loss term.
 Dispersion is a cascade of up to eight identical first-order allpass sections
 whose count and coefficient are searched so the 2nd to 12th partials (the range
-Acustra fits) land within 6 cents of the stiff-string law
+Acustra fits) land within 6.3 cents of the stiff-string law
 f_n = n f0 sqrt((1 + B n^2) / (1 + B)); above the 12th the partials fall short
 of the law, by about a fifth of the stretch at the 16th on the bass strings.
 A second-order Thiran section sets the fractional delay, solved with the
@@ -128,8 +132,9 @@ about 12 times faster than real time on one core of a cloud container.
 - No body is measured: every soundbox is a plate-and-air model with assumed
   dimensions, so where its modes fall against the strings is a guess, and that
   sets which notes are loud, which are dead and how fast they decay.
-- The nylon and gut loss angles and bending losses are estimates; only steel
-  carries Acustra's fitted values. Acustra retired its own nylon voice.
+- Nylon and gut damping follow one published fit to measured harp strings,
+  not strings from these instruments; gut varied most from string to string
+  in that study.
 - The bridge bar is rigid, so above a kilohertz it averages the top's modes
   away and the steel lyre harp stays 7.6 dB darker than a lyre harp recording
   from 1.25 to 5 kHz. A bar that bends with the top (commit f209037) closed

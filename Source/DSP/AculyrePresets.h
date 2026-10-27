@@ -10,18 +10,23 @@ namespace aculyre
 {
 
 // Plain music wire. Its dislocation Q of 5500 is Paté, Le Carrou and Fabre's
-// fit (JASA 135 (2014) 3045) and its bending loss Acustra's plain steel
-// (FittedPhysicalData.h: steelPlainBendingLoss, a by-ear point between two
-// fits to steel-string recordings).
-inline constexpr StringMaterial steelWire { "steel", 7850.0, 2.0e11, 1.0 / 5500.0, 0.002334375 };
+// fit (JASA 135 (2014) 3045) and its bending loss factor Acustra's plain
+// steel (FittedPhysicalData.h: steelPlainBendingLoss, a by-ear point between
+// two fits to steel-string recordings).
+inline constexpr StringMaterial steelWire { "steel", 7850.0, 2.0e11, 0.0, 1.0 / 5500.0,
+                                            0.002334375 * 2.0e11, false };
 // Monofilament nylon: density 1072-1159 kg/m^3 measured on harp strings
-// (Lynch-Aird and Woodhouse, Materials 11 (2018) 2160, Table 1); the dynamic
-// modulus rises with stress, 5 GPa is mid-range. Both loss values are
-// estimates: no string-by-string damping table was available.
-inline constexpr StringMaterial nylonMonofilament { "nylon", 1120.0, 5.0e9, 6.0e-4, 0.02 };
-// Natural gut: 1320 kg/m^3 (same source, Table 1), modulus 5.5-6.5 GPa as
-// that paper cites. Loss values estimated: gut is lossier than nylon there.
-inline constexpr StringMaterial naturalGut { "gut", 1320.0, 6.0e9, 1.2e-3, 0.03 };
+// (Lynch-Aird and Woodhouse, Materials 11 (2018) 2160, Table 1). Stiffness
+// and damping are Woodhouse and Lynch-Aird's fit to their measured nylon
+// strings (Acta Acustica 105 (2019) 516, Table I): E' = 4.5 + 39 sigma GPa,
+// E'' = 0.25 GPa, air damping by their Equation (13). The fit needs no loss
+// constant over the band.
+inline constexpr StringMaterial nylonMonofilament { "nylon", 1120.0, 4.5e9, 39.0, 0.0, 0.25e9, true };
+// Natural gut: 1320 kg/m^3 (Materials 11 (2018) 2160, Table 1); E' = 6 GPa
+// and E'' = 0.24 GPa from the same fit (Acta Acustica 105 (2019) 516,
+// Table I), which found gut's damping more scattered from string to string
+// than the polymers'.
+inline constexpr StringMaterial naturalGut { "gut", 1320.0, 6.0e9, 0.0, 0.0, 0.24e9, true };
 
 // Quarter-cut representative tops at 12% moisture, from the USDA Wood
 // Handbook as Acustra tabulates them (AcustraEngine.cpp, woodSpecs).

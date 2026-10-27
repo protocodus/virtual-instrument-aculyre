@@ -28,13 +28,19 @@ struct StringMaterial
 {
     const char* name;
     double density;       // kg/m^3
+    // Young's modulus at the string's stress sigma (Pa), E' = youngModulus
+    // + modulusPerStress * sigma: polymer strings stiffen under tension.
     double youngModulus;  // Pa
-    // Loss angle constant over the audio band: dislocation in steel,
-    // viscoelastic loss in polymer and gut (constantLossSection).
+    double modulusPerStress;
+    // Loss angle constant over the audio band: dislocation in steel
+    // (constantLossSection).
     double constantLoss;
-    // Loss factor eta of the bending stiffness, EI(1 + i eta)
+    // Loss modulus E'' of the bending stiffness, EI(1 + i E''/E')
     // (bendingLossSection).
-    double bendingLoss;
+    double lossModulus;   // Pa
+    // Air damping by Woodhouse and Lynch-Aird's fit to measured polymer and
+    // gut strings rather than Valette's law.
+    bool measuredAirDamping;
 };
 
 struct StringSpec

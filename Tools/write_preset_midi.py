@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Writes Aculyre's demo phrases as standard MIDI files.
 
-    python3 Tools/write_demo_midi.py [output-directory]
+    python3 Tools/write_preset_midi.py [output-directory]
+    python3 Tools/write_preset_midi.py --check   # the committed files match
 
 MIDI map, as the phrases use it: a note plays the open string tuned to it (a
 note no string is tuned to is ignored), velocity is the pluck's force, a
@@ -13,6 +14,7 @@ Strings: the lyre harps (presets 0 and 1) are C major from G3 to A5; the gut
 lyre (preset 2) is D3 E3 G3 A3 B3 D4. Every phrase is original.
 """
 
+import argparse
 import os
 import struct
 import sys
@@ -48,7 +50,7 @@ class Phrase:
         for index, name in enumerate(order):
             self.note(beat + index * spread, name, length - index * spread, velocity - 3 * index)
 
-    def write(self, path):
+    def smf(self):
         tempo = int(round(60_000_000 / self.bpm))
         track = bytearray()
         track += b"\x00\xff\x51\x03" + tempo.to_bytes(3, "big")
@@ -59,9 +61,8 @@ class Phrase:
             last = tick
             track += variable(delta) + data
         track += b"\x00\xff\x2f\x00"
-        with open(path, "wb") as file:
-            file.write(b"MThd" + struct.pack(">IHHH", 6, 0, 1, PPQ))
-            file.write(b"MTrk" + struct.pack(">I", len(track)) + track)
+        return (b"MThd" + struct.pack(">IHHH", 6, 0, 1, PPQ)
+                + b"MTrk" + struct.pack(">I", len(track)) + track)
 
 
 def variable(value):
@@ -203,11 +204,27 @@ DEMOS = {
 
 
 def main():
-    root = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", "Docs", "audio", "midi")
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("root", nargs="?",
+                        default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Docs", "audio", "midi"))
+    parser.add_argument("--check", action="store_true", help="fail unless the committed files match")
+    args = parser.parse_args()
+    if args.check:
+        stale = []
+        for name, build in DEMOS.items():
+            path = os.path.join(args.root, name)
+            if not os.path.isfile(path) or open(path, "rb").read() != build().smf():
+                stale.append(name)
+        if stale:
+            sys.exit(f"Docs/audio/midi differs from {os.path.basename(__file__)} in: {', '.join(stale)}")
+        print(f"{len(DEMOS)} demo phrases match {os.path.basename(__file__)}")
+        return
     for name, build in DEMOS.items():
-        path = os.path.join(root, name)
+        path = os.path.join(args.root, name)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        build().write(path)
+        with open(path, "wb") as file:
+            file.write(build().smf())
         print(path)
 
 

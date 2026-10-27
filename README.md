@@ -12,7 +12,7 @@ no interface and no release.
 ## Audio demos
 
 No audio is committed. `Tools/render_demo_set.sh <build> <out>` renders the
-listening set from the phrases `Tools/write_demo_midi.py` writes (committed in
+listening set from the phrases `Tools/write_preset_midi.py` writes (committed in
 `Docs/audio/midi/`): one demo per
 preset, single notes with and without sympathetic strings, a glissando, a
 dynamics ladder on A4, one phrase on all three presets, and the A4 of the
@@ -123,7 +123,8 @@ build/RenderAculyreDemo --report 0
 `AculyreDSPCxx17` builds the engine as C++17 without exceptions, as the Rack
 toolchain would. `Aculyre.Engine` checks tuning, the bass string's partials,
 the pluck point's missing harmonic, stability, determinism, block-size
-invariance and sympathetic coupling.
+invariance and sympathetic coupling; `Aculyre.DemoMidiSources` checks that the
+committed phrases are what `Tools/write_preset_midi.py` writes.
 
 ## Licensing
 

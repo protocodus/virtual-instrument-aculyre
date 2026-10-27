@@ -3,7 +3,7 @@
 #
 #   Tools/render_demo_set.sh <build-directory> <output-directory>
 #
-# The phrases come from Tools/write_demo_midi.py. Nothing here is committed:
+# The phrases come from Tools/write_preset_midi.py. Nothing here is committed:
 # the renders are listening material for the feasibility review.
 set -eu
 build=$1
@@ -11,7 +11,7 @@ out=$2
 here=$(cd "$(dirname "$0")" && pwd)
 render="$build/RenderAculyreDemo"
 mkdir -p "$out/more"
-python3 "$here/write_demo_midi.py" "$out/midi" > /dev/null
+python3 "$here/write_preset_midi.py" "$out/midi" > /dev/null
 midi="$out/midi"
 
 "$render" 0 "$midi/00-lyre-harp.mid" "$out/00-lyre-harp.wav" --tail 1.2

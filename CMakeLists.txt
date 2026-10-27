@@ -33,4 +33,12 @@ if(BUILD_TESTING)
     target_link_libraries(AculyreEngineTests PRIVATE AculyreDSP)
     add_test(NAME Aculyre.Engine COMMAND AculyreEngineTests)
     set_tests_properties(Aculyre.Engine PROPERTIES LABELS unit)
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        # The committed demo phrases are what the writer writes (G3a).
+        add_test(NAME Aculyre.DemoMidiSources
+                 COMMAND "${Python3_EXECUTABLE}" -B
+                         "${CMAKE_CURRENT_SOURCE_DIR}/Tools/write_preset_midi.py" --check)
+        set_tests_properties(Aculyre.DemoMidiSources PROPERTIES LABELS unit)
+    endif()
 endif()

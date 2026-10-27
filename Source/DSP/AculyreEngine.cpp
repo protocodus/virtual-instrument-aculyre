@@ -680,18 +680,29 @@ struct Loop
 
 // One soundbox mode with unit modal mass: velocity per generalized force
 // s / (s^2 + (w/Q) s + w^2), bilinear at its own frequency (passive at every
-// rate), run in transposed direct form II.
+// rate): b0 (1 - z^-2) / (1 + a1 z^-1 + a2 z^-2).
 struct Mode
 {
     double frequency { 0.0 };
     double q { 1.0 };
-    double b0 { 0.0 }, b2 { 0.0 }, a1 { 0.0 }, a2 { 0.0 };
+    double b0 { 0.0 }, a1 { 0.0 }, a2 { 0.0 };
     std::array<double, 3> participation {};  // heave, rock, sway
     double radiationLeft { 0.0 };
     double radiationRight { 0.0 };
     double monopole { 0.0 };
     double airShare { 0.0 };
-    double s1 { 0.0 }, s2 { 0.0 };
+};
+
+// The modes as process() runs them, in transposed direct form II: a
+// structure of arrays, padded with silent modes to whole groups of `lanes`
+// so the compiler can vectorize each group. `drive` is the participation
+// times b0, `pull` the participation alone.
+struct ModeBank
+{
+    static constexpr int lanes = 8;
+    int count { 0 };
+    std::array<std::array<double, maxModes>, 3> drive {}, pull {};
+    std::array<double, maxModes> a1 {}, a2 {}, left {}, right {}, s1 {}, s2 {};
 };
 
 struct Matrix3
@@ -1025,6 +1036,11 @@ struct AculyreEngine::State
 
     std::array<Mode, maxModes> modes {};
     int modeCount { 0 };
+    ModeBank bank {};
+    // The modes' state at the bridge, sum(pull s1): process() sums it as it
+    // updates them, noteOn's preload makes it stale.
+    std::array<double, 3> modalPast {};
+    bool modalPastStale { true };
 
     // The bridge junction (process() derives it): the immediate generalized
     // mobility Y0 of the modes, the strings' generalized impedance Zg, the
@@ -1280,7 +1296,6 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         const double damping = omega / mode.q;
         const double d0 = k * k + damping * k + omega * omega;
         mode.b0 = k / d0;
-        mode.b2 = -k / d0;
         mode.a1 = 2.0 * (omega * omega - k * k) / d0;
         mode.a2 = (k * k - damping * k + omega * omega) / d0;
         s.modes[static_cast<std::size_t>(s.modeCount++)] = mode;
@@ -1446,6 +1461,23 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                              * mode.participation[static_cast<std::size_t>(j)];
     }
     s.immediateMobility = y0m;
+    ModeBank& bank = s.bank;
+    bank = {};
+    bank.count = (s.modeCount + ModeBank::lanes - 1) / ModeBank::lanes * ModeBank::lanes;
+    for (int index = 0; index < s.modeCount; ++index)
+    {
+        const Mode& mode = s.modes[static_cast<std::size_t>(index)];
+        const auto k = static_cast<std::size_t>(index);
+        for (std::size_t c = 0; c < 3; ++c)
+        {
+            bank.drive[c][k] = mode.b0 * mode.participation[c];
+            bank.pull[c][k] = mode.participation[c];
+        }
+        bank.a1[k] = mode.a1;
+        bank.a2[k] = mode.a2;
+        bank.left[k] = mode.radiationLeft;
+        bank.right[k] = mode.radiationRight;
+    }
     Matrix3 zg {};
     for (int index = 0; index < stringCount_; ++index)
     {
@@ -1610,8 +1642,9 @@ void AculyreEngine::reset() noexcept
         voice.ownerNote = -1;
         voice.dampingDirty = true;
     }
-    for (int index = 0; index < s.modeCount; ++index)
-        s.modes[static_cast<std::size_t>(index)].s1 = s.modes[static_cast<std::size_t>(index)].s2 = 0.0;
+    s.bank.s1.fill(0.0);
+    s.bank.s2.fill(0.0);
+    s.modalPastStale = true;
     s.massPast = {};
     s.previousLeft = s.previousRight = 0.0;
     s.room.reset();
@@ -1886,14 +1919,16 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             preload[2] += heldForce;
         }
     }
-    for (int index2 = 0; index2 < s.modeCount; ++index2)
+    ModeBank& bank = s.bank;
+    for (int k = 0; k < bank.count; ++k)
     {
-        Mode& mode = s.modes[static_cast<std::size_t>(index2)];
-        const double modal = mode.participation[0] * preload[0] + mode.participation[1] * preload[1]
-                           + mode.participation[2] * preload[2];
-        mode.s1 += mode.b2 * modal;
-        mode.s2 += mode.b2 * modal;
+        const auto m = static_cast<std::size_t>(k);
+        const double modal = bank.drive[0][m] * preload[0] + bank.drive[1][m] * preload[1]
+                           + bank.drive[2][m] * preload[2];
+        bank.s1[m] -= modal;
+        bank.s2[m] -= modal;
     }
+    s.modalPastStale = true;
 }
 
 void AculyreEngine::noteOff(int midiNote) noexcept
@@ -1983,14 +2018,16 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                          + (1.0 - voice.energySmoothing) * (vn * vn + vp * vp);
         }
 
-        std::array<double, 3> past {};
-        for (int index = 0; index < s.modeCount; ++index)
+        ModeBank& bank = s.bank;
+        if (s.modalPastStale)
         {
-            const Mode& mode = s.modes[static_cast<std::size_t>(index)];
-            past[0] += mode.participation[0] * mode.s1;
-            past[1] += mode.participation[1] * mode.s1;
-            past[2] += mode.participation[2] * mode.s1;
+            s.modalPast = {};
+            for (std::size_t c = 0; c < 3; ++c)
+                for (int k = 0; k < bank.count; ++k)
+                    s.modalPast[c] += bank.pull[c][static_cast<std::size_t>(k)] * bank.s1[static_cast<std::size_t>(k)];
+            s.modalPastStale = false;
         }
+        const std::array<double, 3>& past = s.modalPast;
         std::array<double, 3> net { drive[0] - s.massPast[0], drive[1] - s.massPast[1],
                                     drive[2] - s.massPast[2] };
         std::array<double, 3> rhs = y0.apply(net);
@@ -2006,18 +2043,33 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             s.massPast[i] = -massForce - s.massImpedance[i] * velocity[i];
         }
 
+        // Each lane sums its own share, so a group runs as one vector.
+        constexpr int lanes = ModeBank::lanes;
+        double laneLeft[lanes] {}, laneRight[lanes] {}, lanePast[3][lanes] {};
+        for (int group = 0; group < bank.count; group += lanes)
+            for (int lane = 0; lane < lanes; ++lane)
+            {
+                const auto k = static_cast<std::size_t>(group + lane);
+                const double x = bank.drive[0][k] * plateForce[0] + bank.drive[1][k] * plateForce[1]
+                               + bank.drive[2][k] * plateForce[2];
+                const double y = x + bank.s1[k];
+                const double s1 = bank.s2[k] - bank.a1[k] * y;
+                bank.s2[k] = -x - bank.a2[k] * y;
+                bank.s1[k] = s1;
+                laneLeft[lane] += bank.left[k] * y;
+                laneRight[lane] += bank.right[k] * y;
+                lanePast[0][lane] += bank.pull[0][k] * s1;
+                lanePast[1][lane] += bank.pull[1][k] * s1;
+                lanePast[2][lane] += bank.pull[2][k] * s1;
+            }
         double radiatedLeft = 0.0, radiatedRight = 0.0;
-        for (int index = 0; index < s.modeCount; ++index)
+        s.modalPast = {};
+        for (int lane = 0; lane < lanes; ++lane)
         {
-            Mode& mode = s.modes[static_cast<std::size_t>(index)];
-            const double x = mode.participation[0] * plateForce[0]
-                           + mode.participation[1] * plateForce[1]
-                           + mode.participation[2] * plateForce[2];
-            const double y = mode.b0 * x + mode.s1;
-            mode.s1 = -mode.a1 * y + mode.s2;
-            mode.s2 = mode.b2 * x - mode.a2 * y;
-            radiatedLeft += mode.radiationLeft * y;
-            radiatedRight += mode.radiationRight * y;
+            radiatedLeft += laneLeft[lane];
+            radiatedRight += laneRight[lane];
+            for (std::size_t c = 0; c < 3; ++c)
+                s.modalPast[c] += lanePast[c][lane];
         }
 
         for (int index = 0; index < count; ++index)

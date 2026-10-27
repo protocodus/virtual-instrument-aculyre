@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Aculyre VERSION 0.2.0 LANGUAGES CXX)
+project(Aculyre VERSION 0.3.0 LANGUAGES CXX)
 
 # An experimental prototype: the DSP and its Performer, no plug-in yet.
 option(BUILD_TESTING "Build the tests" ON)

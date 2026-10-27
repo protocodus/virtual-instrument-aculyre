@@ -179,15 +179,15 @@ int report(int preset)
                     r.frequency, r.tension, r.impedance, r.inharmonicity, r.stress / 1e6,
                     r.intrinsicT60, r.dispersion, r.dispersionStages, r.dispersionCents);
     }
-    std::printf("\nmodes: %d\n  f(Hz)     Q    heave(kg^-1/2)  monopole(m^2)  air share\n", engine.modeCount());
+    std::printf("\nmodes: %d\n  f(Hz)     Q   bridge(kg^-1/2)  monopole(m^2)  air share\n", engine.modeCount());
     for (int i = 0; i < std::min(engine.modeCount(), 24); ++i)
     {
         const auto m = engine.modeReport(i);
-        std::printf("%8.1f %6.1f %12.4f %14.5f %10.3f\n", m.frequency, m.q, m.heave, m.monopole, m.airShare);
+        std::printf("%8.1f %6.1f %12.4f %14.5f %10.3f\n", m.frequency, m.q, m.bridge, m.monopole, m.airShare);
     }
-    std::printf("\nbridge mobility |Y| (m/s/N) at the middle of the bar:\n");
+    std::printf("\nbridge mobility |Y| (m/s/N) at the middle string's point:\n");
     for (double f : { 100.0, 150.0, 200.0, 250.0, 300.0, 400.0, 500.0, 700.0, 1000.0, 1500.0, 2000.0, 3000.0, 5000.0, 8000.0 })
-        std::printf("  %6.0f Hz  %.4f\n", f, engine.bridgeMobilityMagnitude(f, 0.0));
+        std::printf("  %6.0f Hz  %.4f\n", f, engine.bridgeMobilityMagnitude(f, engine.stringCount() / 2));
     return 0;
 }
 

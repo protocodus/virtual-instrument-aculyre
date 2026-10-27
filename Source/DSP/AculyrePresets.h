@@ -58,12 +58,13 @@ constexpr std::array<StringSpec, maxStrings> lyreHarpNylon {{
 }};
 
 // The lyre harp's soundbox: a 20 x 30 cm top of 3 mm spruce on a box 5 cm
-// deep, one 6 cm soundhole, a 6 g bridge bar a centimetre high a third of
-// the way up the top. Assumed dimensions of a typical instrument.
+// deep, one 6 cm soundhole, a 6 g maple bridge bar a centimetre high (so
+// 3.5 mm thick) a third of the way up the top. Assumed dimensions of a
+// typical instrument.
 constexpr BodySpec lyreHarpBody {
     0.20, 0.30, 0.003, sitkaSpruce,
     0.20 * 0.30 * 0.05 * 0.85, 0.03,
-    0.30, 0.10, 0.90, 0.010, 0.006
+    0.30, 0.10, 0.90, 0.010, 0.006, hardMaple
 };
 
 // A six-string gut lyre after the Anglo-Saxon instruments (the Sutton Hoo
@@ -78,7 +79,7 @@ constexpr std::array<StringSpec, maxStrings> gutLyreStrings {{
 constexpr BodySpec gutLyreBody {
     0.36, 0.18, 0.004, hardMaple,
     0.36 * 0.18 * 0.025 * 0.8, 0.0,
-    0.15, 0.25, 0.75, 0.012, 0.004
+    0.15, 0.25, 0.75, 0.012, 0.004, hardMaple
 };
 } // namespace detail
 

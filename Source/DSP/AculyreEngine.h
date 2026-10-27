@@ -2,15 +2,15 @@
 //
 // Every string is open (one pitch per string, no frets). Each is a pair of
 // stiff-string waveguides, one per polarisation, and all of them end on one
-// rigid bridge bar standing on a modal soundbox: the bar's heave and rock
-// carry the strings' motion normal to the soundboard, its sway the motion
-// parallel to it. Idle strings stay in the junction, so they ring in
-// sympathy. The soundbox radiates through its plate modes and its air
-// resonance into a small room.
+// bridge bar glued to a modal soundbox. The bar bends with the top, so each
+// string drives it at its own point with its motion normal to the
+// soundboard; the motion parallel to it tips the bar about its foot. Idle
+// strings stay in the junction, so they ring in sympathy. The soundbox
+// radiates through its modes and its air resonance into a small room.
 //
 // This is a feasibility prototype (README, Known gaps), not a product: setup
-// calls allocate nothing but are not real-time safe; process(), the note
-// calls and setControls() are.
+// calls allocate working space and are not real-time safe; process(), the
+// note calls and setControls() are.
 
 #pragma once
 
@@ -66,6 +66,7 @@ struct BodySpec
     double bridgeTo;
     double bridgeHeight;   // string height above the soundboard, m
     double bridgeMass;     // kg
+    WoodSpec bridgeWood;   // the bar's wood, its grain along the bar
 };
 
 enum class Technique
@@ -180,15 +181,15 @@ public:
     {
         double frequency;
         double q;
-        double heave;       // bridge participation, unit modal mass
+        double bridge;      // rms shape at the strings' bridge points, unit modal mass
         double monopole;    // net volume per unit modal displacement, m^2
         double airShare;    // kinetic energy share of the air in the hole
     };
     [[nodiscard]] int modeCount() const noexcept;
     [[nodiscard]] ModeReport modeReport(int mode) const noexcept;
-    // Driving-point mobility of the bridge at a lever arm u (-1 bass end,
-    // +1 treble end), normal to the top, m/s/N, with the strings' load.
-    [[nodiscard]] double bridgeMobilityMagnitude(double frequency, double lever) const noexcept;
+    // Driving-point mobility of the bridge at a string's point, normal to the
+    // top, m/s/N: the soundbox and bar alone, without the strings' load.
+    [[nodiscard]] double bridgeMobilityMagnitude(double frequency, int string) const noexcept;
 
 private:
     struct State;

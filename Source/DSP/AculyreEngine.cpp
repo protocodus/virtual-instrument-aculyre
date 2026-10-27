@@ -1710,7 +1710,9 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
 
     // Contact width and release time of the technique: the fingertip's pad,
     // a nail's or a plectrum's edge. The string slides off faster from a
-    // harder stroke, so it leaves brighter. Authored values.
+    // harder stroke, so it leaves brighter. Authored values; the release
+    // time is of the order of Acustra's (a 0.2 mm edge over the string's
+    // speed of a metre or two per second).
     double contact = 0.005, release = 0.10e-3;
     switch (controls.technique)
     {
@@ -1737,7 +1739,10 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         // The displacement the held force sets, A = F x (L - x) / (T L).
         const double amplitude = force * pluckPoint * (length - pluckPoint) / (voice.tension * length)
                                * std::sqrt(plane == 0 ? normalShare : 1.0 - normalShare);
-        const double width = std::sqrt(contact * contact + std::pow(waveSpeed * release, 2.0));
+        // The contact only rounds the apex: harpists' fingers touch at most
+        // 2 cm of string, which filters nothing below 6.7 kHz on a concert
+        // harp (Chadefaux et al., JASA 131 (2012) 844, Table V).
+        const double width = contact;
         const double kink = amplitude * (1.0 / pluckPoint + 1.0 / (length - pluckPoint));
         // The released shape, a triangle rounded by a Gaussian of `width`.
         const auto shape = [&] (double x)
@@ -1766,9 +1771,27 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
                 integral = shape(2.0 * length - start) - shape(2.0 * length - end);
             else
                 integral = (shape(length) - shape(start)) + (shape(length) - shape(2.0 * length - end));
-            const double value = 0.5 * waveSpeed * integral / cellLength;
-            wave[static_cast<std::size_t>(k)] = value;
-            mean += value;
+            wave[static_cast<std::size_t>(k)] = 0.5 * waveSpeed * integral / cellLength;
+        }
+        // The release: the held force unloads exponentially as the string
+        // slides off, as Acustra's slip does (a Gaussian release of the same
+        // time left a lyre harp phrase 10 dB short of its recording from
+        // 1.25 to 5 kHz, the exponential 7.6 dB). Each kink reaching the
+        // bridge arrives smoothed by that one-pole; over the loop's period it
+        // runs circularly, starting from its steady state at the period's end.
+        const double pole = std::exp(-1.0 / (release * sampleRate_));
+        double weighted = 0.0, weight = 1.0;
+        for (int k = count - 1; k >= 0; --k)
+        {
+            weighted += weight * wave[static_cast<std::size_t>(k)];
+            weight *= pole;
+        }
+        double smoothed = (1.0 - pole) * weighted / (1.0 - weight);
+        for (int k = 0; k < count; ++k)
+        {
+            smoothed = pole * smoothed + (1.0 - pole) * wave[static_cast<std::size_t>(k)];
+            wave[static_cast<std::size_t>(k)] = smoothed;
+            mean += smoothed;
         }
         mean /= count;
         for (int k = 0; k < count; ++k)

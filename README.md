@@ -174,12 +174,14 @@ four-note chords at velocities 70-110, at a median of -9 VU at its own
 controls; `piezoGain` puts the piezo alone within 1 dB of that. Unchecked,
 the hardest playing, chords of up to six strings at full velocity with a
 plectrum, would read up to +8 VU and peak at +10 dBFS. So the Performer
-ends in an output stage: a compressor with ballistics near the meter's
-(80 ms attack, 300 ms release, ratio 10, knee centred at -2 VU), then a peak
-limiter that looks 2 ms ahead and holds every sample under -1.5 dBFS. Single
-notes pass it untouched, typical chords read 0.4-1.0 dB lower, mostly from
-their attacks, and the hardest chords read -1 VU or less. The look-ahead delays
-the output by 2 ms (96 samples at 48 kHz).
+ends in the portfolio's shared output stage (`OutputStage.h`, the same in
+every new instrument) with its VU guard: a compressor on the louder
+channel's power with ballistics near the meter's (80 ms attack, 300 ms
+release, ratio 10, knee centred at -2 VU), then a peak limiter that looks
+2 ms ahead and holds every sample under -1.5 dBFS. Single notes pass it
+untouched, typical chords read 0.1-1.4 dB lower, mostly from their attacks,
+and the hardest chords read -1 VU or less. The look-ahead delays the output
+by 2 ms rounded down to 4 samples (88 at 44.1 kHz, 96 at 48 kHz).
 
 **Cost.** The steel lyre harp (32 waveguides, 234 modes and the room) renders
 about 20 times faster than real time on one core of a cloud container at 1x,

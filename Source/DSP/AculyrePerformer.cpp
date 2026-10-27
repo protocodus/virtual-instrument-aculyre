@@ -33,7 +33,8 @@ void Performer::prepare(double sampleRate, int oversampling)
         factor_ *= 2;
     for (auto& decimator : decimators_)
         decimator.design(factor_);
-    leveller_.prepare(sampleRate);
+    stage_.Prepare(sampleRate, protocodus::kVuGuard);
+    stageSilence_ = stage_.DelaySamples() + 1;
     for (int index = 0; index < instrumentCount; ++index)
     {
         AculyreEngine& engine = *engines_[static_cast<std::size_t>(index)];
@@ -53,7 +54,8 @@ void Performer::reset() noexcept
         engine->reset();
     for (auto& decimator : decimators_)
         decimator.clear();
-    leveller_.clear();
+    stage_.Reset();
+    stageSilence_ = stage_.DelaySamples() + 1;
     fading_ = -1;
     silentPushes_ = 0;
 }
@@ -99,15 +101,14 @@ void Performer::process(float* left, float* right, int numSamples) noexcept
     if (factor_ == 1)
     {
         render(left, right, numSamples);
-        leveller_.process(left, right, numSamples);
+        finish(left, right, numSamples);
         return;
     }
     if (fading_ < 0 && engines_[static_cast<std::size_t>(active_)]->idle()
-        && silentPushes_ >= decimators_[0].length && leveller_.resting())
+        && silentPushes_ >= decimators_[0].length && stageResting())
     {
         std::fill(left, left + numSamples, 0.0f);
         std::fill(right, right + numSamples, 0.0f);
-        leveller_.process(left, right, numSamples);
         return;
     }
     const int chunk = static_cast<int>(fast_[0].size()) / factor_;
@@ -129,7 +130,33 @@ void Performer::process(float* left, float* right, int numSamples) noexcept
         }
         done += count;
     }
-    leveller_.process(left, right, numSamples);
+    finish(left, right, numSamples);
+}
+
+void Performer::finish(float* left, float* right, int numSamples) noexcept
+{
+    const int delay = stage_.DelaySamples();
+    for (int i = 0; i < numSamples; ++i)
+    {
+        if (left[i] == 0.0f && right[i] == 0.0f)
+        {
+            if (stageResting())
+                continue;
+            // The delay now holds only silence, so this frame's output is
+            // silence too.
+            if (++stageSilence_ > delay)
+            {
+                stage_.Reset();
+                continue;
+            }
+        }
+        else
+            stageSilence_ = 0;
+        std::array<float, 2> frame { left[i], right[i] };
+        stage_.Process(frame);
+        left[i] = frame[0];
+        right[i] = frame[1];
+    }
 }
 
 void Performer::render(float* left, float* right, int numSamples) noexcept
@@ -156,100 +183,6 @@ void Performer::render(float* left, float* right, int numSamples) noexcept
             fading.reset();
             fading_ = -1;
         }
-    }
-}
-
-void Performer::Leveller::prepare(double sampleRate) noexcept
-{
-    lookahead = std::clamp(static_cast<int>(std::lround(lookaheadSeconds * sampleRate)), 0, ring - 2);
-    attack = 1.0 - std::exp(-1.0 / (attackSeconds * sampleRate));
-    release = 1.0 - std::exp(-1.0 / (releaseSeconds * sampleRate));
-    limiterRelease = std::exp(-1.0 / (limiterReleaseSeconds * sampleRate));
-    clear();
-}
-
-void Performer::Leveller::clear() noexcept
-{
-    envelope = 0.0;
-    held = 1.0;
-    gains.fill(1.0);
-    gainSum = lookahead + 1.0;
-    for (auto& line : delay)
-        line.fill(0.0f);
-    queueFront = queueBack = 0;
-    silent = lookahead + 1;
-}
-
-void Performer::Leveller::process(float* left, float* right, int numSamples) noexcept
-{
-    // At rest, silence in is silence out and changes nothing but the clock.
-    if (resting() && std::all_of(left, left + numSamples, [] (float x) { return x == 0.0f; })
-        && std::all_of(right, right + numSamples, [] (float x) { return x == 0.0f; }))
-    {
-        now += static_cast<unsigned>(numSamples);
-        return;
-    }
-    constexpr unsigned mask = ring - 1;
-    const unsigned span = static_cast<unsigned>(lookahead);
-    const double slope = 1.0 - 1.0 / ratio;
-    // The mean square where the knee starts; below it the compressor is idle.
-    const double kneeStart = std::pow(10.0, (thresholdDb - 0.5 * kneeDb) / 10.0);
-    for (int i = 0; i < numSamples; ++i)
-    {
-        const double inLeft = left[i], inRight = right[i];
-        const bool wasResting = resting();
-        silent = inLeft == 0.0 && inRight == 0.0 ? std::min(silent + 1, lookahead + 1) : 0;
-
-        // The compressor: one-pole ballistics on the power, a soft knee.
-        const double power = 0.5 * (inLeft * inLeft + inRight * inRight);
-        envelope += (power - envelope) * (power > envelope ? attack : release);
-        double gain = 1.0;
-        if (envelope > kneeStart)
-        {
-            const double over = 10.0 * std::log10(envelope) - thresholdDb;
-            const double reduction = over < 0.5 * kneeDb
-                                   ? slope * (over + 0.5 * kneeDb) * (over + 0.5 * kneeDb) / (2.0 * kneeDb)
-                                   : slope * over;
-            gain = std::pow(10.0, -0.05 * reduction);
-        }
-        const double x0 = inLeft * gain, x1 = inRight * gain;
-
-        // The limiter: the gain each sample needs, its minimum over the
-        // look-ahead, an exponential release, then a moving average over the
-        // look-ahead. Every gain averaged at the delayed sample is at most
-        // what that sample needs, so no sample passes the ceiling.
-        const double peak = std::max(std::abs(x0), std::abs(x1));
-        const double needed = peak > ceiling ? ceiling / peak : 1.0;
-        while (queueBack != queueFront && queueGain[(queueBack - 1) & mask] >= needed)
-            --queueBack;
-        queueGain[queueBack & mask] = needed;
-        queueTime[queueBack & mask] = now;
-        ++queueBack;
-        while (now - queueTime[queueFront & mask] > span)
-            ++queueFront;
-        held = std::min(queueGain[queueFront & mask], 1.0 - (1.0 - held) * limiterRelease);
-        gainSum += held - gains[(now - span - 1) & mask];
-        gains[now & mask] = held;
-        // Re-add the window now and then, at fixed sample times, so rounding
-        // cannot drift and the block size cannot change the result.
-        if ((now & mask) == 0)
-        {
-            gainSum = 0.0;
-            for (unsigned k = 0; k <= span; ++k)
-                gainSum += gains[(now - k) & mask];
-        }
-        const double smoothed = gainSum / (lookahead + 1.0);
-        delay[0][now & mask] = static_cast<float>(x0);
-        delay[1][now & mask] = static_cast<float>(x1);
-        const double outLeft = delay[0][(now - span) & mask] * smoothed;
-        const double outRight = delay[1][(now - span) & mask] * smoothed;
-        left[i] = static_cast<float>(std::clamp(outLeft, -ceiling, ceiling));
-        right[i] = static_cast<float>(std::clamp(outRight, -ceiling, ceiling));
-        ++now;
-        // The delay holds only silence now: settle every state at once, as
-        // the engine does when it sleeps.
-        if (resting() && !wasResting)
-            clear();
     }
 }
 

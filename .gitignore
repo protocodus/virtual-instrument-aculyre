@@ -1,0 +1,14 @@
+# CMake output
+/build*/
+/out/
+compile_commands.json
+__pycache__/
+*.py[cod]
+
+# Audio is rendered locally (Tools/render_demo_set.sh) and never committed.
+*.[wW][aA][vV]
+
+.DS_Store
+.idea/
+.vscode/
+*~

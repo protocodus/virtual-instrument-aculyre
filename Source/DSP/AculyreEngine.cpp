@@ -1,0 +1,1814 @@
+#include "AculyreEngine.h"
+
+#include <algorithm>
+#include <cmath>
+#include <complex>
+#include <cstring>
+#include <limits>
+
+namespace aculyre
+{
+namespace
+{
+
+constexpr double pi = 3.14159265358979323846;
+using Complex = std::complex<double>;
+
+// Air at 20 C.
+constexpr double airDensity = 1.204;      // kg/m^3
+constexpr double airViscosity = 1.81e-5;  // Pa s
+constexpr double soundSpeed = 343.0;      // m/s
+// The microphones' distance from the soundbox, for the far-field monopole
+// pressure rho/(4 pi r) dQ/dt.
+constexpr double microphoneDistance = 0.5;
+
+// Loss at the yoke end (tuning pin and crossbar), per round trip. Authored:
+// no lyre measurement separates it, and it only matters where the air and
+// the material leave a string almost lossless.
+constexpr double yokeRoundTripGain = 0.9995;
+
+constexpr int delayCapacity = 4096;  // a string down to 47 Hz at 192 kHz
+constexpr int controlPeriod = 16;
+constexpr int maxDispersionStages = 8;
+
+// ---------------------------------------------------------------------------
+// String loss laws, copied from Acustra 1.9.0 (Source/DSP/AcustraEngine.cpp),
+// where their derivations and references are given in full: the bending loss
+// of Valette's and Woodhouse's string damping models, 1/Q_n = eta B n^2 /
+// (1 + B n^2), as a unit-DC two-pole section, and a loss angle constant over
+// the band (Paté, Le Carrou and Fabre, JASA 135 (2014) 3045) as a unit-DC
+// two-pole two-zero section of two relaxations.
+
+double stretchedPartial(double partial, double inharmonicity) noexcept
+{
+    return partial * std::sqrt((1.0 + inharmonicity * partial * partial)
+                               / (1.0 + inharmonicity));
+}
+
+double bendingLossRate(double partial, double inharmonicity, double factor,
+                       double fundamental) noexcept
+{
+    const double bending = inharmonicity * partial * partial;
+    return pi * fundamental * stretchedPartial(partial, inharmonicity)
+         * factor * bending / (1.0 + bending);
+}
+
+std::complex<double> insideRoot(std::complex<double> u) noexcept
+{
+    const std::complex<double> sum = 2.0 - u;
+    const std::complex<double> root = std::sqrt(sum * sum - 4.0);
+    const std::complex<double> first = 0.5 * (sum + root);
+    const std::complex<double> second = 0.5 * (sum - root);
+    return std::abs(first) < std::abs(second) ? first : second;
+}
+
+// H(z) = (gain + n1 z^-1 + n2 z^-2) / (1 + a1 z^-1 + a2 z^-2), unit gain at DC.
+struct LossSectionDesign
+{
+    double gain { 1.0 };
+    double a1 { 0.0 };
+    double a2 { 0.0 };
+    double n1 { 0.0 };
+    double n2 { 0.0 };
+};
+
+LossSectionDesign bendingLossSection(double factor, double inharmonicity,
+                                     double fundamental, double sampleRate) noexcept
+{
+    LossSectionDesign section;
+    if (!(factor > 0.0) || !(inharmonicity > 0.0) || !(fundamental > 0.0)
+        || !(sampleRate > 0.0))
+        return section;
+    constexpr double collocationLimit = 0.3;
+    double below = 1.0;
+    double above = collocationLimit * sampleRate / fundamental;
+    if (!(above > 1.0))
+        return section;
+    for (int iteration = 0; iteration < 48; ++iteration)
+    {
+        const double middle = 0.5 * (below + above);
+        if (stretchedPartial(middle, inharmonicity) * fundamental
+            < collocationLimit * sampleRate)
+            below = middle;
+        else
+            above = middle;
+    }
+    const double highest = below;
+    const auto partialAt = [&] (double rate)
+    {
+        double lower = 1.0;
+        double upper = highest;
+        if (bendingLossRate(upper, inharmonicity, factor, fundamental) <= rate)
+            return upper;
+        for (int iteration = 0; iteration < 48; ++iteration)
+        {
+            const double middle = 0.5 * (lower + upper);
+            if (bendingLossRate(middle, inharmonicity, factor, fundamental) < rate)
+                lower = middle;
+            else
+                upper = middle;
+        }
+        return 0.5 * (lower + upper);
+    };
+    constexpr double decibelsPerNeper = 8.685889638065035;
+    const double upperPartial = partialAt(160.0 / decibelsPerNeper);
+    const double lowerPartial = std::min(partialAt(20.0 / decibelsPerNeper),
+                                         0.5 * upperPartial);
+    if (!(lowerPartial >= 1.0) || !(upperPartial > lowerPartial))
+        return section;
+    double target[2] {};
+    double s[2] {};
+    const double partials[2] { lowerPartial, upperPartial };
+    for (int index = 0; index < 2; ++index)
+    {
+        const double loss = bendingLossRate(partials[index], inharmonicity,
+                                            factor, fundamental) / fundamental;
+        target[index] = std::expm1(2.0 * loss);
+        const double halfOmega = pi * fundamental
+            * stretchedPartial(partials[index], inharmonicity) / sampleRate;
+        s[index] = std::sin(halfOmega) * std::sin(halfOmega);
+    }
+    const double determinant = 64.0 * s[0] * s[1] * (s[1] - s[0]);
+    if (!(std::abs(determinant) > 1.0e-300))
+        return section;
+    double p = 16.0 * (target[0] * s[1] * s[1] - target[1] * s[0] * s[0]) / determinant;
+    double q = 4.0 * (s[0] * target[1] - s[1] * target[0]) / determinant;
+    if (q < 0.0)
+    {
+        q = 0.0;
+        p = target[1] / (4.0 * s[1]);
+    }
+    else if (p < 0.0)
+    {
+        p = 0.0;
+        q = target[1] / (16.0 * s[1] * s[1]);
+    }
+    if (!(p > 0.0 || q > 0.0) || !std::isfinite(p) || !std::isfinite(q))
+        return section;
+    if (q > 0.0)
+    {
+        const std::complex<double> discriminant
+            = std::sqrt(std::complex<double>(p * p - 4.0 * q, 0.0));
+        const std::complex<double> first = insideRoot((-p + discriminant) / (2.0 * q));
+        const std::complex<double> second = insideRoot((-p - discriminant) / (2.0 * q));
+        section.a1 = -(first + second).real();
+        section.a2 = (first * second).real();
+    }
+    else
+    {
+        section.a1 = -insideRoot(std::complex<double>(-1.0 / p, 0.0)).real();
+        section.a2 = 0.0;
+    }
+    section.gain = 1.0 + section.a1 + section.a2;
+    if (!std::isfinite(section.gain) || !(section.gain > 0.0)
+        || !(std::abs(section.a2) < 1.0)
+        || !(std::abs(section.a1) < 1.0 + section.a2))
+        return {};
+    return section;
+}
+
+LossSectionDesign constantLossSection(double delta, double inharmonicity,
+                                      double fundamental, double sampleRate) noexcept
+{
+    LossSectionDesign section;
+    if (!(delta > 0.0) || !(inharmonicity >= 0.0) || !(fundamental > 0.0)
+        || !(sampleRate > 0.0))
+        return section;
+    constexpr double decibelsPerNeper = 8.685889638065035;
+    const double topHz = std::min(0.45 * sampleRate, 20000.0);
+    double below = 1.0;
+    double above = topHz / fundamental + 1.0;
+    if (!(stretchedPartial(2.0, inharmonicity) * fundamental < topHz))
+        return section;
+    for (int iteration = 0; iteration < 48; ++iteration)
+    {
+        const double middle = 0.5 * (below + above);
+        if (stretchedPartial(middle, inharmonicity) * fundamental < topHz)
+            below = middle;
+        else
+            above = middle;
+    }
+    const double top = below;
+    const auto rateAt = [&] (double partial)
+    {
+        return pi * fundamental * stretchedPartial(partial, inharmonicity) * delta;
+    };
+    const auto partialAt = [&] (double rate)
+    {
+        double lower = 1.0;
+        double upper = top;
+        if (rateAt(upper) <= rate)
+            return upper;
+        if (rateAt(lower) >= rate)
+            return lower;
+        for (int iteration = 0; iteration < 48; ++iteration)
+        {
+            const double middle = 0.5 * (lower + upper);
+            if (rateAt(middle) < rate)
+                lower = middle;
+            else
+                upper = middle;
+        }
+        return 0.5 * (lower + upper);
+    };
+    double lowest = std::max(2.0, partialAt(3.0 / decibelsPerNeper));
+    if (!(lowest < 0.8 * top))
+        lowest = std::max(2.0, std::min(lowest, 0.25 * top));
+    double highest = std::min(top, partialAt(300.0 / decibelsPerNeper));
+    highest = std::max(highest, std::min(top, 1.5 * lowest));
+    if (!(highest > lowest))
+        return section;
+    constexpr int bandCount = 12;
+    constexpr int tailCount = 4;
+    const bool tail = top > 1.05 * highest;
+    const int count = bandCount + (tail ? tailCount : 0);
+    double u[bandCount + tailCount] {};
+    double target[bandCount + tailCount] {};
+    double weight[bandCount + tailCount] {};
+    double loss[bandCount + tailCount] {};
+    for (int index = 0; index < count; ++index)
+    {
+        const bool inBand = index < bandCount;
+        const double partial = inBand
+            ? lowest * std::pow(highest / lowest,
+                                static_cast<double>(index) / (bandCount - 1))
+            : highest * std::pow(top / highest,
+                                 static_cast<double>(index - bandCount + 1) / tailCount);
+        const double half = pi * fundamental
+            * stretchedPartial(partial, inharmonicity) / sampleRate;
+        u[index] = 4.0 * std::sin(half) * std::sin(half);
+        loss[index] = rateAt(partial) / fundamental;
+        target[index] = std::expm1(2.0 * loss[index]);
+        weight[index] = (inBand ? 1.0 : 0.1) / target[index];
+    }
+    const double first = u[0];
+    const double last = u[bandCount - 1];
+    if (!(first > 0.0) || !(last > first))
+        return section;
+    constexpr double lowerCorners[] { -0.25, 0.10, 0.15, 0.20 };
+    constexpr double upperCorners[] { 0.90, 0.95, 1.00, 1.05, 1.50 };
+    double bestError = std::numeric_limits<double>::infinity();
+    double bestU1 = 0.0, bestU2 = 0.0, bestA = 0.0, bestB = 0.0;
+    for (const double lowerCorner : lowerCorners)
+        for (const double upperCorner : upperCorners)
+        {
+            const double u1 = first * std::pow(last / first, lowerCorner);
+            const double u2 = first * std::pow(last / first, upperCorner);
+            double s11 = 0.0, s12 = 0.0, s22 = 0.0, r1 = 0.0, r2 = 0.0;
+            for (int index = 0; index < count; ++index)
+            {
+                const double denominator = (1.0 + u[index] / u1) * (1.0 + u[index] / u2);
+                const double phi1 = weight[index] * u[index] / denominator;
+                const double phi2 = phi1 * u[index];
+                const double y = weight[index] * target[index];
+                s11 += phi1 * phi1;
+                s12 += phi1 * phi2;
+                s22 += phi2 * phi2;
+                r1 += phi1 * y;
+                r2 += phi2 * y;
+            }
+            const double determinant = s11 * s22 - s12 * s12;
+            double a = 0.0, b = 0.0;
+            if (determinant > 1.0e-12 * s11 * s22)
+            {
+                a = (r1 * s22 - r2 * s12) / determinant;
+                b = (r2 * s11 - r1 * s12) / determinant;
+            }
+            if (!(a >= 0.0) || !(a + 4.0 * b >= 0.0))
+            {
+                a = s11 > 0.0 ? r1 / s11 : 0.0;
+                b = 0.0;
+            }
+            if (!(a > 0.0) || !std::isfinite(a) || !std::isfinite(b))
+                continue;
+            double error = 0.0;
+            for (int index = 0; index < bandCount; ++index)
+            {
+                const double denominator = (1.0 + u[index] / u1) * (1.0 + u[index] / u2);
+                const double fitted = 0.5 * std::log1p(
+                    (a * u[index] + b * u[index] * u[index]) / denominator);
+                error = std::max(error, std::abs(fitted / loss[index] - 1.0));
+            }
+            if (error < bestError)
+            {
+                bestError = error;
+                bestU1 = u1;
+                bestU2 = u2;
+                bestA = a;
+                bestB = b;
+            }
+        }
+    if (!(bestError < std::numeric_limits<double>::infinity()))
+        return section;
+    const double zero1 = insideRoot(std::complex<double>(-bestU1, 0.0)).real();
+    const double zero2 = insideRoot(std::complex<double>(-bestU2, 0.0)).real();
+    const double b1 = -(zero1 + zero2);
+    const double b2 = zero1 * zero2;
+    const double p = 1.0 / bestU1 + 1.0 / bestU2 + bestA;
+    const double q = 1.0 / (bestU1 * bestU2) + bestB;
+    double a1 = 0.0, a2 = 0.0;
+    if (q != 0.0)
+    {
+        const std::complex<double> discriminant
+            = std::sqrt(std::complex<double>(p * p - 4.0 * q, 0.0));
+        const std::complex<double> pole1 = insideRoot((-p + discriminant) / (2.0 * q));
+        const std::complex<double> pole2 = insideRoot((-p - discriminant) / (2.0 * q));
+        a1 = -(pole1 + pole2).real();
+        a2 = (pole1 * pole2).real();
+    }
+    else
+    {
+        a1 = -insideRoot(std::complex<double>(-1.0 / p, 0.0)).real();
+    }
+    const double gain = (1.0 + a1 + a2) / (1.0 + b1 + b2);
+    if (!std::isfinite(a1) || !std::isfinite(a2) || !std::isfinite(gain)
+        || !(gain > 0.0) || !(std::abs(a2) < 1.0) || !(std::abs(a1) < 1.0 + a2)
+        || !(std::abs(b2) < 1.0) || !(std::abs(b1) < 1.0 + b2))
+        return section;
+    section.gain = gain;
+    section.a1 = a1;
+    section.a2 = a2;
+    section.n1 = gain * b1;
+    section.n2 = gain * b2;
+    return section;
+}
+
+// Second-order Thiran allpass for a delay of `samples` (Acustra 1.9.0).
+void thiranCoefficients(double samples, double& a1, double& a2) noexcept
+{
+    a1 = -2.0 * (samples - 2.0) / (samples + 1.0);
+    a2 = (samples - 2.0) * (samples - 1.0) / ((samples + 1.0) * (samples + 2.0));
+}
+// End of the code copied from Acustra.
+// ---------------------------------------------------------------------------
+
+// Phase lag of an allpass z^-N A(1/z)/A(z) is N omega + 2 arg A(e^{j omega});
+// A's roots lie inside the circle, so arg A never wraps.
+double allpassLag(int order, double c1, double c2, double omega) noexcept
+{
+    const Complex a = 1.0 + c1 * std::exp(Complex(0.0, -omega))
+                    + c2 * std::exp(Complex(0.0, -2.0 * omega));
+    return order * omega + 2.0 * std::arg(a);
+}
+
+// Dispersion as `stages` identical first-order allpass sections (Rauhala and
+// Valimaki's tunable design, here searched rather than read off their
+// formula): the stage count and coefficient whose worst partial up to the
+// 12th, and below 5 kHz, lands nearest in cents to the stiff-string law, with
+// the rest of the loop a pure delay tuned to f0. Acustra fits the same 12
+// partials. One section fitted to a single high partial left a steel G3's 2nd
+// to 5th partials 30 to 120 cents sharp; no cascade of identical sections
+// fits a bass string's 25 partials below 5 kHz (ours stays within 6 cents to
+// H12 and falls short above it, a fifth of the stretch by H16).
+struct DispersionDesign
+{
+    int stages { 1 };
+    double coefficient { 0.0 };
+    double worstCents { 0.0 };
+};
+
+DispersionDesign designDispersion(double fundamental, double inharmonicity, double sampleRate) noexcept
+{
+    const double omega1 = 2.0 * pi * fundamental / sampleRate;
+    const int partials = std::clamp(static_cast<int>(std::floor(std::min(5000.0, 0.2 * sampleRate) / fundamental)), 2, 12);
+    // A first-order section's phase lag and group delay, (a + z^-1)/(1 + a z^-1).
+    const auto lag = [] (double a, double omega)
+    {
+        return omega - 2.0 * std::atan2(a * std::sin(omega), 1.0 + a * std::cos(omega));
+    };
+    const auto groupDelay = [] (double a, double omega)
+    {
+        return (1.0 - a * a) / (1.0 + 2.0 * a * std::cos(omega) + a * a);
+    };
+    std::array<DispersionDesign, maxDispersionStages + 1> best {};
+    for (int stages = 1; stages <= maxDispersionStages; ++stages)
+    {
+        best[static_cast<std::size_t>(stages)].worstCents = std::numeric_limits<double>::infinity();
+        for (int step = 0; step <= 380; ++step)
+        {
+            const double a = -0.0025 * step;
+            const double delay = (2.0 * pi - stages * lag(a, omega1)) / omega1;
+            // The line, its Thiran section and the loss filters need some.
+            if (delay < 8.0)
+                break;
+            double worst = 0.0;
+            for (int n = 2; n <= partials; ++n)
+            {
+                const double target = omega1 * stretchedPartial(n, inharmonicity);
+                double omega = target;
+                for (int iteration = 0; iteration < 4; ++iteration)
+                    omega -= (omega * delay + stages * lag(a, omega) - 2.0 * pi * n)
+                           / (delay + stages * groupDelay(a, omega));
+                worst = std::max(worst, std::abs(1200.0 * std::log2(omega / target)));
+            }
+            if (worst < best[static_cast<std::size_t>(stages)].worstCents)
+                best[static_cast<std::size_t>(stages)] = { stages, a, worst };
+        }
+    }
+    // The fewest sections within a cent; otherwise the closest fit.
+    DispersionDesign chosen = best[1];
+    for (int stages = 1; stages <= maxDispersionStages; ++stages)
+    {
+        const DispersionDesign& design = best[static_cast<std::size_t>(stages)];
+        if (design.worstCents <= 1.0)
+            return design;
+        if (design.worstCents < chosen.worstCents)
+            chosen = design;
+    }
+    return chosen;
+}
+
+Complex lossSectionResponse(const LossSectionDesign& s, double omega) noexcept
+{
+    const Complex z1 = std::exp(Complex(0.0, -omega));
+    const Complex z2 = z1 * z1;
+    return (s.gain + s.n1 * z1 + s.n2 * z2) / (1.0 + s.a1 * z1 + s.a2 * z2);
+}
+
+// y = x - (1 - z^-1)(c0 + c1 z^-1) / A(z) x: the section above with its unit
+// gain at DC exact in any precision (Acustra's StringLoop runs its loss
+// sections this way).
+struct UnitDcSection
+{
+    double c0 { 0.0 }, c1 { 0.0 }, a1 { 0.0 }, a2 { 0.0 };
+    double previousInput { 0.0 }, previousDifference { 0.0 };
+    double u1 { 0.0 }, u2 { 0.0 };
+    bool active { false };
+
+    void design(const LossSectionDesign& s) noexcept
+    {
+        active = s.gain != 1.0 || s.a1 != 0.0 || s.a2 != 0.0;
+        c0 = 1.0 - s.gain;
+        c1 = s.n2 - s.a2;
+        a1 = s.a1;
+        a2 = s.a2;
+    }
+    void reset() noexcept { previousInput = previousDifference = u1 = u2 = 0.0; }
+    double process(double x) noexcept
+    {
+        if (!active)
+            return x;
+        const double difference = x - previousInput;
+        previousInput = x;
+        const double w = c0 * difference + c1 * previousDifference;
+        previousDifference = difference;
+        const double u = w - a1 * u1 - a2 * u2;
+        u2 = u1;
+        u1 = u;
+        return x - u;
+    }
+};
+
+// One polarisation of one string: the round trip from the bridge to the yoke
+// and back, holding the velocity wave that will next arrive at the bridge.
+// The yoke's inversion is folded into what the bridge writes.
+struct Loop
+{
+    std::array<float, delayCapacity> line {};
+    // A pluck's first round trip, still to arrive at the bridge, by sample.
+    // It enters at the loop's output rather than the line because the loop's
+    // filters hold part of a period (the dispersion stages up to a fifth of
+    // it on a bass string): a wave squeezed into the line alone would leave
+    // a gap and pluck at the wrong point.
+    std::array<float, delayCapacity> pending {};
+    int write { 0 };
+    int whole { 64 };
+    double fraction { 4.0 };
+    double thiranA1 { 0.0 }, thiranA2 { 0.0 };
+    double tx1 { 0.0 }, tx2 { 0.0 }, ty1 { 0.0 }, ty2 { 0.0 };
+    int dispersionStages { 0 };
+    double dispersion { 0.0 };
+    double dispersionCents { 0.0 };  // the design's worst partial error
+    std::array<double, maxDispersionStages> dispersionState {};
+    UnitDcSection constantLoss {};
+    UnitDcSection bendingLoss {};
+    LossSectionDesign constantDesign {};
+    LossSectionDesign bendingDesign {};
+    double gain { 1.0 };
+    double damping { 1.0 };
+    double dampingTarget { 1.0 };
+    double dampingStep { 0.0 };
+    // The line delay at rest (whole + fraction) and the whole loop's delay
+    // at the fundamental, both in samples.
+    double restLineDelay { 68.0 };
+    double loopDelay { 70.0 };
+
+    void reset() noexcept
+    {
+        line.fill(0.0f);
+        pending.fill(0.0f);
+        tx1 = tx2 = ty1 = ty2 = 0.0;
+        dispersionState.fill(0.0);
+        constantLoss.reset();
+        bendingLoss.reset();
+        damping = dampingTarget = 1.0;
+        dampingStep = 0.0;
+        setLineDelay(restLineDelay);
+    }
+
+    // Keeps the Thiran fraction in [1.1, 5.1): a tension glide shortens the
+    // delay by a few samples from a rest fraction in [4, 5) before the tap has
+    // to move.
+    void setLineDelay(double samples) noexcept
+    {
+        int newWhole = whole;
+        double newFraction = samples - newWhole;
+        if (newFraction < 1.1 || newFraction >= 5.1)
+        {
+            newWhole = static_cast<int>(std::floor(samples - 4.0));
+            newFraction = samples - newWhole;
+        }
+        newWhole = std::clamp(newWhole, 1, delayCapacity - 8);
+        whole = newWhole;
+        fraction = samples - whole;
+        thiranCoefficients(fraction, thiranA1, thiranA2);
+    }
+
+    double read() noexcept
+    {
+        const double x = line[static_cast<std::size_t>((write - whole) & (delayCapacity - 1))];
+        double y = thiranA2 * x + thiranA1 * tx1 + tx2 - thiranA1 * ty1 - thiranA2 * ty2;
+        tx2 = tx1;
+        tx1 = x;
+        ty2 = ty1;
+        ty1 = y;
+        for (int stage = 0; stage < dispersionStages; ++stage)
+        {
+            const double out = dispersion * y + dispersionState[stage];
+            dispersionState[stage] = y - dispersion * out;
+            y = out;
+        }
+        y = constantLoss.process(y);
+        y = bendingLoss.process(y);
+        if (dampingStep != 0.0)
+        {
+            damping += dampingStep;
+            if ((dampingStep < 0.0 && damping <= dampingTarget)
+                || (dampingStep > 0.0 && damping >= dampingTarget))
+            {
+                damping = dampingTarget;
+                dampingStep = 0.0;
+            }
+        }
+        float& arriving = pending[static_cast<std::size_t>(write)];
+        y = y * gain * damping + arriving;
+        arriving = 0.0f;
+        return y;
+    }
+
+    void writeSample(double value) noexcept
+    {
+        line[static_cast<std::size_t>(write)] = static_cast<float>(value);
+        write = (write + 1) & (delayCapacity - 1);
+    }
+
+    // The loss per round trip a resting hand adds, reached over one round trip.
+    void setDamping(double target) noexcept
+    {
+        dampingTarget = target;
+        const double steps = std::max(1.0, loopDelay);
+        dampingStep = (target - damping) / steps;
+        if (dampingStep == 0.0)
+            damping = target;
+    }
+
+    // Phase lag of everything in the loop but the line's whole samples and
+    // the Thiran section, at omega (rad/sample).
+    double filterLag(double omega) const noexcept
+    {
+        double lag = 0.0;
+        for (int stage = 0; stage < dispersionStages; ++stage)
+            lag += allpassLag(1, dispersion, 0.0, omega);
+        lag -= std::arg(lossSectionResponse(constantDesign, omega));
+        lag -= std::arg(lossSectionResponse(bendingDesign, omega));
+        return lag;
+    }
+};
+
+// One soundbox mode with unit modal mass: velocity per generalized force
+// s / (s^2 + (w/Q) s + w^2), bilinear at its own frequency (passive at every
+// rate), run in transposed direct form II.
+struct Mode
+{
+    double frequency { 0.0 };
+    double q { 1.0 };
+    double b0 { 0.0 }, b2 { 0.0 }, a1 { 0.0 }, a2 { 0.0 };
+    std::array<double, 3> participation {};  // heave, rock, sway
+    double radiationLeft { 0.0 };
+    double radiationRight { 0.0 };
+    double monopole { 0.0 };
+    double airShare { 0.0 };
+    double s1 { 0.0 }, s2 { 0.0 };
+};
+
+struct Matrix3
+{
+    std::array<std::array<double, 3>, 3> m {};
+
+    static Matrix3 identity() noexcept
+    {
+        Matrix3 r;
+        for (int i = 0; i < 3; ++i)
+            r.m[i][i] = 1.0;
+        return r;
+    }
+    Matrix3 operator*(const Matrix3& o) const noexcept
+    {
+        Matrix3 r;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                for (int k = 0; k < 3; ++k)
+                    r.m[i][j] += m[i][k] * o.m[k][j];
+        return r;
+    }
+    std::array<double, 3> apply(const std::array<double, 3>& v) const noexcept
+    {
+        return { m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+                 m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+                 m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2] };
+    }
+};
+
+template <typename T>
+std::array<std::array<T, 3>, 3> inverse3(const std::array<std::array<T, 3>, 3>& a) noexcept
+{
+    const T det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
+                - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+                + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
+    std::array<std::array<T, 3>, 3> r {};
+    r[0][0] = (a[1][1] * a[2][2] - a[1][2] * a[2][1]) / det;
+    r[0][1] = (a[0][2] * a[2][1] - a[0][1] * a[2][2]) / det;
+    r[0][2] = (a[0][1] * a[1][2] - a[0][2] * a[1][1]) / det;
+    r[1][0] = (a[1][2] * a[2][0] - a[1][0] * a[2][2]) / det;
+    r[1][1] = (a[0][0] * a[2][2] - a[0][2] * a[2][0]) / det;
+    r[1][2] = (a[0][2] * a[1][0] - a[0][0] * a[1][2]) / det;
+    r[2][0] = (a[1][0] * a[2][1] - a[1][1] * a[2][0]) / det;
+    r[2][1] = (a[0][1] * a[2][0] - a[0][0] * a[2][1]) / det;
+    r[2][2] = (a[0][0] * a[1][1] - a[0][1] * a[1][0]) / det;
+    return r;
+}
+
+struct Random
+{
+    std::uint64_t state { 0x9e3779b97f4a7c15ull };
+    void seed(std::uint64_t value) noexcept { state = value ? value : 0x9e3779b97f4a7c15ull; }
+    std::uint64_t next() noexcept
+    {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        return state;
+    }
+    // Uniform in [-1, 1).
+    double bipolar() noexcept
+    {
+        return static_cast<double>(next() >> 11) * (2.0 / 9007199254740992.0) - 1.0;
+    }
+};
+
+double normalCdf(double u) noexcept { return 0.5 * std::erfc(-u / std::sqrt(2.0)); }
+double normalPdf(double u) noexcept { return std::exp(-0.5 * u * u) / std::sqrt(2.0 * pi); }
+
+// A small room around the microphones: early reflections and an eight-line
+// feedback delay network (Householder feedback, one-pole loss per line set
+// for a 1.1 s low and 0.45 s high reverberation time). Authored, like any
+// room: it is the space the demos are heard in, not part of the instrument.
+struct Room
+{
+    static constexpr int lineCount = 8;
+    static constexpr int capacity = 16384;
+    static constexpr int earlyCapacity = 4096;
+    std::array<std::array<float, capacity>, lineCount> lines {};
+    std::array<int, lineCount> lengths {};
+    std::array<int, lineCount> positions {};
+    std::array<double, lineCount> gains {};
+    std::array<double, lineCount> poles {};
+    std::array<double, lineCount> filterStates {};
+    std::array<float, earlyCapacity> early {};
+    int earlyPosition { 0 };
+    std::array<int, 6> earlyTapsLeft {}, earlyTapsRight {};
+    std::array<double, 6> earlyGainsLeft {}, earlyGainsRight {};
+    int predelay { 0 };
+
+    void prepare(double sampleRate) noexcept
+    {
+        constexpr double milliseconds[lineCount] { 23.1, 29.7, 34.3, 39.9, 44.3, 51.7, 57.1, 63.7 };
+        constexpr double lowT60 = 1.1;
+        constexpr double highT60 = 0.45;
+        constexpr double highHz = 4000.0;
+        for (int index = 0; index < lineCount; ++index)
+        {
+            lengths[static_cast<std::size_t>(index)] = std::min(capacity - 1,
+                static_cast<int>(std::lround(milliseconds[index] * 1.0e-3 * sampleRate)));
+            const double length = lengths[static_cast<std::size_t>(index)];
+            const double low = std::pow(10.0, -3.0 * length / (sampleRate * lowT60));
+            const double high = std::pow(10.0, -3.0 * length / (sampleRate * highT60));
+            const double ratio = high / low;
+            const double omega = 2.0 * pi * highHz / sampleRate;
+            double lower = 0.0, upper = 0.999;
+            for (int iteration = 0; iteration < 60; ++iteration)
+            {
+                const double pole = 0.5 * (lower + upper);
+                const double magnitude = (1.0 - pole)
+                    / std::sqrt(1.0 - 2.0 * pole * std::cos(omega) + pole * pole);
+                if (magnitude > ratio)
+                    lower = pole;
+                else
+                    upper = pole;
+            }
+            gains[static_cast<std::size_t>(index)] = low;
+            poles[static_cast<std::size_t>(index)] = 0.5 * (lower + upper);
+        }
+        constexpr double earlyMs[6] { 7.3, 11.9, 14.6, 19.2, 23.8, 27.1 };
+        constexpr double earlyGain[6] { 0.42, -0.33, 0.29, -0.24, 0.2, -0.16 };
+        for (int index = 0; index < 6; ++index)
+        {
+            earlyTapsLeft[static_cast<std::size_t>(index)] = static_cast<int>(earlyMs[index] * 1.0e-3 * sampleRate);
+            earlyTapsRight[static_cast<std::size_t>(index)] = static_cast<int>((earlyMs[index] * 1.13 + 1.1) * 1.0e-3 * sampleRate);
+            earlyGainsLeft[static_cast<std::size_t>(index)] = earlyGain[index];
+            earlyGainsRight[static_cast<std::size_t>(index)] = -earlyGain[5 - index];
+        }
+        predelay = static_cast<int>(9.0e-3 * sampleRate);
+        reset();
+    }
+    void reset() noexcept
+    {
+        for (auto& line : lines)
+            line.fill(0.0f);
+        positions.fill(0);
+        filterStates.fill(0.0);
+        early.fill(0.0f);
+        earlyPosition = 0;
+    }
+    void process(double input, double& left, double& right) noexcept
+    {
+        early[static_cast<std::size_t>(earlyPosition)] = static_cast<float>(input);
+        const auto earlyAt = [&] (int delay)
+        {
+            return static_cast<double>(early[static_cast<std::size_t>(
+                (earlyPosition - delay) & (earlyCapacity - 1))]);
+        };
+        double earlyLeft = 0.0, earlyRight = 0.0;
+        for (std::size_t tap = 0; tap < 6; ++tap)
+        {
+            earlyLeft += earlyGainsLeft[tap] * earlyAt(earlyTapsLeft[tap]);
+            earlyRight += earlyGainsRight[tap] * earlyAt(earlyTapsRight[tap]);
+        }
+        const double delayed = earlyAt(predelay);
+        earlyPosition = (earlyPosition + 1) & (earlyCapacity - 1);
+
+        std::array<double, lineCount> outputs {};
+        double sum = 0.0;
+        for (std::size_t index = 0; index < lineCount; ++index)
+        {
+            const int readPosition = positions[index] - lengths[index];
+            const double value = lines[index][static_cast<std::size_t>(
+                (readPosition + capacity) % capacity)];
+            filterStates[index] = (1.0 - poles[index]) * value + poles[index] * filterStates[index];
+            outputs[index] = gains[index] * filterStates[index];
+            sum += outputs[index];
+        }
+        const double householder = 2.0 / lineCount * sum;
+        double lateLeft = 0.0, lateRight = 0.0;
+        for (std::size_t index = 0; index < lineCount; ++index)
+        {
+            const double feedback = outputs[index] - householder;
+            lines[index][static_cast<std::size_t>(positions[index])]
+                = static_cast<float>(feedback + 0.35 * delayed);
+            positions[index] = (positions[index] + 1) % capacity;
+            lateLeft += (index & 1u) ? -outputs[index] : outputs[index];
+            lateRight += (index & 2u) ? -outputs[index] : outputs[index];
+        }
+        left = earlyLeft + 0.5 * lateLeft;
+        right = earlyRight + 0.5 * lateRight;
+    }
+};
+
+// Clamped-plate beam factors (Warburton, Proc. IMechE 168 (1954) 371): the
+// G and H of a clamped-clamped mode m in his approximate frequency formula.
+double warburtonG(int m) noexcept { return m == 1 ? 1.506 : m + 0.5; }
+double warburtonH(int m) noexcept
+{
+    if (m == 1)
+        return 1.248;
+    const double g = warburtonG(m);
+    return g * g * (1.0 - 2.0 / (g * pi));
+}
+
+// The body's mode damping. Wooden-box statistics, not a lyre measurement:
+// Acustra's measured guitar bridge (g21, MeasuredBridgeData.h) holds mode Qs
+// of 16-75 (median about 35) below 1.5 kHz and 5-36 above 2 kHz.
+double woodQ(double frequency) noexcept
+{
+    constexpr double anchorsHz[] { 300.0, 1000.0, 4000.0, 10000.0 };
+    constexpr double anchorsQ[] { 40.0, 32.0, 18.0, 12.0 };
+    if (frequency <= anchorsHz[0])
+        return anchorsQ[0];
+    for (int index = 1; index < 4; ++index)
+        if (frequency <= anchorsHz[index])
+        {
+            const double t = std::log(frequency / anchorsHz[index - 1])
+                           / std::log(anchorsHz[index] / anchorsHz[index - 1]);
+            return anchorsQ[index - 1] * std::pow(anchorsQ[index] / anchorsQ[index - 1], t);
+        }
+    return anchorsQ[3];
+}
+// The air resonance: g21's air-mode group measures Q 16-21.
+constexpr double airQ = 20.0;
+
+// Jacobi eigen-decomposition of a symmetric matrix (setup only).
+template <std::size_t N>
+void jacobiEigen(std::array<std::array<double, N>, N>& a, int n,
+                 std::array<std::array<double, N>, N>& vectors,
+                 std::array<double, N>& values) noexcept
+{
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            vectors[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = i == j ? 1.0 : 0.0;
+    for (int sweep = 0; sweep < 100; ++sweep)
+    {
+        double offDiagonal = 0.0;
+        double diagonal = 0.0;
+        for (int i = 0; i < n; ++i)
+        {
+            diagonal += a[i][i] * a[i][i];
+            for (int j = i + 1; j < n; ++j)
+                offDiagonal += a[i][j] * a[i][j];
+        }
+        if (offDiagonal <= 1.0e-24 * diagonal)
+            break;
+        for (int p = 0; p < n; ++p)
+            for (int q = p + 1; q < n; ++q)
+            {
+                const double apq = a[p][q];
+                if (std::abs(apq) < 1.0e-300)
+                    continue;
+                const double theta = 0.5 * (a[q][q] - a[p][p]) / apq;
+                const double t = (theta >= 0.0 ? 1.0 : -1.0)
+                               / (std::abs(theta) + std::sqrt(theta * theta + 1.0));
+                const double c = 1.0 / std::sqrt(t * t + 1.0);
+                const double s = t * c;
+                for (int k = 0; k < n; ++k)
+                {
+                    const double akp = a[k][p];
+                    const double akq = a[k][q];
+                    a[k][p] = c * akp - s * akq;
+                    a[k][q] = s * akp + c * akq;
+                }
+                for (int k = 0; k < n; ++k)
+                {
+                    const double apk = a[p][k];
+                    const double aqk = a[q][k];
+                    a[p][k] = c * apk - s * aqk;
+                    a[q][k] = s * apk + c * aqk;
+                }
+                for (int k = 0; k < n; ++k)
+                {
+                    const double vkp = vectors[k][p];
+                    const double vkq = vectors[k][q];
+                    vectors[k][p] = c * vkp - s * vkq;
+                    vectors[k][q] = s * vkp + c * vkq;
+                }
+            }
+    }
+    for (int i = 0; i < n; ++i)
+        values[static_cast<std::size_t>(i)] = a[i][i];
+}
+
+} // namespace
+
+struct AculyreEngine::State
+{
+    InstrumentSpec instrument {};
+
+    struct StringVoice
+    {
+        Loop normal {};
+        Loop parallel {};
+        double frequency { 0.0 };
+        double parallelFrequency { 0.0 };
+        double length { 0.0 };
+        double parallelLength { 0.0 };
+        double tension { 0.0 };
+        double impedance { 0.0 };
+        double linearMass { 0.0 };
+        double inharmonicity { 0.0 };
+        double lever { 0.0 };
+        double intrinsicT60 { 0.0 };
+        // Delta f / f per unit of the loop's mean squared wave velocity.
+        double glidePerEnergy { 0.0 };
+        double energy { 0.0 };
+        double energySmoothing { 0.0 };
+        bool keyDown { false };
+        bool sustained { false };
+        bool ringing { false };
+        bool sympatheticDamped { false };
+        int midiNote { -1 };
+    };
+    std::array<StringVoice, maxStrings> strings {};
+
+    std::array<Mode, maxModes> modes {};
+    int modeCount { 0 };
+
+    // The bridge junction (process() derives it): the immediate generalized
+    // mobility Y0 of the modes, the strings' generalized impedance Zg, the
+    // bridge bar's bilinear mass impedance Zm (diagonal) and
+    // solve = (I + Y0 (Zg + Zm))^-1.
+    Matrix3 immediateMobility {};
+    Matrix3 stringImpedance {};
+    std::array<double, 3> massImpedance {};
+    Matrix3 solve {};
+    std::array<double, 3> massPast {};
+
+    double radiationScale { 0.0 };
+    double previousLeft { 0.0 };
+    double previousRight { 0.0 };
+    Room room {};
+    double roomSend { 0.0 };
+    double outputGain { 1.0 };
+    bool sustain { false };
+    Random random {};
+    int controlCountdown { 0 };
+    std::array<double, 3> lastGeneralizedVelocity {};
+};
+
+AculyreEngine::AculyreEngine() : state_(std::make_unique<State>()) {}
+AculyreEngine::~AculyreEngine() = default;
+
+void AculyreEngine::prepare(double sampleRate)
+{
+    sampleRate_ = std::isfinite(sampleRate) && sampleRate >= 22050.0 && sampleRate <= 192000.0
+        ? sampleRate : 48000.0;
+    state_->room.prepare(sampleRate_);
+    if (stringCount_ > 0)
+        setInstrument(state_->instrument);
+}
+
+namespace
+{
+
+// Plate mode (m along the strings, n across) of a simply supported shape,
+// used for participations; frequencies use Warburton's clamped factors.
+struct PlateMode
+{
+    int m { 1 };
+    int n { 1 };
+    double frequency { 0.0 };
+    double mass { 0.0 };
+    double volume { 0.0 };
+    std::array<double, 3> participation {};
+    double multipoleLeft { 0.0 };
+    double multipoleRight { 0.0 };
+};
+
+} // namespace
+
+void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
+{
+    State& s = *state_;
+    s.instrument = instrument;
+    const double fs = sampleRate_;
+    stringCount_ = std::clamp(instrument.stringCount, 1, maxStrings);
+    s.random.seed(0x5eed1ac0ffeeull);
+
+    // ---- The soundbox --------------------------------------------------
+    const BodySpec& body = instrument.body;
+    const double a = body.topLength;
+    const double b = body.topWidth;
+    const double h = body.topThickness;
+    const WoodSpec& wood = body.wood;
+    const double surfaceMass = wood.density * h;
+    const double nuAcrossAlong = wood.poisson * wood.eAcross / wood.eAlong;
+    const double bendingCommon = h * h * h / (12.0 * (1.0 - wood.poisson * nuAcrossAlong));
+    const double dAlong = wood.eAlong * bendingCommon;
+    const double dAcross = wood.eAcross * bendingCommon;
+    const double dTwist = wood.shear * h * h * h / 12.0;
+    const double dCross = wood.poisson * dAcross + 2.0 * dTwist;
+    const double plateMass = surfaceMass * a * b;
+    const double coincidenceHz = soundSpeed * soundSpeed / (2.0 * pi)
+                               * std::sqrt(surfaceMass / std::sqrt(dAlong * dAcross));
+    const double topFrequencyLimit = std::min(20000.0, 0.45 * fs);
+
+    const double bridgeX = body.bridgeAlong * a;
+    const double y0 = body.bridgeFrom * b;
+    const double y1 = body.bridgeTo * b;
+
+    std::array<PlateMode, maxModes> plate {};
+    int plateCount = 0;
+    Random modeRandom;
+    modeRandom.seed(0xa1c0ffee12345ull);
+    for (int m = 1; m <= 60; ++m)
+        for (int n = 1; n <= 60; ++n)
+        {
+            const double gm = warburtonG(m), gn = warburtonG(n);
+            const double stiffness = dAlong * std::pow(gm / a, 4.0)
+                + 2.0 * dCross * warburtonH(m) * warburtonH(n) / (a * a * b * b)
+                + dAcross * std::pow(gn / b, 4.0);
+            double frequency = 0.5 * pi * std::sqrt(stiffness / surfaceMass);
+            // A real soundboard is no perfect rectangle: modes past the first
+            // few scatter about the ideal plate's (a seeded, fixed draw).
+            const double scatter = modeRandom.bipolar();
+            if (m + n > 3)
+                frequency *= std::exp(0.05 * scatter);
+            if (frequency >= topFrequencyLimit)
+                continue;
+            if (plateCount >= maxModes - 1)
+            {
+                // Keep the lowest modes.
+                int highest = 0;
+                for (int index = 1; index < plateCount; ++index)
+                    if (plate[static_cast<std::size_t>(index)].frequency
+                        > plate[static_cast<std::size_t>(highest)].frequency)
+                        highest = index;
+                if (plate[static_cast<std::size_t>(highest)].frequency <= frequency)
+                    continue;
+                plate[static_cast<std::size_t>(highest)] = {};
+                plate[static_cast<std::size_t>(highest)].m = m;
+                plate[static_cast<std::size_t>(highest)].n = n;
+                plate[static_cast<std::size_t>(highest)].frequency = frequency;
+                continue;
+            }
+            PlateMode mode;
+            mode.m = m;
+            mode.n = n;
+            mode.frequency = frequency;
+            plate[static_cast<std::size_t>(plateCount++)] = mode;
+        }
+    std::sort(plate.begin(), plate.begin() + plateCount,
+              [] (const PlateMode& x, const PlateMode& y) { return x.frequency < y.frequency; });
+
+    // Participations along the bridge bar (a rigid bar: heave, rock about its
+    // middle, normalized so its ends move h +- r; sway of its top, where the
+    // strings cross it, as the bar tips about its foot).
+    for (int index = 0; index < plateCount; ++index)
+    {
+        PlateMode& mode = plate[static_cast<std::size_t>(index)];
+        const double kx = mode.m * pi / a;
+        const double ky = mode.n * pi / b;
+        constexpr int points = 64;
+        double meanSine = 0.0, meanLeveredSine = 0.0;
+        for (int point = 0; point < points; ++point)
+        {
+            const double t = (point + 0.5) / points;
+            const double y = y0 + t * (y1 - y0);
+            const double u = 2.0 * t - 1.0;
+            const double sine = std::sin(ky * y);
+            meanSine += sine / points;
+            meanLeveredSine += u * sine / points;
+        }
+        mode.mass = 0.25 * plateMass;
+        mode.participation[0] = std::sin(kx * bridgeX) * meanSine;
+        mode.participation[1] = 3.0 * std::sin(kx * bridgeX) * meanLeveredSine;
+        mode.participation[2] = body.bridgeHeight * kx * std::cos(kx * bridgeX) * meanSine;
+        mode.volume = (mode.m % 2 == 1 && mode.n % 2 == 1)
+            ? 4.0 * a * b / (mode.m * mode.n * pi * pi) : 0.0;
+        // What a mode radiates besides its net volume: edge and corner
+        // radiation below coincidence, all of it above (radiation efficiency
+        // sigma; an equivalent volume velocity c sqrt(4 pi S sigma <v^2>) /
+        // omega). Its sign at each microphone is a seeded draw.
+        const double omega = 2.0 * pi * mode.frequency;
+        const double ratio = mode.frequency / coincidenceHz;
+        const double sigma = ratio >= 1.0 ? 1.0 : std::min(1.0, 0.28 * std::sqrt(ratio));
+        const double multipole = soundSpeed / omega
+            * std::sqrt(4.0 * pi * a * b * sigma) * 0.5;
+        mode.multipoleLeft = multipole * (modeRandom.bipolar() < 0.0 ? -1.0 : 1.0)
+                           * (0.7 + 0.3 * std::abs(modeRandom.bipolar()));
+        mode.multipoleRight = multipole * (modeRandom.bipolar() < 0.0 ? -1.0 : 1.0)
+                            * (0.7 + 0.3 * std::abs(modeRandom.bipolar()));
+    }
+
+    // The air in the soundhole couples to every plate mode with a net volume
+    // through the cavity's stiffness rho c^2 / V (a Helmholtz resonator on a
+    // flexible wall: Christensen and Vistisen, JASA 68(3), 1980, generalised
+    // to many plate modes). Solved as one symmetric eigenproblem.
+    constexpr std::size_t coupledCapacity = 48;
+    std::array<int, coupledCapacity> coupledIndex {};
+    int coupledCount = 0;
+    const bool hasHole = body.holeRadius > 0.0;
+    for (int index = 0; index < plateCount && coupledCount < static_cast<int>(coupledCapacity) - 1; ++index)
+        if (plate[static_cast<std::size_t>(index)].volume != 0.0
+            && plate[static_cast<std::size_t>(index)].frequency < 4000.0)
+            coupledIndex[static_cast<std::size_t>(coupledCount++)] = index;
+    const double holeArea = hasHole ? pi * body.holeRadius * body.holeRadius : 0.0;
+    // End corrections of a hole in a thin wall, flanged both sides.
+    const double neckLength = h + 1.7 * body.holeRadius;
+    const double plugMass = airDensity * holeArea * neckLength;
+    const double cavityStiffness = airDensity * soundSpeed * soundSpeed / body.cavityVolume;
+    const int systemSize = coupledCount + (hasHole ? 1 : 0);
+
+    std::array<std::array<double, coupledCapacity>, coupledCapacity> system {};
+    std::array<double, coupledCapacity> masses {};
+    std::array<double, coupledCapacity> volumes {};
+    for (int i = 0; i < coupledCount; ++i)
+    {
+        const PlateMode& mode = plate[static_cast<std::size_t>(coupledIndex[static_cast<std::size_t>(i)])];
+        masses[static_cast<std::size_t>(i)] = mode.mass;
+        volumes[static_cast<std::size_t>(i)] = mode.volume;
+    }
+    if (hasHole)
+    {
+        masses[static_cast<std::size_t>(coupledCount)] = plugMass;
+        volumes[static_cast<std::size_t>(coupledCount)] = holeArea;
+    }
+    for (int i = 0; i < systemSize; ++i)
+        for (int j = 0; j < systemSize; ++j)
+        {
+            const auto si = static_cast<std::size_t>(i), sj = static_cast<std::size_t>(j);
+            double stiffness = cavityStiffness * volumes[si] * volumes[sj];
+            if (i == j && i < coupledCount)
+            {
+                const double omega = 2.0 * pi * plate[static_cast<std::size_t>(coupledIndex[si])].frequency;
+                stiffness += masses[si] * omega * omega;
+            }
+            system[si][sj] = stiffness / std::sqrt(masses[si] * masses[sj]);
+        }
+    std::array<std::array<double, coupledCapacity>, coupledCapacity> vectors {};
+    std::array<double, coupledCapacity> values {};
+    if (systemSize > 0)
+        jacobiEigen(system, systemSize, vectors, values);
+
+    s.modeCount = 0;
+    const auto addMode = [&] (double frequency, double airShare,
+                              const std::array<double, 3>& participation,
+                              double monopole, double left, double right)
+    {
+        if (!(frequency > 20.0) || frequency >= topFrequencyLimit || s.modeCount >= maxModes)
+            return;
+        Mode mode;
+        mode.frequency = frequency;
+        const double qWood = woodQ(frequency);
+        mode.q = 1.0 / (airShare / airQ + (1.0 - airShare) / qWood);
+        mode.participation = participation;
+        mode.monopole = monopole;
+        mode.airShare = airShare;
+        mode.radiationLeft = monopole + left;
+        mode.radiationRight = monopole + right;
+        const double omega = 2.0 * pi * frequency;
+        const double k = omega / std::tan(omega / (2.0 * fs));
+        const double damping = omega / mode.q;
+        const double d0 = k * k + damping * k + omega * omega;
+        mode.b0 = k / d0;
+        mode.b2 = -k / d0;
+        mode.a1 = 2.0 * (omega * omega - k * k) / d0;
+        mode.a2 = (k * k - damping * k + omega * omega) / d0;
+        s.modes[static_cast<std::size_t>(s.modeCount++)] = mode;
+    };
+    // The coupled modes, mass-normalized: psi = M^-1/2 chi.
+    for (int j = 0; j < systemSize; ++j)
+    {
+        const auto sj = static_cast<std::size_t>(j);
+        const double frequency = std::sqrt(std::max(0.0, values[sj])) / (2.0 * pi);
+        std::array<double, 3> participation {};
+        double monopole = 0.0, left = 0.0, right = 0.0;
+        for (int i = 0; i < coupledCount; ++i)
+        {
+            const auto si = static_cast<std::size_t>(i);
+            const PlateMode& mode = plate[static_cast<std::size_t>(coupledIndex[si])];
+            const double psi = vectors[si][sj] / std::sqrt(masses[si]);
+            for (int c = 0; c < 3; ++c)
+                participation[static_cast<std::size_t>(c)] += psi * mode.participation[static_cast<std::size_t>(c)];
+            monopole += psi * mode.volume;
+            left += psi * mode.multipoleLeft;
+            right += psi * mode.multipoleRight;
+        }
+        double airShare = 0.0;
+        if (hasHole)
+        {
+            const auto sa = static_cast<std::size_t>(coupledCount);
+            const double chi = vectors[sa][sj];
+            airShare = chi * chi;
+            monopole += chi / std::sqrt(plugMass) * holeArea;
+        }
+        addMode(frequency, airShare, participation, monopole, left, right);
+    }
+    for (int index = 0; index < plateCount; ++index)
+    {
+        bool coupled = false;
+        for (int i = 0; i < coupledCount; ++i)
+            if (coupledIndex[static_cast<std::size_t>(i)] == index)
+                coupled = true;
+        if (coupled)
+            continue;
+        const PlateMode& mode = plate[static_cast<std::size_t>(index)];
+        const double scale = 1.0 / std::sqrt(mode.mass);
+        addMode(mode.frequency, 0.0,
+                { mode.participation[0] * scale, mode.participation[1] * scale,
+                  mode.participation[2] * scale },
+                mode.volume * scale, mode.multipoleLeft * scale, mode.multipoleRight * scale);
+    }
+    std::sort(s.modes.begin(), s.modes.begin() + s.modeCount,
+              [] (const Mode& x, const Mode& y) { return x.frequency < y.frequency; });
+    s.radiationScale = airDensity / (4.0 * pi * microphoneDistance) * fs;
+
+    // ---- The strings ----------------------------------------------------
+    const StringMaterial& material = instrument.material;
+    for (int index = 0; index < stringCount_; ++index)
+    {
+        State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+        voice = {};
+        const StringSpec& spec = instrument.strings[static_cast<std::size_t>(index)];
+        voice.midiNote = spec.midiNote;
+        voice.frequency = 440.0 * std::pow(2.0, (spec.midiNote - 69) / 12.0);
+        voice.length = spec.length;
+        const double area = 0.25 * pi * spec.diameter * spec.diameter;
+        voice.linearMass = material.density * area;
+        const double waveSpeed = 2.0 * spec.length * voice.frequency;
+        voice.tension = voice.linearMass * waveSpeed * waveSpeed;
+        voice.impedance = std::sqrt(voice.tension * voice.linearMass);
+        const double secondMoment = pi * std::pow(spec.diameter, 4.0) / 64.0;
+        voice.inharmonicity = pi * pi * material.youngModulus * secondMoment
+                            / (voice.tension * spec.length * spec.length);
+        // Strings sit evenly across the bridge, bass at the u = -1 end.
+        voice.lever = stringCount_ > 1
+            ? -0.9 + 1.8 * index / (stringCount_ - 1) : 0.0;
+        // The plane parallel to the soundboard is longer by about one string
+        // diameter (Woodhouse, Acta Acustica 90 (2004) 945, Sec. 4.3; Acustra
+        // ships the same end correction).
+        voice.parallelLength = spec.length + spec.diameter;
+        voice.parallelFrequency = voice.frequency * spec.length / voice.parallelLength;
+        voice.glidePerEnergy = material.youngModulus * area
+                             / (2.0 * voice.tension * waveSpeed * waveSpeed);
+        // Air damping (Valette, in Mechanics of Musical Instruments, 1995):
+        // R = 2 pi eta + 2 pi d sqrt(pi eta rho f), decay rate R / (2 mu).
+        const double airResistance = 2.0 * pi * airViscosity
+            + 2.0 * pi * spec.diameter * std::sqrt(pi * airViscosity * airDensity * voice.frequency);
+        const double airDecay = airResistance / (2.0 * voice.linearMass);
+        const double intrinsicDecay = airDecay
+            + pi * voice.frequency * material.constantLoss
+            - std::log(yokeRoundTripGain) * voice.frequency;
+        voice.intrinsicT60 = 3.0 * std::log(10.0) / intrinsicDecay;
+        voice.energySmoothing = std::exp(-voice.frequency / fs);
+
+        for (int plane = 0; plane < 2; ++plane)
+        {
+            Loop& loop = plane == 0 ? voice.normal : voice.parallel;
+            const double f0 = plane == 0 ? voice.frequency : voice.parallelFrequency;
+            loop.gain = std::exp(-airDecay / f0) * yokeRoundTripGain;
+            loop.constantDesign = constantLossSection(material.constantLoss,
+                                                      voice.inharmonicity, f0, fs);
+            loop.bendingDesign = bendingLossSection(material.bendingLoss,
+                                                    voice.inharmonicity, f0, fs);
+            loop.constantLoss.design(loop.constantDesign);
+            loop.bendingLoss.design(loop.bendingDesign);
+            // Dispersion (designDispersion), the line then solved so the
+            // fundamental is exact once the junction exists and the bridge's
+            // reflection phase is known (tuneStrings below).
+            const DispersionDesign design = designDispersion(f0, voice.inharmonicity, fs);
+            loop.dispersionStages = design.stages;
+            loop.dispersion = design.coefficient;
+            loop.dispersionCents = design.worstCents;
+            loop.loopDelay = fs / f0;
+        }
+    }
+
+    // ---- The junction ---------------------------------------------------
+    Matrix3 y0m {};
+    for (int index = 0; index < s.modeCount; ++index)
+    {
+        const Mode& mode = s.modes[static_cast<std::size_t>(index)];
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                y0m.m[i][j] += mode.b0 * mode.participation[static_cast<std::size_t>(i)]
+                             * mode.participation[static_cast<std::size_t>(j)];
+    }
+    s.immediateMobility = y0m;
+    Matrix3 zg {};
+    for (int index = 0; index < stringCount_; ++index)
+    {
+        const State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+        zg.m[0][0] += voice.impedance;
+        zg.m[0][1] += voice.impedance * voice.lever;
+        zg.m[1][1] += voice.impedance * voice.lever * voice.lever;
+        zg.m[2][2] += voice.impedance;
+    }
+    zg.m[1][0] = zg.m[0][1];
+    s.stringImpedance = zg;
+    // The bar's mass: heave m, rock m/3 (r is its ends' displacement), sway
+    // m/3 (its top as it tips about its foot). Bilinear: Z = m 2 fs.
+    s.massImpedance = { body.bridgeMass * 2.0 * fs, body.bridgeMass / 3.0 * 2.0 * fs,
+                        body.bridgeMass / 3.0 * 2.0 * fs };
+    Matrix3 load = zg;
+    for (int i = 0; i < 3; ++i)
+        load.m[i][i] += s.massImpedance[static_cast<std::size_t>(i)];
+    Matrix3 system3 = Matrix3::identity();
+    const Matrix3 product = y0m * load;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            system3.m[i][j] += product.m[i][j];
+    s.solve.m = inverse3(system3.m);
+
+    // ---- Tuning: each port's reflection phase from the continuous model --
+    for (int index = 0; index < stringCount_; ++index)
+    {
+        State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+        for (int plane = 0; plane < 2; ++plane)
+        {
+            Loop& loop = plane == 0 ? voice.normal : voice.parallel;
+            const double f0 = plane == 0 ? voice.frequency : voice.parallelFrequency;
+            // The port's admittance with every other port loading the bar.
+            const auto reflectionLead = [&] (double frequency)
+            {
+                const double omega = 2.0 * pi * frequency;
+                std::array<std::array<Complex, 3>, 3> plateMobility {};
+                for (int m = 0; m < s.modeCount; ++m)
+                {
+                    const Mode& mode = s.modes[static_cast<std::size_t>(m)];
+                    const double wm = 2.0 * pi * mode.frequency;
+                    const Complex response = Complex(0.0, omega)
+                        / Complex(wm * wm - omega * omega, omega * wm / mode.q);
+                    for (int i = 0; i < 3; ++i)
+                        for (int j = 0; j < 3; ++j)
+                            plateMobility[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)]
+                                += response * mode.participation[static_cast<std::size_t>(i)]
+                                 * mode.participation[static_cast<std::size_t>(j)];
+                }
+                std::array<std::array<Complex, 3>, 3> others {};
+                for (int i = 0; i < 3; ++i)
+                    for (int j = 0; j < 3; ++j)
+                        others[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = zg.m[i][j];
+                std::array<double, 3> port { 0.0, 0.0, 1.0 };
+                if (plane == 0)
+                {
+                    port = { 1.0, voice.lever, 0.0 };
+                    others[0][0] -= voice.impedance;
+                    others[0][1] -= voice.impedance * voice.lever;
+                    others[1][0] -= voice.impedance * voice.lever;
+                    others[1][1] -= voice.impedance * voice.lever * voice.lever;
+                }
+                else
+                {
+                    others[2][2] -= voice.impedance;
+                }
+                const std::array<double, 3> barMass { body.bridgeMass, body.bridgeMass / 3.0,
+                                                      body.bridgeMass / 3.0 };
+                for (int i = 0; i < 3; ++i)
+                    others[static_cast<std::size_t>(i)][static_cast<std::size_t>(i)]
+                        += Complex(0.0, omega * barMass[static_cast<std::size_t>(i)]);
+                // Y_port = e^T (I + Yp W)^-1 Yp e.
+                std::array<std::array<Complex, 3>, 3> system {};
+                for (int i = 0; i < 3; ++i)
+                    for (int j = 0; j < 3; ++j)
+                    {
+                        Complex sum = i == j ? 1.0 : 0.0;
+                        for (int k = 0; k < 3; ++k)
+                            sum += plateMobility[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)]
+                                 * others[static_cast<std::size_t>(k)][static_cast<std::size_t>(j)];
+                        system[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = sum;
+                    }
+                const auto inverse = inverse3(system);
+                std::array<Complex, 3> ype {};
+                for (int i = 0; i < 3; ++i)
+                    for (int k = 0; k < 3; ++k)
+                        ype[static_cast<std::size_t>(i)] += plateMobility[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)]
+                                                         * port[static_cast<std::size_t>(k)];
+                Complex admittance = 0.0;
+                for (int i = 0; i < 3; ++i)
+                {
+                    Complex row = 0.0;
+                    for (int k = 0; k < 3; ++k)
+                        row += inverse[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)]
+                             * ype[static_cast<std::size_t>(k)];
+                    admittance += port[static_cast<std::size_t>(i)] * row;
+                }
+                const Complex zy = voice.impedance * admittance;
+                // R = (ZY - 1)/(1 + ZY); the loop carries -R.
+                return std::arg((1.0 - zy) / (1.0 + zy));
+            };
+            const auto lagAt = [&] (double omega, double lineDelay)
+            {
+                const int whole = static_cast<int>(std::floor(lineDelay - 4.0));
+                const double fraction = lineDelay - whole;
+                double t1 = 0.0, t2 = 0.0;
+                thiranCoefficients(fraction, t1, t2);
+                return omega * whole + allpassLag(2, t1, t2, omega) + loop.filterLag(omega)
+                     - reflectionLead(omega * fs / (2.0 * pi));
+            };
+            const auto solveLine = [&] (double omega, double cycles)
+            {
+                double lower = 6.0, upper = delayCapacity - 16.0;
+                for (int iteration = 0; iteration < 60; ++iteration)
+                {
+                    const double middle = 0.5 * (lower + upper);
+                    if (lagAt(omega, middle) < 2.0 * pi * cycles)
+                        lower = middle;
+                    else
+                        upper = middle;
+                }
+                return 0.5 * (lower + upper);
+            };
+            const double omega0 = 2.0 * pi * f0 / fs;
+            loop.restLineDelay = solveLine(omega0, 1.0);
+            loop.loopDelay = fs / f0;
+            loop.whole = static_cast<int>(std::floor(loop.restLineDelay - 4.0));
+            loop.reset();
+        }
+    }
+
+    s.roomSend = std::clamp(instrument.room, 0.0, 1.0) * 0.5;
+    s.outputGain = instrument.outputGain;
+    reset();
+}
+
+void AculyreEngine::reset() noexcept
+{
+    State& s = *state_;
+    for (int index = 0; index < stringCount_; ++index)
+    {
+        auto& voice = s.strings[static_cast<std::size_t>(index)];
+        voice.normal.reset();
+        voice.parallel.reset();
+        voice.energy = 0.0;
+        voice.keyDown = voice.sustained = voice.ringing = voice.sympatheticDamped = false;
+    }
+    for (int index = 0; index < s.modeCount; ++index)
+        s.modes[static_cast<std::size_t>(index)].s1 = s.modes[static_cast<std::size_t>(index)].s2 = 0.0;
+    s.massPast = {};
+    s.previousLeft = s.previousRight = 0.0;
+    s.room.reset();
+    s.sustain = false;
+    s.controlCountdown = 0;
+    s.random.seed(0x5eed1ac0ffeeull);
+}
+
+int AculyreEngine::stringForNote(int midiNote) const noexcept
+{
+    for (int index = 0; index < stringCount_; ++index)
+        if (state_->strings[static_cast<std::size_t>(index)].midiNote == midiNote)
+            return index;
+    return -1;
+}
+
+namespace
+{
+// The hand resting on a string: an amplitude time constant of 30 ms.
+constexpr double handDampingSeconds = 0.03;
+
+double dampingPerRoundTrip(double frequency) noexcept
+{
+    return std::exp(-1.0 / (handDampingSeconds * frequency));
+}
+} // namespace
+
+void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
+{
+    const int index = stringForNote(midiNote);
+    if (index < 0 || !(velocity > 0.0f))
+        return;
+    State& s = *state_;
+    State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+    const InstrumentSpec& instrument = s.instrument;
+    const double v = std::clamp(static_cast<double>(velocity), 0.0, 1.0);
+
+    // A finger meeting a sounding string stops most of it before it lets go
+    // (Acustra's picking-hand contact, about 10 ms, as one step).
+    if (voice.ringing || voice.energy > 1.0e-6)
+        for (Loop* loop : { &voice.normal, &voice.parallel })
+        {
+            for (float& sample : loop->line)
+                sample *= 0.3f;
+            for (float& sample : loop->pending)
+                sample *= 0.3f;
+        }
+
+    // Each pluck differs a little: where the finger meets the string, how
+    // hard, and which way it lets go. Authored spreads.
+    const double position = std::clamp(instrument.pluckPosition + 0.02 * s.random.bipolar(), 0.05, 0.7);
+    const double force = instrument.pluckForce * std::pow(v, 1.4)
+                       * std::pow(10.0, 0.75 * s.random.bipolar() / 20.0);
+    const double normalShare = std::clamp(instrument.normalShare + 0.05 * s.random.bipolar(), 0.05, 0.6);
+
+    // Contact width and release time of the technique: the fingertip's pad,
+    // a nail's or a plectrum's edge. The string slides off faster from a
+    // harder stroke, so it leaves brighter. Authored values.
+    double contact = 0.005, release = 0.10e-3;
+    switch (instrument.technique)
+    {
+        case Technique::Finger: contact = 0.005; release = 0.10e-3; break;
+        case Technique::Nail: contact = 0.0012; release = 0.035e-3; break;
+        case Technique::Plectrum: contact = 0.0008; release = 0.025e-3; break;
+    }
+    release *= 1.3 - 0.6 * v;
+
+    voice.normal.setDamping(1.0);
+    voice.parallel.setDamping(1.0);
+    voice.keyDown = true;
+    voice.sustained = false;
+    voice.ringing = true;
+    voice.sympatheticDamped = false;
+
+    std::array<double, 3> preload {};
+    for (int plane = 0; plane < 2; ++plane)
+    {
+        Loop& loop = plane == 0 ? voice.normal : voice.parallel;
+        const double length = plane == 0 ? voice.length : voice.parallelLength;
+        const double frequency = plane == 0 ? voice.frequency : voice.parallelFrequency;
+        const double waveSpeed = 2.0 * length * frequency;
+        const double pluckPoint = position * length;
+        // The displacement the held force sets, A = F x (L - x) / (T L).
+        const double amplitude = force * pluckPoint * (length - pluckPoint) / (voice.tension * length)
+                               * std::sqrt(plane == 0 ? normalShare : 1.0 - normalShare);
+        const double width = std::sqrt(contact * contact + std::pow(waveSpeed * release, 2.0));
+        const double kink = amplitude * (1.0 / pluckPoint + 1.0 / (length - pluckPoint));
+        // The released shape, a triangle rounded by a Gaussian of `width`.
+        const auto shape = [&] (double x)
+        {
+            const double u = (x - pluckPoint) / width;
+            return amplitude * x / pluckPoint - kink * width * (u * normalCdf(u) + normalPdf(u));
+        };
+        // The wave reaching the bridge over the next round trip, one period
+        // of the loop: first the half that travels straight there,
+        // (c/2) y0'(c t), then the half that went to the yoke,
+        // (c/2) y0'(2L - c t). Each sample holds its cell's mean slope, which
+        // band-limits the release; the last cell ends at the round trip.
+        const double period = loop.loopDelay;
+        const int count = static_cast<int>(std::ceil(period));
+        const double cellLength = 2.0 * length / period;
+        std::array<double, delayCapacity> wave {};
+        double mean = 0.0;
+        for (int k = 0; k < count; ++k)
+        {
+            const double start = cellLength * k;
+            const double end = std::min(2.0 * length, cellLength * (k + 1));
+            double integral = 0.0;
+            if (end <= length)
+                integral = shape(end) - shape(start);
+            else if (start >= length)
+                integral = shape(2.0 * length - start) - shape(2.0 * length - end);
+            else
+                integral = (shape(length) - shape(start)) + (shape(length) - shape(2.0 * length - end));
+            const double value = 0.5 * waveSpeed * integral / cellLength;
+            wave[static_cast<std::size_t>(k)] = value;
+            mean += value;
+        }
+        mean /= count;
+        for (int k = 0; k < count; ++k)
+        {
+            const double value = wave[static_cast<std::size_t>(k)] - mean;
+            const auto slot = static_cast<std::size_t>((loop.write + k) & (delayCapacity - 1));
+            loop.pending[slot] += static_cast<float>(value);
+        }
+        // The held force stood on the bridge before the release: the body
+        // starts deflected under it, so only what the release changes
+        // reaches it, and the top springs back as the wave's mean force
+        // falls to zero.
+        const double heldForce = 2.0 * voice.impedance * (wave[0] - mean);
+        if (plane == 0)
+        {
+            preload[0] += heldForce;
+            preload[1] += heldForce * voice.lever;
+        }
+        else
+        {
+            preload[2] += heldForce;
+        }
+    }
+    for (int index2 = 0; index2 < s.modeCount; ++index2)
+    {
+        Mode& mode = s.modes[static_cast<std::size_t>(index2)];
+        const double modal = mode.participation[0] * preload[0] + mode.participation[1] * preload[1]
+                           + mode.participation[2] * preload[2];
+        mode.s1 += mode.b2 * modal;
+        mode.s2 += mode.b2 * modal;
+    }
+}
+
+void AculyreEngine::noteOff(int midiNote) noexcept
+{
+    const int index = stringForNote(midiNote);
+    if (index < 0)
+        return;
+    State& s = *state_;
+    State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+    if (!voice.keyDown)
+        return;
+    voice.keyDown = false;
+    if (s.sustain)
+    {
+        voice.sustained = true;
+        return;
+    }
+    voice.ringing = false;
+    voice.normal.setDamping(dampingPerRoundTrip(voice.frequency));
+    voice.parallel.setDamping(dampingPerRoundTrip(voice.parallelFrequency));
+}
+
+void AculyreEngine::setSustain(bool down) noexcept
+{
+    State& s = *state_;
+    s.sustain = down;
+    if (down)
+        return;
+    for (int index = 0; index < stringCount_; ++index)
+    {
+        State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+        if (voice.sustained)
+        {
+            voice.sustained = false;
+            voice.ringing = false;
+            voice.normal.setDamping(dampingPerRoundTrip(voice.frequency));
+            voice.parallel.setDamping(dampingPerRoundTrip(voice.parallelFrequency));
+        }
+    }
+}
+
+void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
+{
+    State& s = *state_;
+    const int count = stringCount_;
+    std::array<double, maxStrings> normalIn {};
+    std::array<double, maxStrings> parallelIn {};
+    const Matrix3& y0 = s.immediateMobility;
+    const Matrix3& zg = s.stringImpedance;
+    const Matrix3& solve = s.solve;
+    const double fs = sampleRate_;
+
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        if (s.controlCountdown-- <= 0)
+        {
+            s.controlCountdown = controlPeriod - 1;
+            for (int index = 0; index < count; ++index)
+            {
+                State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+                // Off, a resting hand keeps idle strings from ringing in
+                // sympathy (an ablation, not a playing style).
+                const bool hold = !sympathetic_ && !voice.ringing;
+                if (hold != voice.sympatheticDamped)
+                {
+                    voice.sympatheticDamped = hold;
+                    voice.normal.setDamping(hold ? dampingPerRoundTrip(voice.frequency) : 1.0);
+                    voice.parallel.setDamping(hold ? dampingPerRoundTrip(voice.parallelFrequency) : 1.0);
+                }
+                // Tension modulation (Kirchhoff-Carrier): the string's mean
+                // squared slope stretches it, Delta f / f = EA <y'^2> / (4T).
+                const double ratio = tensionModulation_
+                    ? 1.0 + voice.glidePerEnergy * voice.energy : 1.0;
+                for (Loop* loop : { &voice.normal, &voice.parallel })
+                {
+                    const double shortening = loop->loopDelay * (1.0 - 1.0 / ratio);
+                    loop->setLineDelay(loop->restLineDelay - shortening);
+                }
+            }
+        }
+
+        std::array<double, 3> drive {};
+        for (int index = 0; index < count; ++index)
+        {
+            State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+            const double vn = voice.normal.read();
+            const double vp = voice.parallel.read();
+            normalIn[static_cast<std::size_t>(index)] = vn;
+            parallelIn[static_cast<std::size_t>(index)] = vp;
+            const double twiceZ = 2.0 * voice.impedance;
+            drive[0] += twiceZ * vn;
+            drive[1] += twiceZ * voice.lever * vn;
+            drive[2] += twiceZ * vp;
+            // The loop's mean squared velocity over a round trip; both
+            // directions' slopes count, hence the factor in glidePerEnergy.
+            voice.energy = voice.energySmoothing * voice.energy
+                         + (1.0 - voice.energySmoothing) * (vn * vn + vp * vp);
+        }
+
+        std::array<double, 3> past {};
+        for (int index = 0; index < s.modeCount; ++index)
+        {
+            const Mode& mode = s.modes[static_cast<std::size_t>(index)];
+            past[0] += mode.participation[0] * mode.s1;
+            past[1] += mode.participation[1] * mode.s1;
+            past[2] += mode.participation[2] * mode.s1;
+        }
+        std::array<double, 3> net { drive[0] - s.massPast[0], drive[1] - s.massPast[1],
+                                    drive[2] - s.massPast[2] };
+        std::array<double, 3> rhs = y0.apply(net);
+        for (int i = 0; i < 3; ++i)
+            rhs[static_cast<std::size_t>(i)] += past[static_cast<std::size_t>(i)];
+        const std::array<double, 3> velocity = solve.apply(rhs);
+        const std::array<double, 3> stringLoad = zg.apply(velocity);
+        std::array<double, 3> plateForce {};
+        for (std::size_t i = 0; i < 3; ++i)
+        {
+            const double massForce = s.massImpedance[i] * velocity[i] + s.massPast[i];
+            plateForce[i] = drive[i] - stringLoad[i] - massForce;
+            s.massPast[i] = -massForce - s.massImpedance[i] * velocity[i];
+        }
+
+        double radiatedLeft = 0.0, radiatedRight = 0.0;
+        for (int index = 0; index < s.modeCount; ++index)
+        {
+            Mode& mode = s.modes[static_cast<std::size_t>(index)];
+            const double x = mode.participation[0] * plateForce[0]
+                           + mode.participation[1] * plateForce[1]
+                           + mode.participation[2] * plateForce[2];
+            const double y = mode.b0 * x + mode.s1;
+            mode.s1 = -mode.a1 * y + mode.s2;
+            mode.s2 = mode.b2 * x - mode.a2 * y;
+            radiatedLeft += mode.radiationLeft * y;
+            radiatedRight += mode.radiationRight * y;
+        }
+
+        for (int index = 0; index < count; ++index)
+        {
+            State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+            const double normalPort = velocity[0] + voice.lever * velocity[1];
+            voice.normal.writeSample(normalIn[static_cast<std::size_t>(index)] - normalPort);
+            voice.parallel.writeSample(parallelIn[static_cast<std::size_t>(index)] - velocity[2]);
+        }
+        s.lastGeneralizedVelocity = velocity;
+
+        // Far-field pressure: rho / (4 pi r) times the volume acceleration.
+        const double pressureLeft = (radiatedLeft - s.previousLeft) * s.radiationScale;
+        const double pressureRight = (radiatedRight - s.previousRight) * s.radiationScale;
+        s.previousLeft = radiatedLeft;
+        s.previousRight = radiatedRight;
+        double outLeft = pressureLeft, outRight = pressureRight;
+        if (roomEnabled_ && s.roomSend > 0.0)
+        {
+            double wetLeft = 0.0, wetRight = 0.0;
+            s.room.process(0.5 * (pressureLeft + pressureRight), wetLeft, wetRight);
+            outLeft += s.roomSend * wetLeft;
+            outRight += s.roomSend * wetRight;
+        }
+        const auto limit = [] (double x)
+        {
+            const double magnitude = std::abs(x);
+            if (magnitude <= 0.9)
+                return x;
+            return std::copysign(0.9 + 0.1 * std::tanh((magnitude - 0.9) / 0.1), x);
+        };
+        left[sample] = static_cast<float>(limit(outLeft * s.outputGain));
+        right[sample] = static_cast<float>(limit(outRight * s.outputGain));
+        (void) fs;
+    }
+}
+
+AculyreEngine::StringReport AculyreEngine::stringReport(int string) const noexcept
+{
+    StringReport report {};
+    if (string < 0 || string >= stringCount_)
+        return report;
+    const auto& voice = state_->strings[static_cast<std::size_t>(string)];
+    const auto& spec = state_->instrument.strings[static_cast<std::size_t>(string)];
+    report.midiNote = voice.midiNote;
+    report.frequency = voice.frequency;
+    report.tension = voice.tension;
+    report.impedance = voice.impedance;
+    report.inharmonicity = voice.inharmonicity;
+    report.stress = voice.tension / (0.25 * pi * spec.diameter * spec.diameter);
+    report.intrinsicT60 = voice.intrinsicT60;
+    report.dispersion = voice.normal.dispersion;
+    report.dispersionStages = voice.normal.dispersionStages;
+    report.dispersionCents = voice.normal.dispersionCents;
+    return report;
+}
+
+double AculyreEngine::stringEnergy(int string) const noexcept
+{
+    if (string < 0 || string >= stringCount_)
+        return 0.0;
+    return state_->strings[static_cast<std::size_t>(string)].energy;
+}
+
+int AculyreEngine::modeCount() const noexcept { return state_->modeCount; }
+
+AculyreEngine::ModeReport AculyreEngine::modeReport(int mode) const noexcept
+{
+    ModeReport report {};
+    if (mode < 0 || mode >= state_->modeCount)
+        return report;
+    const Mode& m = state_->modes[static_cast<std::size_t>(mode)];
+    report.frequency = m.frequency;
+    report.q = m.q;
+    report.heave = m.participation[0];
+    report.monopole = m.monopole;
+    report.airShare = m.airShare;
+    return report;
+}
+
+double AculyreEngine::bridgeMobilityMagnitude(double frequency, double lever) const noexcept
+{
+    const State& s = *state_;
+    const double omega = 2.0 * pi * frequency;
+    std::array<std::array<Complex, 3>, 3> plateMobility {};
+    for (int m = 0; m < s.modeCount; ++m)
+    {
+        const Mode& mode = s.modes[static_cast<std::size_t>(m)];
+        const double wm = 2.0 * pi * mode.frequency;
+        const Complex response = Complex(0.0, omega) / Complex(wm * wm - omega * omega, omega * wm / mode.q);
+        for (int i = 0; i < 2; ++i)
+            for (int j = 0; j < 2; ++j)
+                plateMobility[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)]
+                    += response * mode.participation[static_cast<std::size_t>(i)]
+                     * mode.participation[static_cast<std::size_t>(j)];
+    }
+    // The bar's mass in series: Y = e^T (Yp^-1 + j w M)^-1 e on heave/rock.
+    const double mass = s.instrument.body.bridgeMass;
+    const Complex det = plateMobility[0][0] * plateMobility[1][1] - plateMobility[0][1] * plateMobility[1][0];
+    Complex z00 = plateMobility[1][1] / det + Complex(0.0, omega * mass);
+    Complex z11 = plateMobility[0][0] / det + Complex(0.0, omega * mass / 3.0);
+    Complex z01 = -plateMobility[0][1] / det;
+    const Complex zdet = z00 * z11 - z01 * z01;
+    const Complex y00 = z11 / zdet, y11 = z00 / zdet, y01 = -z01 / zdet;
+    return std::abs(y00 + 2.0 * lever * y01 + lever * lever * y11);
+}
+
+} // namespace aculyre

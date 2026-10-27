@@ -574,16 +574,10 @@ struct Loop
     // to move.
     void setLineDelay(double samples) noexcept
     {
-        int newWhole = whole;
-        double newFraction = samples - newWhole;
-        if (newFraction < 1.1 || newFraction >= 5.1)
-        {
-            // Truncation is floor here: every line is longer than 6 samples.
-            newWhole = static_cast<int>(samples - 4.0);
-            newFraction = samples - newWhole;
-        }
-        newWhole = std::clamp(newWhole, 1, delayCapacity - 8);
-        whole = newWhole;
+        const double current = samples - whole;
+        // Truncation is floor here: every line is longer than 6 samples.
+        if (current < 1.1 || current >= 5.1)
+            whole = std::clamp(static_cast<int>(samples - 4.0), 1, delayCapacity - 8);
         fraction = samples - whole;
         thiranCoefficients(fraction, thiranA1, thiranA2);
     }

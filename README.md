@@ -22,6 +22,9 @@ reference recording below.
 
 ## Version history
 
+- **0.6.0** (prototype, not released): the piezo strip flexes under the
+  bridge bar, so the piezo rings up near 9 kHz (6.5 kHz on the gut lyre) and
+  rolls off above, as an under-saddle pickup does.
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
   blended with the microphones from none to the piezo alone. Levels follow
   Reason's VU meter: typical playing reads about -9 VU on every instrument,
@@ -115,7 +118,12 @@ documented chain: an element of 0.2 V/N at 1.45 nF, the ESP Project 202 preamp
 and a 1 MOhm DI. At a lyre's bridge forces that chain stays linear. A
 glissando at full velocity presses at most 7.6 N on any factory patch, and the
 preamp's op-amps limit at about 13 N. So the chain reduces to its 31 Hz input
-coupling. `PlayingControls::piezo` blends from the microphones to the piezo
+coupling. The strip itself is not rigid: the bar's mass rides on the
+element's stiffness, Acustra's element (a 3.8 g saddle on it rings at 6 kHz)
+taken per metre of its length along the whole bar. On the lyre harp that
+resonance sits at 8.7 kHz, damped by the top under the bar, lifting the piezo
+up to 9 dB there and falling 11 dB short at 20 kHz; on the gut lyre's shorter
+bar, 6.5 kHz, 5 dB up and 13 dB down at 20 kHz. `PlayingControls::piezo` blends from the microphones to the piezo
 alone. The element is wired so that a blend adds in the low mids instead of
 cancelling there; half and half is about 2 dB quieter than either alone on
 the steel lyre harp phrase. Against the microphones, the piezo carries more of
@@ -209,10 +217,10 @@ sleeps, and a sleeping instance costs next to nothing until the next pluck.
 - No plucking-hand model beyond a contact width and a release time, no
   buzzing, no string-to-string contact, no hand damping gestures beyond
   note-off.
-- The piezo's element is taken as rigid under the bar and its preamp as
-  linear: there is no mounting resonance (Acustra's saddle sits on its element
-  at 6 kHz) and no overload at settings past the factory patches. The pickup
-  system is a guitar's; no lyre pickup is measured.
+- The piezo's element stiffness is Acustra's, scaled to the bar's length,
+  and its preamp is taken as linear, with no overload at settings past the
+  factory patches. The pickup system is a guitar's; no lyre pickup is
+  measured.
 - Designing an instrument is not real-time safe; the Performer designs all
   three at startup, which a front end must allow for.
 - No plug-in yet. The Rack Extension's 0.4.0d1 has been played in Recon

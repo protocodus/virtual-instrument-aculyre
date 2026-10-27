@@ -1064,6 +1064,11 @@ struct AculyreEngine::State
     double piezoPole { 0.0 };
     double piezoPreviousForce { 0.0 };
     double piezoPrevious { 0.0 };
+    // The strip's compliance under the bar's mass (setInstrument()), a
+    // biquad on the bar's heave force: b0 b1 b2 a1 a2, transposed direct
+    // form II.
+    std::array<double, 5> piezoMount { 1.0, 0.0, 0.0, 0.0, 0.0 };
+    double piezoMountZ1 { 0.0 }, piezoMountZ2 { 0.0 };
     bool sustain { false };
     Random random {};
     PluckReport lastPluck {};
@@ -1641,6 +1646,54 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         applyPitch(index, false);
     }
 
+    // The piezo strip is no rigid seat: the bar's mass rides on the element,
+    // so the force the element feels falls away above their resonance.
+    // Acustra's element is the sibling evidence: a 3.8 g saddle on it rings
+    // at 6 kHz (the documented 5-7 kHz), so the element and its seat are
+    // 3.8e-3 (2 pi 6000)^2 / 0.072 = 7.5e7 N/m per metre of its 72 mm saddle,
+    // with a loss factor of 1/18 (Acustra's PiezoDesign; Zollner, Physics of
+    // the Electric Guitar, 2005, ch. 6). Here the strip runs the bar's length
+    // under the bar's mass: 8.7 kHz on the lyre harp, 6.5 kHz on the gut
+    // lyre. As in Acustra, F_p / F_r = Zk Q / (1 + Zk Q), Zk = k/s + c,
+    // Q = 1/(s M + SZ) + G, with SZ the strings' summed wave impedance and G
+    // the top's heave conductance under the bar, the mean of Re(Y) within a
+    // sixth of the resonance (as Acustra's 5-7 kHz about 6). Bilinear,
+    // prewarped at the resonance.
+    {
+        const double length = (body.bridgeTo - body.bridgeFrom) * b;
+        const double stiffness = 3.8e-3 * std::pow(2.0 * pi * 6000.0, 2.0) / 0.072 * length;
+        const double mass = body.bridgeMass;
+        const double omega0 = std::sqrt(stiffness / mass);
+        const double loss = stiffness / (18.0 * omega0);
+        double impedance = 0.0;
+        for (int index = 0; index < stringCount_; ++index)
+            impedance += s.strings[static_cast<std::size_t>(index)].impedance;
+        constexpr int points = 64;
+        double g = 0.0;
+        for (int point = 0; point < points; ++point)
+        {
+            const double omega = omega0 * (5.0 / 6.0 + (point + 0.5) / (3.0 * points));
+            for (int m = 0; m < s.modeCount; ++m)
+            {
+                const Mode& mode = s.modes[static_cast<std::size_t>(m)];
+                const double wm = 2.0 * pi * mode.frequency;
+                const Complex response = Complex(0.0, omega) / Complex(wm * wm - omega * omega, omega * wm / mode.q);
+                g += response.real() * mode.participation[0] * mode.participation[0] / points;
+            }
+        }
+        const double n2 = loss * g * mass;
+        const double n1 = loss * (1.0 + g * impedance) + stiffness * g * mass;
+        const double n0 = stiffness * (1.0 + g * impedance);
+        const double d2 = n2 + mass;
+        const double d1 = n1 + impedance;
+        const double d0 = n0;
+        const double k = omega0 / std::tan(std::min(0.49 * pi, 0.5 * omega0 / fs));
+        const double a0 = d2 * k * k + d1 * k + d0;
+        s.piezoMount = { (n2 * k * k + n1 * k + n0) / a0, 2.0 * (n0 - n2 * k * k) / a0,
+                         (n2 * k * k - n1 * k + n0) / a0, 2.0 * (d0 - d2 * k * k) / a0,
+                         (d2 * k * k - d1 * k + d0) / a0 };
+    }
+
     s.outputGain = instrument.outputGain;
     s.piezoGain = instrument.piezoGain;
     PlayingControls controls {};
@@ -1673,6 +1726,7 @@ void AculyreEngine::reset() noexcept
     s.massPast = {};
     s.previousLeft = s.previousRight = 0.0;
     s.piezoPreviousForce = s.piezoPrevious = 0.0;
+    s.piezoMountZ1 = s.piezoMountZ2 = 0.0;
     s.room.reset();
     s.sustain = false;
     s.idle = true;
@@ -2024,6 +2078,7 @@ void AculyreEngine::sleep() noexcept
     s.lastGeneralizedVelocity = {};
     s.previousLeft = s.previousRight = 0.0;
     s.piezoPreviousForce = s.piezoPrevious = 0.0;
+    s.piezoMountZ1 = s.piezoMountZ2 = 0.0;
     s.room.reset();
     s.idle = true;
 }
@@ -2172,8 +2227,12 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         // The piezo strip under the bar presses with the bar's whole force on
         // the top, so it hears the heave and not the rock; it runs unheard
         // too, for the same reason as the room.
-        const double piezo = s.piezoScale * (plateForce[0] - s.piezoPreviousForce) + s.piezoPole * s.piezoPrevious;
-        s.piezoPreviousForce = plateForce[0];
+        const std::array<double, 5>& mount = s.piezoMount;
+        const double element = mount[0] * plateForce[0] + s.piezoMountZ1;
+        s.piezoMountZ1 = mount[1] * plateForce[0] - mount[3] * element + s.piezoMountZ2;
+        s.piezoMountZ2 = mount[2] * plateForce[0] - mount[4] * element;
+        const double piezo = s.piezoScale * (element - s.piezoPreviousForce) + s.piezoPole * s.piezoPrevious;
+        s.piezoPreviousForce = element;
         s.piezoPrevious = piezo;
         const double level = std::max(s.outputGain * std::max(std::max(std::abs(pressureLeft), std::abs(pressureRight)),
                                                               std::max(std::abs(wetLeft), std::abs(wetRight))),

@@ -3,7 +3,7 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
-## 2026-10-27: five realism changes ship on published measurements; the by-ear verdict is pending (0.4.0)
+## 2026-10-27: five realism changes ship, with the lyre harp phrase's 4.1-cent tuning (0.4.0)
 
 **What was decided.** The owner asked for five audible steps towards the real
 instrument, including natural randomness grounded in reality. Each of the
@@ -53,12 +53,13 @@ and matched on whole-file RMS. The set and its key are in the project files
 | F | the pluck and slip scatter alone |
 | G | all five, 1-cent tuning spread |
 
-**Verdict, by ear.** Pending: the owner has not listened yet. Until then, C
-ships, chosen from the measurements and not by ear.
+**Verdict, by ear.** The owner heard C, E, F and G as much alike, and chose
+C, which already shipped. All four carry the pluck scatter. C, E and G differ
+only in the tuning spread, so the ear did not separate 0, 1 and 4.1 cents on
+this phrase. C keeps the spread measured on the lyre harp phrase.
 
-**What it licenses.** The measured damping, spreads and re-pluck stop. For
-the tuning, a choice between 0, 1 and 4.1 cents. It does not license
-tuning any spread by ear beyond those measured values.
+**What it licenses.** All five changes as measured, with the 4.1-cent tuning
+spread. It does not license tuning any spread by ear beyond measured values.
 
 ## 2026-10-27: the exponential pluck release ships; the bending bridge bar does not (0.3.0)
 

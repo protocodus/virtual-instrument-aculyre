@@ -82,6 +82,15 @@ Peak peakNear(const std::vector<float>& x, int start, int length, double nominal
     return { bestFrequency, best };
 }
 
+// The open pitch an instrument's string for `note` is tuned to.
+double tuned(const aculyre::InstrumentSpec& preset, int note)
+{
+    aculyre::AculyreEngine engine;
+    engine.prepare(48000.0);
+    engine.setInstrument(preset);
+    return engine.stringReport(engine.stringForNote(note)).frequency;
+}
+
 double rms(const std::vector<float>& x, int start, int length)
 {
     double sum = 0.0;
@@ -106,11 +115,11 @@ int main()
             for (float sample : audio)
                 finite = finite && std::isfinite(sample);
             check(finite, "output is finite");
-            const double nominal = 440.0 * std::pow(2.0, (note - 69) / 12.0);
+            const double nominal = tuned(*preset, note);
             const double measured = peakNear(audio, settled, 48000, nominal).frequency;
             const double cents = 1200.0 * std::log2(measured / nominal);
             std::printf("%-16s note %d: %+.2f cents\n", preset->name, note, cents);
-            check(std::abs(cents) < 6.0, "the open string sounds its note (within 6 cents)");
+            check(std::abs(cents) < 6.0, "the open string sounds its tuning (within 6 cents)");
             check(rms(audio, 120000, 4800) < 0.5 * rms(audio, 4800, 4800), "the note decays");
         }
     }
@@ -144,6 +153,27 @@ int main()
         }
         std::printf("steel G3 partials 2-12: worst %.1f cents from the stiff-string law\n", worst);
         check(worst < 10.0, "the bass string's partials follow the stiff-string law");
+    }
+
+    // Each instrument's strings are tuned by hand: a few cents off their
+    // notes, about the instrument's own pitch, and the same each time it is
+    // set up.
+    for (const auto* preset : aculyre::presets)
+    {
+        double sum = 0.0, squares = 0.0, worst = 0.0;
+        for (int index = 0; index < preset->stringCount; ++index)
+        {
+            const int note = preset->strings[static_cast<std::size_t>(index)].midiNote;
+            const double cents = 1200.0 * std::log2(tuned(*preset, note) / (440.0 * std::pow(2.0, (note - 69) / 12.0)));
+            sum += cents;
+            squares += cents * cents;
+            worst = std::max(worst, std::abs(cents));
+        }
+        const double mean = sum / preset->stringCount;
+        const double spread = std::sqrt(squares / preset->stringCount - mean * mean);
+        std::printf("%-16s tuning: mean %+.2f, spread %.2f, worst %.2f cents\n", preset->name, mean, spread, worst);
+        check(std::abs(mean) < 1.0e-9 && spread > 1.0 && worst <= 2.0 * 3.0 * 4.1,
+              "strings sit a few cents off their notes about the instrument's pitch");
     }
 
     // The steel lyre harp's pluck a quarter of the way from the bridge leaves
@@ -248,7 +278,7 @@ int main()
     {
         const auto raised = renderNote(aculyre::lyreHarpSteel, 61, 3.5, 64, false, true,
                                        [] (aculyre::PlayingControls& c) { c.levers = true; });
-        const double nominal = 440.0 * std::pow(2.0, (61 - 69) / 12.0);
+        const double nominal = tuned(aculyre::lyreHarpSteel, 60) * std::pow(2.0, 1.0 / 12.0);
         const double cents = 1200.0 * std::log2(peakNear(raised, settled, 48000, nominal).frequency / nominal);
         std::printf("C#4 on the C4 string, lever up: %+.2f cents\n", cents);
         check(std::abs(cents) < 6.0, "a raised lever sounds the semitone above (within 6 cents)");
@@ -261,13 +291,13 @@ int main()
     {
         const auto bent = renderNote(aculyre::lyreHarpSteel, 69, 3.5, 64, false, true,
                                      [] (aculyre::PlayingControls& c) { c.pitchBend = 2.0; });
-        const double nominal = 440.0 * std::pow(2.0, 2.0 / 12.0);
+        const double nominal = tuned(aculyre::lyreHarpSteel, 69) * std::pow(2.0, 2.0 / 12.0);
         const double cents = 1200.0 * std::log2(peakNear(bent, settled, 48000, nominal).frequency / nominal);
         std::printf("A4 bent up two semitones: %+.2f cents from B4\n", cents);
         check(std::abs(cents) < 6.0, "the pitch bend retunes the string");
         const auto down = renderNote(aculyre::lyreHarpSteel, 55, 3.5, 64, false, true,
                                      [] (aculyre::PlayingControls& c) { c.pitchBend = -2.0; });
-        const double low = 440.0 * std::pow(2.0, (53 - 69) / 12.0);
+        const double low = tuned(aculyre::lyreHarpSteel, 55) * std::pow(2.0, -2.0 / 12.0);
         const double downCents = 1200.0 * std::log2(peakNear(down, settled, 48000, low).frequency / low);
         std::printf("G3 bent down two semitones: %+.2f cents from F3\n", downCents);
         check(std::abs(downCents) < 6.0, "the pitch bend retunes the bass string down");

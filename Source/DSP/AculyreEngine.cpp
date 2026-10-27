@@ -1337,6 +1337,27 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     // A sharping lever shortens the speaking length to raise the note a
     // semitone; the tension stays, so the string's impedance does too.
     const double leverRatio = std::pow(2.0, -1.0 / 12.0);
+    // Strings tuned by hand each sit a few cents off, the same ones every
+    // time this instrument is set up: the six strings of a lyre harp phrase
+    // (Freesound 649925) spread by 4.1 cents about their mean, while
+    // repeated notes on one string agree within half a cent.
+    std::array<double, maxStrings> detune {};
+    {
+        std::uint64_t hash = 0xcbf29ce484222325ull;  // FNV-1a of the name
+        for (const char* c = instrument.name; c && *c; ++c)
+            hash = (hash ^ static_cast<unsigned char>(*c)) * 0x100000001b3ull;
+        Random tuning;
+        tuning.seed(hash);
+        double mean = 0.0;
+        for (int index = 0; index < stringCount_; ++index)
+        {
+            detune[static_cast<std::size_t>(index)] = 4.1 * tuning.gaussian();
+            mean += detune[static_cast<std::size_t>(index)];
+        }
+        mean /= stringCount_;
+        for (int index = 0; index < stringCount_; ++index)
+            detune[static_cast<std::size_t>(index)] -= mean;
+    }
     for (int index = 0; index < stringCount_; ++index)
     {
         State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
@@ -1345,7 +1366,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         voice.midiNote = spec.midiNote;
         const double area = 0.25 * pi * spec.diameter * spec.diameter;
         voice.linearMass = material.density * area;
-        const double waveSpeed = 2.0 * spec.length * 440.0 * std::pow(2.0, (spec.midiNote - 69) / 12.0);
+        const double waveSpeed = 2.0 * spec.length * 440.0
+            * std::pow(2.0, (spec.midiNote - 69) / 12.0 + detune[static_cast<std::size_t>(index)] / 1200.0);
         voice.tension = voice.linearMass * waveSpeed * waveSpeed;
         voice.impedance = std::sqrt(voice.tension * voice.linearMass);
         const double secondMoment = pi * std::pow(spec.diameter, 4.0) / 64.0;

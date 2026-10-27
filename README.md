@@ -58,7 +58,10 @@ Acustra fits) land within 6.3 cents of the stiff-string law
 f_n = n f0 sqrt((1 + B n^2) / (1 + B)); above the 12th the partials fall short
 of the law, by about a fifth of the stretch at the 16th on the bass strings.
 A second-order Thiran section sets the fractional delay, solved with the
-bridge's reflection phase so the coupled string sounds its note.
+bridge's reflection phase so the coupled string sounds its note. The strings
+are tuned by hand: each instrument's sit a few cents off their notes, the
+same ones every time, spread by 4.1 cents about the instrument's pitch as the
+six strings of a lyre harp phrase are (Freesound 649925).
 
 **Pluck.** The released shape is a triangle rounded by the fingertip's contact
 width (a harpist's finger touches at most 2 cm of string: Chadefaux et al.,

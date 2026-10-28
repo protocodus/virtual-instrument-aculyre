@@ -31,6 +31,7 @@ reference recording below.
   does: the tension glide's energy no longer pumps the string, which held
   it ringing and sharp for seconds. The bass strings' upper partials follow
   the stiff-string law to 5 kHz, where they had fallen up to 95 cents flat.
+  A finger re-plucking a ringing string stops it without a click.
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
   blended with the microphones from none to the piezo alone. Levels follow
   Reason's VU meter: typical playing reads about -9 VU on every instrument,
@@ -100,7 +101,10 @@ angle the string leaves at by 4 degrees and the release time, so the
 brightness, by 20%, each a normal spread about the control. A finger meeting a sounding string
 stops it first, as a harpist's finger holds the string 56 to 431 ms before
 letting go (Chadefaux et al., Table II); a plectrum glances off and stops most
-of it. Tension modulation raises the pitch of a hard pluck
+of it. A finger's contact silences a string in about 10 ms (Laurson et al.,
+CMJ 25(3) 2001), slow against the body's periods, so the body takes the
+force the stopped wave leaves as it takes the held force, without the click
+of a step. Tension modulation raises the pitch of a hard pluck
 for its first moments.
 
 **Bridge and body.** All strings end on one rigid bar with three degrees of

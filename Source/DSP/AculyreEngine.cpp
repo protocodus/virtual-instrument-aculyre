@@ -778,6 +778,8 @@ struct Loop
     double fraction { 4.0 };
     double thiranA1 { 0.0 }, thiranA2 { 0.0 };
     double tx1 { 0.0 }, tx2 { 0.0 }, ty1 { 0.0 }, ty2 { 0.0 };
+    // The wave that last arrived at the bridge.
+    double last { 0.0 };
     int dispersionStages { 0 };
     double dispersion { 0.0 };
     double dispersionCents { 0.0 };  // the design's worst partial error
@@ -805,7 +807,7 @@ struct Loop
     {
         line.fill(0.0f);
         pending.fill(0.0f);
-        tx1 = tx2 = ty1 = ty2 = 0.0;
+        tx1 = tx2 = ty1 = ty2 = last = 0.0;
         dispersionState.fill(0.0);
         pairState = {};
         constantLoss.reset();
@@ -871,6 +873,7 @@ struct Loop
         float& arriving = pending[static_cast<std::size_t>(write)];
         y = y * gain * damping + arriving;
         arriving = 0.0f;
+        last = y;
         return y;
     }
 
@@ -2147,8 +2150,17 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // 131 (2012) 844, Table II), several times the 10 ms in which a finger's
     // contact silences a plucked string (Laurson et al., CMJ 25(3) 2001). A
     // plectrum glances off and stops most of it (Acustra's picking-hand
-    // contact, as one step).
+    // contact, as one step). The finger's 10 ms are slow against the body's
+    // periods, so the body takes the force the stopped wave leaves as the
+    // held force below: preloaded, without the click of a step.
+    std::array<double, 3> preload {};
     if (voice.keyDown || voice.sustained || voice.energy > silentEnergy)
+    {
+        const double stopped = controls.technique == Technique::Plectrum ? 0.7 : 1.0;
+        const double normalForce = 2.0 * voice.impedance * stopped * voice.normal.last;
+        preload[0] -= normalForce;
+        preload[1] -= normalForce * voice.lever;
+        preload[2] -= 2.0 * voice.impedance * stopped * voice.parallel.last;
         for (Loop* loop : { &voice.normal, &voice.parallel })
         {
             if (controls.technique != Technique::Plectrum)
@@ -2161,6 +2173,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             for (float& sample : loop->pending)
                 sample *= 0.3f;
         }
+    }
     if (voice.keyDown || voice.sustained || voice.energy > silentEnergy)
     {
         const float kept = controls.technique == Technique::Plectrum ? 0.09f : 0.0f;
@@ -2235,7 +2248,6 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     }
     const double releasedRatio = (tensionModulation_ ? 1.0 + voice.glidePerEnergy * releasedEnergy : 1.0) * s.bend;
 
-    std::array<double, 3> preload {};
     for (int plane = 0; plane < 2; ++plane)
     {
         Loop& loop = plane == 0 ? voice.normal : voice.parallel;

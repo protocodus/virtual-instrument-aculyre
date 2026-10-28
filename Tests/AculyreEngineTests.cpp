@@ -392,6 +392,38 @@ int main()
         check(plectrum > 2.0, "a plectrum leaves some of the old note");
     }
 
+    // The stop does not click: over the 3 ms after a soft re-pluck of a
+    // loud G3, the second difference (the top octaves) carries no more than
+    // a fresh pluck with the same draws over another string still ringing.
+    // An unpreloaded stop left 3.2 times as much.
+    {
+        const auto attack = [] (int first)
+        {
+            aculyre::AculyreEngine engine;
+            engine.prepare(48000.0);
+            engine.setInstrument(aculyre::lyreHarpSteel);
+            aculyre::PlayingControls controls = engine.controls();
+            controls.room = 0.0;
+            engine.setControls(controls);
+            std::vector<float> l(24000), r(24000);
+            engine.noteOn(first, 1.0f);
+            engine.process(l.data(), r.data(), 24000);
+            engine.noteOn(55, 0.3f);
+            engine.process(l.data(), r.data(), 146);
+            double top = 0.0;
+            for (int i = 2; i < 146; ++i)
+            {
+                const double d = l[static_cast<std::size_t>(i)] - 2.0 * l[static_cast<std::size_t>(i - 1)]
+                               + l[static_cast<std::size_t>(i - 2)];
+                top += d * d;
+            }
+            return top;
+        };
+        const double ratio = attack(55) / attack(60);
+        std::printf("soft re-pluck of a loud G3, top octaves re a fresh pluck: %.2f\n", ratio);
+        check(ratio < 2.0, "a re-pluck's stop does not click");
+    }
+
     // A silent engine sleeps: it starts asleep, a pluck wakes it, and once
     // everything has died away it sleeps again and writes exact silence.
     {

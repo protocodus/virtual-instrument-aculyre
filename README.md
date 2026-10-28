@@ -338,6 +338,11 @@ nothing until the next pluck.
   that sound 56 to 70 dB below a steel A3's strongest over its first
   0.1 s at velocity 0.7 (64 to 80 on the wound G3, 87 to 100 on the gut
   D3).
+- At 1x, the back panel's default, the top octave from 10 to 16 kHz still
+  sits 1.5 to 1.7 dB below the 4x sound: the junction integrates the
+  bridge bar's mass by the trapezoidal rule, which overstates it toward
+  Nyquist (a bar a tenth as heavy nearly halves the gap), and the strings
+  account for the rest.
 - No plucking-hand model beyond a contact width and a release time, no
   buzzing, no string-to-string contact, no hand damping gestures beyond
   note-off.

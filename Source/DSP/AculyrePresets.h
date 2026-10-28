@@ -100,7 +100,10 @@ constexpr std::array<StringSpec, maxStrings> lyreHarpNylon {{
 
 // The lyre harp's soundbox: a 20 x 30 cm top of 3 mm spruce on a box 5 cm
 // deep, one 6 cm soundhole, a 6 g maple bridge bar a centimetre high a
-// third of the way up the top. Assumed dimensions of a typical instrument.
+// third of the way up the top. Early Music Shop's 16-string lyre has a solid
+// spruce top on a beech body; Larkin in the Morning's has a birch ply top on
+// sheesham (their listings). The dimensions are assumed, typical of the
+// instrument.
 constexpr BodySpec lyreHarpBody {
     0.20, 0.30, 0.003, sitkaSpruce,
     0.20 * 0.30 * 0.05 * 0.85, 0.03,

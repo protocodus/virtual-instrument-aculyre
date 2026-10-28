@@ -1793,12 +1793,34 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         // What a mode radiates besides its net volume: edge and corner
         // radiation below coincidence, all of it above (radiation efficiency
         // sigma; an equivalent volume velocity c sqrt(4 pi S sigma <v^2>) /
-        // omega). Its sign and weight at each microphone are seeded draws: a
-        // symmetric pair, each string placed by where it sits on the bar, was
-        // heard against this and not chosen (Docs/decisions.md, 2026-10-28).
+        // omega). Below coincidence sigma is Maidanik's average over a
+        // baffled plate's corner and edge modes, as Crocker and Price correct
+        // it (JSV 9 (1969) 469, Eq. 38), doubled for a top glued to its box,
+        // whose edges the plate's frequencies already take as clamped:
+        // Maidanik gives a clamped panel twice a simply supported one's
+        // (ibid., p. 484). It reaches 1 short of coincidence and holds there.
+        // An uncited 0.28 sqrt(f / fc) had run up to 1.4 dB over it near
+        // 1 kHz and up to 6 dB under it below coincidence, where it stepped
+        // up 5.5 dB. Its sign and weight at each microphone are seeded draws:
+        // a symmetric pair, each string placed by where it sits on the bar,
+        // was heard against this and not chosen (Docs/decisions.md,
+        // 2026-10-28).
         const double omega = 2.0 * pi * mode.frequency;
         const double ratio = mode.frequency / coincidenceHz;
-        const double sigma = ratio >= 1.0 ? 1.0 : std::min(1.0, 0.28 * std::sqrt(ratio));
+        double sigma = 1.0;
+        if (ratio < 1.0)
+        {
+            const double alpha = std::sqrt(ratio);
+            const double wavelength = soundSpeed / coincidenceHz;
+            const double corner = ratio < 0.5
+                ? 8.0 / (pi * pi * pi * pi) * wavelength * wavelength / (a * b)
+                      * (1.0 - 2.0 * ratio) / (alpha * std::sqrt(1.0 - ratio))
+                : 0.0;
+            const double edge = 2.0 * (a + b) * wavelength / (4.0 * pi * pi * a * b)
+                * ((1.0 - ratio) * std::log((1.0 + alpha) / (1.0 - alpha)) + 2.0 * alpha)
+                / std::pow(1.0 - ratio, 1.5);
+            sigma = std::min(1.0, 2.0 * (corner + edge));
+        }
         const double multipole = soundSpeed / omega
             * std::sqrt(4.0 * pi * a * b * sigma) * 0.5;
         mode.multipoleLeft = multipole * (modeRandom.bipolar() < 0.0 ? -1.0 : 1.0)
@@ -2907,8 +2929,8 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         // the velocity's zero at Nyquist. A first difference of the velocity
         // missed the acceleration of the modes' tails, which the bilinear
         // transform compresses toward Nyquist: at 48 kHz each instrument's
-        // 10 to 16 kHz fell 3.1 to 3.6 dB below its 4x sound, where it falls
-        // 1.5 to 1.7.
+        // 10 to 16 kHz fell 3.4 to 3.6 dB below its 4x sound, where it falls
+        // 1.7 to 2.0.
         const double pressureLeft = (radiatedLeft - s.previousLeft) * s.radiationScale - s.pressureLeft;
         const double pressureRight = (radiatedRight - s.previousRight) * s.radiationScale - s.pressureRight;
         s.previousLeft = radiatedLeft;

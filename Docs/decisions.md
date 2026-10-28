@@ -3,6 +3,40 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-28: the soundbox radiates by Maidanik's clamped-panel efficiency
+
+**What was decided.** Below the top's coincidence frequency each mode's edge
+and corner radiation had come from an efficiency of 0.28 sqrt(f / fc), a
+coefficient nobody had sourced, stepping to 1 at coincidence. It is replaced
+by Maidanik's average over a baffled plate's corner and edge modes, as
+Crocker and Price correct it (JSV 9 (1969) 469, Eq. 38), doubled for
+clamped edges as Maidanik gives a clamped panel (ibid., p. 484), capped at 1.
+
+**Not by ear.** Two published forms were open: simply supported edges, and
+the clamped doubling. The model already takes its plate's frequencies as
+clamped (Warburton), a top glued to its box, so the clamped form is the one
+consistent with it. The measurements agreed, against the simply supported
+form, with the steel lyre harp phrase over eight seeds (Freesound 649925):
+
+| | today's curve | simply supported | clamped |
+| --- | --- | --- | --- |
+| 1.25-5 kHz against the recording | 0.8 dB short | 1.9 dB short | 1.0 dB short |
+| 6.3-10 kHz against the recording | 1.8 dB short | 1.4 dB short | 1.0 dB short |
+| worst string off the register's line, steel / nylon / gut (mics) | 0.45 / 0.17 / 0.18 dB | 1.70 / 1.63 / 0.97 dB | 0.46 / 0.37 / 0.18 dB |
+
+Through the shipping path, matched on whole-file RMS, the clamped form moves
+each instrument's phrase by under 1 dB below 5 kHz and adds 2.2 to 2.7 dB
+around 6.3 kHz on the lyre harps and 2.4 dB around 5 kHz on the gut lyre,
+where the old curve sat up to 6 dB under it before its step. The output
+gains were re-levelled to -9 VU (+0.1, +0.2 and -0.3 dB). No listening test
+was run.
+
+**What it licenses.** The published clamped-panel efficiency below
+coincidence and 1 at and above it. It does not license a factor other than
+Maidanik's two, or Maidanik's peak at coincidence, which an orthotropic top
+spreads between its two directions' coincidences (4.2 and 15 kHz on the
+spruce).
+
 ## 2026-10-28: the steel lyre harp's G3 is wound, and the 0.6.0 round is heard as a whole
 
 **What was decided.** Two more questions on the listening page, 48 kHz

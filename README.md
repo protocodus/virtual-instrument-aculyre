@@ -30,7 +30,7 @@ reference recording below.
   fingertip slips off the string as quickly as harpists' were measured to,
   quicker for a hard pluck and slower for a soft one, so soft playing is
   darker and hard playing brighter. With the rest of 0.6.0, the two bring
-  the lyre harp's treble from 1.25 to 5 kHz to within 1 dB of a
+  the lyre harp's treble from 1.25 to 5 kHz to about 1 dB of a
   recording's on average, where 0.5.0 fell 8.0 dB short. The steel lyre
   harp's lowest string, G3, is nickel-wound, as string sets for these harps
   wind it: far less inharmonic than the plain wire it replaces, darker, and
@@ -43,8 +43,12 @@ reference recording below.
   and the treble strings' to 12 kHz at 1x, held bends included, where they
   had run up to 49 cents sharp and only 4x had kept them in tune.
   At 1x the top octave keeps more of its air: from 10 to 16 kHz each
-  instrument sits 1.5 to 1.7 dB below its 4x sound, where it fell 3.1 to
-  3.6 dB below. A finger re-plucking a ringing string stops it without a click. Pitch
+  instrument sits 1.7 to 2.0 dB below its 4x sound, where it fell 3.1 to
+  3.6 dB below. The soundbox radiates its upper modes by a published plate
+  formula instead of an authored curve: up to 3 dB more air around 6 kHz
+  (5 kHz on the gut lyre), where the old curve dipped before a step, and
+  under 1 dB less from 1 to 3 kHz. A finger re-plucking a ringing string
+  stops it without a click. Pitch
   bends stay in tune over their full twelve semitones, where an octave had
   fallen up to 59 cents flat. The room's early reflections keep their timing
   whenever the strings run above 96 kHz (4x on a 44.1 or 48 kHz host), where
@@ -179,10 +183,15 @@ junction is solved implicitly every sample, so it is passive and every string, p
 **Radiation and room.** Each mode radiates its net volume change as a
 monopole, plus an equivalent volume for its edge and corner radiation, from a
 radiation efficiency, with a seeded sign and weight at each of the two
-microphones; the far-field pressure at 0.5 m is rho/(4 pi r) times the
-volume acceleration, each mode's taken as its bilinear design takes s times
-its velocity, k (1 - z^-1)/(1 + z^-1), so the tails the transform
-compresses toward Nyquist keep their acceleration. A small feedback-delay room follows: six early reflections, then an
+microphones. Below the top's coincidence frequency (7.9 kHz for the spruce
+top, 6.0 kHz for the maple) the efficiency is Maidanik's average for a
+baffled plate's corner and edge modes, as Crocker and Price correct it
+(JSV 9 (1969) 469), doubled for edges glued to the box as Maidanik gives a
+clamped panel; it reaches 1 short of coincidence and holds there. The
+far-field pressure at 0.5 m is rho/(4 pi r) times the volume acceleration,
+each mode's taken as its bilinear design takes s times its velocity,
+k (1 - z^-1)/(1 + z^-1), so the tails the transform compresses toward
+Nyquist keep their acceleration. A small feedback-delay room follows: six early reflections, then an
 eight-line network fed through Dattorro's four input diffusers, so its tail
 is dense from about 70 ms, as a room's is, rather than a train of separate
 echoes for its first 300 ms.
@@ -220,13 +229,13 @@ point, 0.3.0 was close in spectral centroid over the first 250 ms (482 Hz
 against 465 Hz) and in the apparent inharmonicity of partials 2-12
 (B = 3.86e-4 against 3.93e-4), both lacked the 4th harmonic, and the model's
 note decayed faster over 80-450 ms (43 against 30 dB/s): A4 sits beside the
-assumed body's 467 Hz top mode. In 0.6.0 it decays at 33 dB/s with a
-centroid of 520 Hz. Over its first 45 ms the 3rd, 5th, 6th, 7th and 10th
-partials sit on average 4.5 dB further under the fundamental than the
+assumed body's 467 Hz top mode. In 0.6.0 it decays at 34 dB/s with a
+centroid of 518 Hz. Over its first 45 ms the 3rd, 5th, 6th, 7th and 10th
+partials sit on average 4.6 dB further under the fundamental than the
 recording's, where they sat 14.5 dB under before the bending bar and the
 measured slip; by 100-200 ms they stand 6.7 dB over. Partials 3-12 decay
-alike (40 against 36 dB/s on average from 60 to 400 ms, the recording's
-length), but the fundamental falls away faster (55 against 32 dB/s), drained
+alike (33 against 36 dB/s on average from 60 to 400 ms, the recording's
+length), but the fundamental falls away faster (42 against 32 dB/s), drained
 by the assumed body's top mode beside it. The model's partials follow its
 string's own stiffness (B = 2.4e-4 against the recording's 4.0e-4 by the same
 fit).
@@ -234,18 +243,20 @@ Replaying a lyre harp phrase note for note (Freesound 649925, CC BY), the
 model's 1/3-octave long-term spectrum fell short of the recording's by
 7.6 dB on average from 1.25 to 5 kHz in 0.3.0 (10.0 dB in 0.2.0), and by
 8.0 dB over eight seeds of 0.4.0's scattered plucks (7.1-8.9). In 0.6.0 it
-falls 0.8 dB short over the same seeds (0.5 to 1.3 short), both
-microphones summed: 0.4 with a plain G3, whose ringing in sympathy filled
-the 1.25 kHz band 2.3 dB more than the wound string's. Band by band it still runs from 8 dB under at 5 kHz to
-6 dB over at 2 kHz, and 0.2 to 3.0 dB under from 6.3 to 10 kHz. Over a CC0
+falls 1.0 dB short over the same seeds (0.6 to 1.5 short), both
+microphones summed. The wound G3 cost 0.4 dB of that when it came in: the
+plain string, ringing in sympathy, had filled the 1.25 kHz band 2.3 dB
+more. Band by band it still runs from 8 dB under at 5 kHz to 5 dB over at
+2 kHz, and 0.5 to 1.4 dB under from 6.3 to 10 kHz. Over a CC0
 Iron Age lyre recording (Freesound 191883, another instrument and tuning),
 0.3.0's gut lyre decayed at a similar rate (median 18-22 against 18 dB/s
 over 80-550 ms) and was a little darker (centroid 448-496 Hz against
-557 Hz). In 0.6.0, on the shared phrase, its notes decay at 22 against
-18 dB/s, and over each note's first 250 ms their median centroid is 499 Hz
-at the left microphone and 735 Hz at the right, where the recording's
-channels read 551 and 590 Hz: the body's drawn radiation signs part the
-two microphones further than the recording's channels. These are
+557 Hz). In 0.6.0, on the shared phrase, its notes decay at 21 against
+18 dB/s, and over each note's first 250 ms their median centroid is 491 Hz
+at the left microphone and 549 Hz at the right, where the recording's
+channels read 551 and 590 Hz: the gut lyre is a little darker, and the
+body's drawn radiation signs part its two microphones a little further than
+the recording's channels. These are
 order-of-magnitude checks, not a calibration.
 
 **Playing.** `PlayingControls` holds what a player and the room change while
@@ -322,7 +333,7 @@ nothing until the next pluck.
   rigid bar. The body's mode damping is a point in a guitar bridge's
   measured spread, chosen by ear ([decisions](Docs/decisions.md)).
 - Against a recorded lyre harp A4, the model's fundamental decays faster
-  (55 against 32 dB/s), drained by the assumed body's 467 Hz top mode, and
+  (42 against 32 dB/s), drained by the assumed body's 467 Hz top mode, and
   its partials are less inharmonic (B = 2.4e-4 against 4.0e-4): the body
   and the string gauges are both assumed. Only G3 is wound: the string set
   it follows is for a harp tuned up from D3 and winds its four lowest
@@ -339,7 +350,7 @@ nothing until the next pluck.
   0.1 s at velocity 0.7 (64 to 80 on the wound G3, 87 to 100 on the gut
   D3).
 - At 1x, the back panel's default, the top octave from 10 to 16 kHz still
-  sits 1.5 to 1.7 dB below the 4x sound: the junction integrates the
+  sits 1.7 to 2.0 dB below the 4x sound: the junction integrates the
   bridge bar's mass by the trapezoidal rule, which overstates it toward
   Nyquist: a bar a tenth as heavy nearly halves the gap.
 - No plucking-hand model beyond a contact width and a release time, no

@@ -31,7 +31,9 @@ reference recording below.
   does: the tension glide's energy no longer pumps the string, which held
   it ringing and sharp for seconds. The bass strings' upper partials follow
   the stiff-string law to 5 kHz, where they had fallen up to 95 cents flat.
-  A finger re-plucking a ringing string stops it without a click.
+  A finger re-plucking a ringing string stops it without a click. Pitch
+  bends stay in tune over their full twelve semitones, where an octave had
+  fallen up to 59 cents flat.
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
   blended with the microphones from none to the piezo alone. Levels follow
   Reason's VU meter: typical playing reads about -9 VU on every instrument,

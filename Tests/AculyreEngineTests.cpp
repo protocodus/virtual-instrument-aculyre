@@ -333,6 +333,14 @@ int main()
         const double downCents = 1200.0 * std::log2(peakNear(down, settled, 48000, low).frequency / low);
         std::printf("G3 bent down two semitones: %+.2f cents from F3\n", downCents);
         check(std::abs(downCents) < 6.0, "the pitch bend retunes the bass string down");
+        // Past two semitones the lag used to be extrapolated, which left this
+        // octave 59 cents flat over its first half second, where it is loud.
+        const auto octave = renderNote(aculyre::lyreHarpSteel, 55, 3.5, 64, false, true,
+                                       [] (aculyre::PlayingControls& c) { c.pitchBend = 12.0; });
+        const double high = tuned(aculyre::lyreHarpSteel, 55) * 2.0;
+        const double octaveCents = 1200.0 * std::log2(peakNear(octave, 4800, 24000, high).frequency / high);
+        std::printf("G3 bent up an octave: %+.2f cents from G4\n", octaveCents);
+        check(std::abs(octaveCents) < 6.0, "the pitch bend retunes a string an octave up");
     }
 
     // The hands: a full palm shortens the note; letting a released string

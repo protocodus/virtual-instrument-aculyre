@@ -718,11 +718,22 @@ struct UnitDcSection
     }
 };
 
-// The frequency ratios, -2 to +2 semitones, at which setup measures each
-// loop's phase lag for the pitch bend and the tension glide.
-constexpr std::array<double, 5> bendRatios {
-    0.8908987181403393, 0.9438743126816935, 1.0, 1.0594630943592953, 1.122462048309373
-};
+// The frequency ratios at which setup measures each loop's phase lag for the
+// pitch bend and the tension glide: every quarter semitone over the bend's
+// +-12 semitones. The bridge's reflection phase turns across a body mode
+// within about half a semitone (a Q of 35); semitone steps over +-2 left
+// bends up to 3 cents off between them, and extrapolation past +2 left an
+// octave up on G3 59 cents flat.
+constexpr int bendStepsPerSemitone = 4;
+constexpr int bendPoints = 24 * bendStepsPerSemitone + 1;
+const std::array<double, bendPoints> bendRatios = []
+{
+    std::array<double, bendPoints> ratios {};
+    for (int k = 0; k < bendPoints; ++k)
+        ratios[static_cast<std::size_t>(k)]
+            = std::pow(2.0, static_cast<double>(k - 12 * bendStepsPerSemitone) / (12 * bendStepsPerSemitone));
+    return ratios;
+}();
 
 // What sets one polarisation's pitch: its frequency, its filters and the
 // line that tunes them. A sharping lever swaps one for another.
@@ -743,7 +754,7 @@ struct LoopDesign
     double loopDelay { 70.0 };
     // The phase lag, in cycles, of everything but the line's delay (the
     // filters' dispersion and the bridge's reflection) at bendRatios.
-    std::array<double, 5> lagCycles {};
+    std::array<double, bendPoints> lagCycles {};
 
     // Phase lag of everything in the loop but the line's whole samples and
     // the Thiran section, at omega (rad/sample).
@@ -798,7 +809,7 @@ struct Loop
     // at the fundamental, both in samples.
     double restLineDelay { 68.0 };
     double loopDelay { 70.0 };
-    std::array<double, 5> lagCycles {};
+    std::array<double, bendPoints> lagCycles {};
 
     // Stops the wave and everything still on its way, keeping the pitch and
     // the hand's damping.
@@ -894,16 +905,16 @@ struct Loop
 
     // The line delay that keeps the loop resonant at `ratio` times its own
     // frequency, (1 - lag) loopDelay / ratio, the lag interpolated between
-    // the semitones setup measured (extrapolated beyond two). Scaling the
-    // line alone would leave the dispersion's phase delay at its own
-    // frequency: 11 cents flat of a two-semitone bend on A4.
+    // the ratios setup measured (extrapolated past the last, where the glide
+    // takes a full bend). Scaling the line alone would leave the
+    // dispersion's phase delay at its own frequency: 11 cents flat of a
+    // two-semitone bend on A4.
     double lineDelayAt(double ratio) const noexcept
     {
         if (ratio == 1.0)
             return restLineDelay;
-        std::size_t k = 0;
-        while (k < 3 && ratio > bendRatios[k + 1])
-            ++k;
+        const auto k = static_cast<std::size_t>(
+            std::upper_bound(bendRatios.begin() + 1, bendRatios.end() - 1, ratio) - bendRatios.begin() - 1);
         const double t = (ratio - bendRatios[k]) / (bendRatios[k + 1] - bendRatios[k]);
         const double lag = lagCycles[k] + t * (lagCycles[k + 1] - lagCycles[k]);
         return (1.0 - lag) * loopDelay / ratio;

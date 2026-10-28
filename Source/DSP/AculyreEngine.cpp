@@ -1242,7 +1242,12 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         // What a mode radiates besides its net volume: edge and corner
         // radiation below coincidence, all of it above (radiation efficiency
         // sigma; an equivalent volume velocity c sqrt(4 pi S sigma <v^2>) /
-        // omega). Its sign at each microphone is a seeded draw.
+        // omega). The pair stands symmetrically about the top's long axis, so
+        // a mode symmetric across the width reaches both microphones alike
+        // and one antisymmetric across it (n even) reaches them in opposite
+        // phase: the strings sound from where they sit along the bar, bass to
+        // the left. The sign itself, which way the mode's lobe faces the
+        // pair, is a seeded draw.
         const double omega = 2.0 * pi * mode.frequency;
         const double ratio = mode.frequency / coincidenceHz;
         const double sigma = ratio >= 1.0 ? 1.0 : std::min(1.0, 0.28 * std::sqrt(ratio));
@@ -1250,8 +1255,11 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             * std::sqrt(4.0 * pi * a * b * sigma) * 0.5;
         mode.multipoleLeft = multipole * (modeRandom.bipolar() < 0.0 ? -1.0 : 1.0)
                            * (0.7 + 0.3 * std::abs(modeRandom.bipolar()));
-        mode.multipoleRight = multipole * (modeRandom.bipolar() < 0.0 ? -1.0 : 1.0)
-                            * (0.7 + 0.3 * std::abs(modeRandom.bipolar()));
+        mode.multipoleRight = (mode.n % 2 == 0 ? -1.0 : 1.0) * mode.multipoleLeft;
+        // The right microphone's two former draws, kept so that every later
+        // draw, and the left microphone, stay as they were.
+        modeRandom.bipolar();
+        modeRandom.bipolar();
     }
 
     // The air in the soundhole couples to every plate mode with a net volume

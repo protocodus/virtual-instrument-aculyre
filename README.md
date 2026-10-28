@@ -24,7 +24,10 @@ reference recording below.
 
 - **0.6.0** (prototype, not released): the piezo strip flexes under the
   bridge bar, so the piezo rings up near 9 kHz (6.5 kHz on the gut lyre) and
-  rolls off above, as an under-saddle pickup does.
+  rolls off above, as an under-saddle pickup does. The microphones hear the
+  soundbox as a symmetric pair does, so each string sounds from its place
+  along the bridge bar, bass to the left, instead of every string sitting
+  slightly left.
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
   blended with the microphones from none to the piezo alone. Levels follow
   Reason's VU meter: typical playing reads about -9 VU on every instrument,
@@ -107,8 +110,12 @@ is passive and every string, played or idle, is coupled to every other.
 
 **Radiation and room.** Each mode radiates its net volume change as a
 monopole, plus an equivalent volume for its edge and corner radiation, from a
-radiation efficiency, with a seeded sign at each of the two microphones; the
-far-field pressure at 0.5 m is rho/(4 pi r) times the volume acceleration. A
+radiation efficiency. The two microphones stand symmetrically about the top's
+long axis, so a mode antisymmetric across the width reaches them in opposite
+phase and a symmetric one alike, with a seeded sign for which way its lobe
+faces them: each string sounds from where it sits along the bar, the steel
+lyre harp's G3 9 dB to the left and its A5 8 dB to the right. The far-field
+pressure at 0.5 m is rho/(4 pi r) times the volume acceleration. A
 small feedback-delay room follows.
 
 **Piezo.** A pickup strip under the bridge bar presses with the bar's whole

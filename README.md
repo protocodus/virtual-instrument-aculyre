@@ -39,7 +39,8 @@ reference recording below.
   sustain of the strings beside the main mode. A hard pluck on a steel bass string decays as a soft one
   does: the tension glide's energy no longer pumps the string, which held
   it ringing and sharp for seconds. The bass strings' upper partials follow
-  the stiff-string law to 5 kHz, where they had fallen up to 95 cents flat,
+  the stiff-string law to 5 kHz at every host rate, where they had fallen up
+  to 95 cents flat,
   and the treble strings' to 12 kHz at 1x, held bends included, where they
   had run up to 49 cents sharp and only 4x had kept them in tune.
   At 1x the top octave keeps more of its air: from 10 to 16 kHz each
@@ -118,11 +119,13 @@ f_n = n f0 sqrt((1 + B n^2) / (1 + B)). Where partials past the 12th fall below
 5 kHz (strings under about 417 Hz), second-order sections are fitted with
 the first-order coefficient to all of them, by least squares in cents: two,
 and a third and a fourth, each fit resuming from the last, while a partial
-lands more than 5 cents off. Every string of the three instruments, lever
-up or down, lands within 4.2 cents up to 5 kHz at 48 kHz (6.8 at most from
-44.1 to 192 kHz, the gut D3 with its lever up at 176.4 kHz), where
-first-order sections alone left the steel G3 up to 95 cents flat and two
-sections the gut D3 25 cents off.
+lands more than 5 cents off, and where four still leave one so, again over
+eight first-order sections. The first-order coefficient stays negative,
+since a positive one flattens the upper partials a stiff string sharpens.
+Every string of the three instruments, lever up or down, lands within 4.2
+cents up to 5 kHz at every rate from 44.1 to 192 kHz, no more than 0.6
+cents further out than at 48 kHz. First-order sections alone left the steel
+G3 up to 95 cents flat, and two sections the gut D3 25 cents off.
 A second-order Thiran section sets the fractional delay, solved with the
 bridge's reflection phase so the coupled string sounds its note. The strings
 are tuned by hand: each instrument's sit a few cents off their notes, the

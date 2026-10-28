@@ -451,12 +451,18 @@ double worstOf(const std::array<double, maxFittedPartials>& cents, int partials)
 // coefficient and `pairs` second-order sections, the Jacobian by forward
 // differences, from `fit`, which it leaves where the fit settles and `cents`
 // at that fit's errors; false where `fit` is out of bounds to begin with.
+// The first-order coefficient stays negative, as designDispersion's search
+// keeps it: a positive one delays the upper partials more, flattening them
+// where a stiff string's run sharp. Left free, the gut D4's fit ran it to
+// +0.98 at 88.2 and 96 kHz and stalled 6.8 cents out, so the string kept its
+// first-order design: 2.4 cents out below 5 kHz and its 24th partial 12
+// cents flat, against 0.6 at 48 kHz.
 bool fitSections(DispersionFit& fit, int pairs, int stages, double omega1, double inharmonicity,
                  int partials, std::array<double, maxFittedPartials>& cents) noexcept
 {
     const auto valid = [pairs] (const DispersionFit& p)
     {
-        bool ok = std::abs(p[0]) < 0.98;
+        bool ok = p[0] <= 0.0 && p[0] > -0.98;
         for (int k = 0; k < pairs; ++k)
             ok = ok && p[static_cast<std::size_t>(1 + 2 * k)] >= 0.0 && p[static_cast<std::size_t>(1 + 2 * k)] < 0.99
                  && p[static_cast<std::size_t>(2 + 2 * k)] > 0.0 && p[static_cast<std::size_t>(2 + 2 * k)] < pi;
@@ -697,7 +703,19 @@ DispersionDesign designDispersion(double fundamental, double inharmonicity, doub
         if (design.worstCents < chosen.worstCents)
             chosen = design;
     }
-    return refineDispersion(chosen, fundamental, inharmonicity, sampleRate);
+    DispersionDesign refined = refineDispersion(chosen, fundamental, inharmonicity, sampleRate);
+    // Four sections fit the gut D3 within 4.2 cents over eight stages but
+    // only 5.6 over seven, which the search above takes at 88.2, 176.4 and
+    // 192 kHz (its raised D#3 6.8 over six): where the sections still leave a
+    // partial more than 5 cents out, the fit is tried again over the most.
+    const DispersionDesign& most = best[static_cast<std::size_t>(maxDispersionStages)];
+    if (refined.worstCents > 5.0 && chosen.stages < maxDispersionStages && most.worstCents < infinity)
+    {
+        const DispersionDesign retried = refineDispersion(most, fundamental, inharmonicity, sampleRate);
+        if (retried.worstCents < refined.worstCents)
+            refined = retried;
+    }
+    return refined;
 }
 
 Complex lossSectionResponse(const LossSectionDesign& s, double omega) noexcept

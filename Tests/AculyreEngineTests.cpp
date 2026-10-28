@@ -192,17 +192,41 @@ int main()
     // 5 kHz: with two second-order sections at most, the gut D3 landed 25
     // cents off, its E3 8.9 and the nylon G3 6.3. (Over its first 0.1 s the
     // gut D3's partials above 2.4 kHz sound 85 to 115 dB below its strongest,
-    // too faint for the scan above to follow.)
+    // too faint for the scan above to follow.) At every rate the strings run
+    // at, lever down and up, each string lands within a cent of its fit at
+    // 48 kHz: at 88.2 and 96 kHz the gut D4's fit had stalled 2.4 cents out
+    // (0.0 at 48 kHz), at 88.2 to 192 kHz the gut D3's 5.6 to 6.8 (4.2).
     for (const auto* preset : aculyre::presets)
     {
-        aculyre::AculyreEngine engine;
-        engine.prepare(48000.0);
-        engine.setInstrument(*preset);
-        double worst = 0.0;
-        for (int index = 0; index < preset->stringCount; ++index)
-            worst = std::max(worst, engine.stringReport(index).dispersionCents);
-        std::printf("%-16s dispersion: worst %.2f cents from the stiff-string law below 5 kHz\n", preset->name, worst);
-        check(worst <= 5.0, "every string's dispersion is fitted within 5 cents of the law");
+        std::array<double, 2 * aculyre::maxStrings> at48 {};
+        for (const double rate : { 48000.0, 44100.0, 88200.0, 96000.0, 176400.0, 192000.0 })
+        {
+            aculyre::AculyreEngine engine;
+            engine.prepare(rate);
+            engine.setInstrument(*preset);
+            double worst = 0.0, drift = 0.0;
+            for (int index = 0; index < preset->stringCount; ++index)
+                for (int lever = 0; lever < 2; ++lever)
+                {
+                    const int raised = engine.stringReport(index).midiNote + 1;
+                    if (lever == 1)
+                    {
+                        if (engine.stringForNote(raised) >= 0)
+                            continue;
+                        engine.noteOn(raised, 0.5f);
+                    }
+                    const double cents = engine.stringReport(index).dispersionCents;
+                    double& reference = at48[static_cast<std::size_t>(2 * index + lever)];
+                    if (rate == 48000.0)
+                        reference = cents;
+                    worst = std::max(worst, cents);
+                    drift = std::max(drift, cents - reference);
+                }
+            std::printf("%-16s at %6.0f Hz dispersion: worst %.2f cents from the stiff-string law below 5 kHz,"
+                        " %+.2f against 48 kHz\n", preset->name, rate, worst, drift);
+            check(worst <= 5.0, "every string's dispersion is fitted within 5 cents of the law");
+            check(drift <= 1.0, "every string's dispersion fits within a cent of its fit at 48 kHz at every rate");
+        }
     }
 
     // The treble string's partials follow the law too, past the dispersion

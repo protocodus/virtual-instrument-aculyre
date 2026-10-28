@@ -199,10 +199,11 @@ the draws: 8.0 dB on average over eight seeds (7.1-8.9), against 7.4
 both microphones summed. Over a CC0 Iron Age lyre recording (Freesound 191883,
 another instrument and tuning), the gut lyre's notes decay at a similar rate
 (median 18-22 against 18 dB/s over 80-550 ms) and are a little darker
-(centroid 448-496 Hz against 557 Hz); 0.4.0's measured gut damping
-brightens them (D4's centroid 794 to 975 Hz over its first 250 ms), not yet
-compared with that recording again. These are order-of-magnitude checks, not
-a calibration.
+(centroid 448-496 Hz against 557 Hz). Compared again in 0.6.0 on the shared
+phrase, they decay at 20 against the recording's 18 dB/s over 80-550 ms and
+are still darker: over each note's first 250 ms, a median centroid of
+489-495 Hz by either microphone against 551-590 Hz by either channel of the
+recording. These are order-of-magnitude checks, not a calibration.
 
 **Playing.** `PlayingControls` holds what a player and the room change while
 the instrument sounds; the plucking fields apply at the next pluck, the rest at

@@ -367,9 +367,25 @@ nothing until the next pluck.
   sits 1.7 to 2.0 dB below the 4x sound: the junction integrates the
   bridge bar's mass by the trapezoidal rule, which overstates it toward
   Nyquist: a bar a tenth as heavy nearly halves the gap.
-- No plucking-hand model beyond a contact width and a release time, no
-  buzzing, no string-to-string contact, no hand damping gestures beyond
-  note-off.
+- No plucking-hand model beyond a release time and a nail's or plectrum's
+  edge width, no buzzing, no string-to-string contact, no hand damping
+  gestures beyond note-off. The release is a stand-in for the slip
+  Chadefaux, Le Carrou and Fabre model (JASA 133 (2013) 2444): its 0.053 ms
+  is one harpist's plucks near the fingertip in their lab, while ten
+  harpists playing chords and arpeggios slipped 0.2 to 1.5 mm, mostly 0.5
+  to 1.2 (their Table V), which as a release time would leave the strings
+  far darker than any recording.
+- Replaying the lyre harp phrase (Freesound 649925) with each note at the
+  pluck point fitted to it, the steel lyre harp falls about 3 dB short of
+  the recording from 1.25 to 5 kHz and 4 dB from 6 to 10 kHz, where the
+  shipping quarter pluck leaves 1 dB. An instant release would still leave
+  2.3 dB from 1.25 to 5 kHz, so most of the rest lies in the assumed body,
+  the microphones or the recording, which one unmeasured recording cannot
+  separate.
+- The top's mode frequencies are a clamped plate's (Warburton), but its
+  mode shapes and the volumes they move are a simply supported plate's.
+  Clamped beam shapes were tried and left the dead notes deader without
+  adding treble.
 - The piezo's element stiffness is Acustra's, scaled to the bar's length,
   and its preamp is taken as linear, with no overload at settings past the
   factory patches. The pickup system is a guitar's; no lyre pickup is

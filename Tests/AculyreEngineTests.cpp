@@ -152,12 +152,13 @@ int main()
     }
 
     // The bass steel string's partials follow the stiff-string law,
-    // f_n = n f0 sqrt((1 + B n^2) / (1 + B)), through the 12th that the
-    // dispersion is fitted to (6 cents by design, plus the two polarisations
-    // and the scan's resolution). A dispersion fitted
-    // to one high partial put them 30 to 120 cents sharp.
+    // f_n = n f0 sqrt((1 + B n^2) / (1 + B)), through every one below 5 kHz
+    // that the dispersion is fitted to (5 cents by design, plus the two
+    // polarisations and the scan's resolution). A dispersion fitted to one
+    // high partial put the 2nd to 5th 30 to 120 cents sharp; one fitted to
+    // the first 12 left the 13th to 21st 10 to 95 cents flat.
     {
-        // Plucked near the bridge, so no partial up to the 12th is missing,
+        // Plucked near the bridge, so no partial below 5 kHz is missing,
         // on a 1 kg bridge, so the body's coupling (up to about 11 cents on
         // the 6 g one) moves none of them.
         aculyre::InstrumentSpec spec = aculyre::lyreHarpSteel;
@@ -172,13 +173,17 @@ int main()
         // raises every partial alike.
         const double fundamental = peakNear(audio, 4800, 72000, report.frequency).frequency;
         double worst = 0.0;
-        for (int n = 2; n <= 12; ++n)
+        int last = 1;
+        for (int n = 2;; ++n)
         {
             const double law = n * fundamental
                 * std::sqrt((1.0 + report.inharmonicity * n * n) / (1.0 + report.inharmonicity));
+            if (law >= 5000.0)
+                break;
+            last = n;
             worst = std::max(worst, std::abs(1200.0 * std::log2(peakNear(audio, 4800, 72000, law).frequency / law)));
         }
-        std::printf("steel G3 partials 2-12: worst %.1f cents from the stiff-string law\n", worst);
+        std::printf("steel G3 partials 2-%d: worst %.1f cents from the stiff-string law\n", last, worst);
         check(worst < 10.0, "the bass string's partials follow the stiff-string law");
     }
 

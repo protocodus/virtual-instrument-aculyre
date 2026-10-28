@@ -187,7 +187,9 @@ public:
         double intrinsicT60; // s, fundamental, string losses alone
         double dispersion;   // first-order allpass coefficient
         int dispersionStages;
-        double dispersionCents; // worst partial to H12 against the stiff-string law
+        int dispersionPairs;    // second-order sections fitted past the 12th partial
+        double dispersionCents; // worst partial below 5 kHz (to H12 at most where
+                                // first-order sections alone fit) against the stiff-string law
     };
     [[nodiscard]] StringReport stringReport(int string) const noexcept;
 

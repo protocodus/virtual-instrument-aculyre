@@ -29,7 +29,8 @@ reference recording below.
   along the bridge bar, bass to the left, instead of every string sitting
   slightly left. A hard pluck on a steel bass string decays as a soft one
   does: the tension glide's energy no longer pumps the string, which held
-  it ringing and sharp for seconds.
+  it ringing and sharp for seconds. The bass strings' upper partials follow
+  the stiff-string law to 5 kHz, where they had fallen up to 95 cents flat.
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
   blended with the microphones from none to the piezo alone. Levels follow
   Reason's VU meter: typical playing reads about -9 VU on every instrument,
@@ -75,8 +76,11 @@ loss term.
 Dispersion is a cascade of up to eight identical first-order allpass sections
 whose count and coefficient are searched so the 2nd to 12th partials (the range
 Acustra fits) land within 6.3 cents of the stiff-string law
-f_n = n f0 sqrt((1 + B n^2) / (1 + B)); above the 12th the partials fall short
-of the law, by about a fifth of the stretch at the 16th on the bass strings.
+f_n = n f0 sqrt((1 + B n^2) / (1 + B)). Where partials past the 12th fall below
+5 kHz (strings under about 417 Hz), two second-order sections are fitted with
+the first-order coefficient to all of them, by least squares in cents: the
+steel and nylon G3 land within 6.3 cents up to their 21st partial at 48 kHz
+(8 at 192 kHz), which first-order sections alone left up to 95 cents flat.
 A second-order Thiran section sets the fractional delay, solved with the
 bridge's reflection phase so the coupled string sounds its note. The strings
 are tuned by hand: each instrument's sit a few cents off their notes, the
@@ -223,7 +227,9 @@ sleeps, and a sleeping instance costs next to nothing until the next pluck.
 - The sway coupling of the parallel polarisation through the bar's height is
   simple geometry; with the 6 g bar it moves some partials by up to about
   11 cents.
-- The dispersion fit stops at the 12th partial.
+- The dispersion fit stops at 5 kHz, and two second-order sections cannot
+  follow all 24 of the gut lyre's D3 partials below it: the worst lands 25
+  cents from the law (9 on E3).
 - No plucking-hand model beyond a contact width and a release time, no
   buzzing, no string-to-string contact, no hand damping gestures beyond
   note-off.

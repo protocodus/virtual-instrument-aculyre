@@ -173,13 +173,13 @@ int report(int preset)
     engine.prepare(48000.0);
     engine.setInstrument(*aculyre::presets[static_cast<std::size_t>(preset)]);
     std::printf("%s\n", aculyre::presets[static_cast<std::size_t>(preset)]->name);
-    std::printf("string  note  f0(Hz)   T(N)   Z(kg/s)  B         stress(MPa)  intrinsic T60(s)  dispersion  stages  worst(cents)\n");
+    std::printf("string  note  f0(Hz)   T(N)   Z(kg/s)  B         stress(MPa)  intrinsic T60(s)  dispersion  stages  pairs  worst(cents)\n");
     for (int i = 0; i < engine.stringCount(); ++i)
     {
         const auto r = engine.stringReport(i);
-        std::printf("%6d %5d %8.2f %6.1f %8.3f  %.2e  %10.0f  %16.2f  %10.4f  %6d  %12.2f\n", i, r.midiNote,
+        std::printf("%6d %5d %8.2f %6.1f %8.3f  %.2e  %10.0f  %16.2f  %10.4f  %6d  %5d  %12.2f\n", i, r.midiNote,
                     r.frequency, r.tension, r.impedance, r.inharmonicity, r.stress / 1e6,
-                    r.intrinsicT60, r.dispersion, r.dispersionStages, r.dispersionCents);
+                    r.intrinsicT60, r.dispersion, r.dispersionStages, r.dispersionPairs, r.dispersionCents);
     }
     std::printf("\nmodes: %d\n  f(Hz)     Q    heave(kg^-1/2)  monopole(m^2)  air share\n", engine.modeCount());
     for (int i = 0; i < std::min(engine.modeCount(), 24); ++i)

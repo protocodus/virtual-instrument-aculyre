@@ -30,6 +30,7 @@ constexpr double yokeRoundTripGain = 0.9995;
 constexpr int delayCapacity = 4096;  // a string down to 47 Hz at 192 kHz
 constexpr int controlPeriod = 16;
 constexpr int maxDispersionStages = 8;
+constexpr int dispersionPairs = 2;
 
 // ---------------------------------------------------------------------------
 // String loss laws, copied from Acustra 1.9.0 (Source/DSP/AcustraEngine.cpp),
@@ -360,29 +361,257 @@ double allpassLag(int order, double c1, double c2, double omega) noexcept
 // 12th, and below 5 kHz, lands nearest in cents to the stiff-string law, with
 // the rest of the loop a pure delay tuned to f0. Acustra fits the same 12
 // partials. One section fitted to a single high partial left a steel G3's 2nd
-// to 5th partials 30 to 120 cents sharp; no cascade of identical sections
-// fits a bass string's 25 partials below 5 kHz (ours stays within 6 cents to
-// H12 and falls short above it, a fifth of the stretch by H16).
+// to 5th partials 30 to 120 cents sharp. No cascade of identical sections
+// fits a bass string's 25 partials below 5 kHz either: the steel G3's 13th to
+// 21st fell 10 to 95 cents flat. Where partials past the 12th fall below
+// 5 kHz (strings under about 417 Hz), two second-order sections are fitted
+// with the first-order coefficient to every one of them (refineDispersion).
 struct DispersionDesign
 {
     int stages { 1 };
     double coefficient { 0.0 };
     double worstCents { 0.0 };
+    // Second-order sections (c2 + c1 z^-1 + z^-2) / (1 + c1 z^-1 + c2 z^-2),
+    // as { c1, c2 }; `pairs` of them are in use.
+    int pairs { 0 };
+    std::array<std::array<double, 2>, dispersionPairs> pair {};
 };
+
+// A first-order section's phase lag and group delay, (a + z^-1)/(1 + a z^-1).
+double firstOrderLag(double a, double omega) noexcept
+{
+    return omega - 2.0 * std::atan2(a * std::sin(omega), 1.0 + a * std::cos(omega));
+}
+
+double firstOrderGroupDelay(double a, double omega) noexcept
+{
+    return (1.0 - a * a) / (1.0 + 2.0 * a * std::cos(omega) + a * a);
+}
+
+// The fit's parameters: the first-order coefficient, then each second-order
+// section's pole radius and angle.
+using DispersionFit = std::array<double, 1 + 2 * dispersionPairs>;
+constexpr int maxFittedPartials = 64;
+
+// Each partial's error in cents against the stiff-string law, partials 2 to
+// `partials`, with the line a pure delay tuned to f0; false where the line
+// would be under the 8 samples the Thiran section and the loss filters need.
+bool dispersionErrors(const DispersionFit& fit, int stages, int pairs, double omega1, double inharmonicity,
+                      int partials, std::array<double, maxFittedPartials>& cents) noexcept
+{
+    const auto lag = [&] (double omega)
+    {
+        double total = stages * firstOrderLag(fit[0], omega);
+        for (int k = 0; k < pairs; ++k)
+        {
+            const Complex pole = std::polar(fit[static_cast<std::size_t>(1 + 2 * k)],
+                                            fit[static_cast<std::size_t>(2 + 2 * k)]);
+            const Complex z1 = std::exp(Complex(0.0, -omega));
+            total += 2.0 * omega + 2.0 * (std::arg(1.0 - pole * z1) + std::arg(1.0 - std::conj(pole) * z1));
+        }
+        return total;
+    };
+    const auto groupDelay = [&] (double omega)
+    {
+        double total = stages * firstOrderGroupDelay(fit[0], omega);
+        for (int k = 0; k < pairs; ++k)
+        {
+            const double r = fit[static_cast<std::size_t>(1 + 2 * k)];
+            const double theta = fit[static_cast<std::size_t>(2 + 2 * k)];
+            total += (1.0 - r * r) / (1.0 - 2.0 * r * std::cos(omega - theta) + r * r)
+                   + (1.0 - r * r) / (1.0 - 2.0 * r * std::cos(omega + theta) + r * r);
+        }
+        return total;
+    };
+    const double delay = (2.0 * pi - lag(omega1)) / omega1;
+    if (!(delay >= 8.0))
+        return false;
+    for (int n = 2; n <= partials; ++n)
+    {
+        const double target = omega1 * stretchedPartial(n, inharmonicity);
+        double omega = target;
+        for (int iteration = 0; iteration < 4; ++iteration)
+            omega -= (omega * delay + lag(omega) - 2.0 * pi * n) / (delay + groupDelay(omega));
+        cents[static_cast<std::size_t>(n - 2)] = 1200.0 * std::log2(omega / target);
+    }
+    return true;
+}
+
+double worstOf(const std::array<double, maxFittedPartials>& cents, int partials) noexcept
+{
+    double worst = 0.0;
+    for (int n = 2; n <= partials; ++n)
+        worst = std::max(worst, std::abs(cents[static_cast<std::size_t>(n - 2)]));
+    return worst;
+}
+
+// Levenberg-Marquardt on the partials' cents, the Jacobian by forward
+// differences, from the first-order design and poles near 1.25 and 2.5 kHz,
+// 800 Hz wide (where a steel G3's fit settles). On the lyre harps' bass
+// strings it holds every partial below 5 kHz within 5 cents and the first 12
+// within 2; the design is kept only where it beats the first-order one.
+DispersionDesign refineDispersion(const DispersionDesign& firstOrder, double fundamental,
+                                  double inharmonicity, double sampleRate) noexcept
+{
+    const double omega1 = 2.0 * pi * fundamental / sampleRate;
+    // The partials whose stretched frequency is below the band's top.
+    const double top = std::min(5000.0, 0.2 * sampleRate);
+    int partials = 1;
+    while (partials < maxFittedPartials + 1 && fundamental * stretchedPartial(partials + 1, inharmonicity) < top)
+        ++partials;
+    DispersionDesign result = firstOrder;
+    if (partials <= 12)
+        return result;
+    std::array<double, maxFittedPartials> cents {};
+    DispersionFit fit {};
+    fit[0] = firstOrder.coefficient;
+    if (!dispersionErrors(fit, firstOrder.stages, 0, omega1, inharmonicity, partials, cents))
+        return result;
+    result.worstCents = worstOf(cents, partials);
+
+    fit[0] = firstOrder.coefficient;
+    for (int k = 0; k < dispersionPairs; ++k)
+    {
+        fit[static_cast<std::size_t>(1 + 2 * k)] = std::exp(-2.0 * pi * 800.0 / sampleRate);
+        fit[static_cast<std::size_t>(2 + 2 * k)] = 2.0 * pi * 1250.0 * (k + 1) / sampleRate;
+    }
+    const auto valid = [] (const DispersionFit& p)
+    {
+        bool ok = std::abs(p[0]) < 0.98;
+        for (int k = 0; k < dispersionPairs; ++k)
+            ok = ok && p[static_cast<std::size_t>(1 + 2 * k)] >= 0.0 && p[static_cast<std::size_t>(1 + 2 * k)] < 0.99
+                 && p[static_cast<std::size_t>(2 + 2 * k)] > 0.0 && p[static_cast<std::size_t>(2 + 2 * k)] < pi;
+        return ok;
+    };
+    const auto cost = [&] (const DispersionFit& p, std::array<double, maxFittedPartials>& e)
+    {
+        if (!valid(p) || !dispersionErrors(p, firstOrder.stages, dispersionPairs, omega1, inharmonicity, partials, e))
+            return std::numeric_limits<double>::infinity();
+        double sum = 0.0;
+        for (int n = 2; n <= partials; ++n)
+            sum += e[static_cast<std::size_t>(n - 2)] * e[static_cast<std::size_t>(n - 2)];
+        return sum;
+    };
+    constexpr int parameters = 1 + 2 * dispersionPairs;
+    const int residuals = partials - 1;
+    double current = cost(fit, cents);
+    if (!(current < std::numeric_limits<double>::infinity()))
+        return result;
+    double damping = 1.0e-3;
+    std::array<std::array<double, maxFittedPartials>, parameters> jacobian {};
+    std::array<double, maxFittedPartials> trial {};
+    for (int iteration = 0; iteration < 100 && damping < 1.0e10; ++iteration)
+    {
+        for (int j = 0; j < parameters; ++j)
+        {
+            // Forward, or backward at a bound; a parameter boxed in both
+            // ways stays where it is.
+            constexpr double step = 1.0e-7;
+            auto& column = jacobian[static_cast<std::size_t>(j)];
+            DispersionFit nudged = fit;
+            nudged[static_cast<std::size_t>(j)] += step;
+            double sign = 1.0;
+            if (!(cost(nudged, trial) < std::numeric_limits<double>::infinity()))
+            {
+                nudged[static_cast<std::size_t>(j)] -= 2.0 * step;
+                sign = -1.0;
+                if (!(cost(nudged, trial) < std::numeric_limits<double>::infinity()))
+                {
+                    column.fill(0.0);
+                    continue;
+                }
+            }
+            for (int i = 0; i < residuals; ++i)
+                column[static_cast<std::size_t>(i)]
+                    = sign * (trial[static_cast<std::size_t>(i)] - cents[static_cast<std::size_t>(i)]) / step;
+        }
+        // (J^T J + damping diag(J^T J)) delta = -J^T e, by Gaussian
+        // elimination with partial pivoting.
+        std::array<std::array<double, parameters + 1>, parameters> system {};
+        for (int row = 0; row < parameters; ++row)
+        {
+            const auto& u = jacobian[static_cast<std::size_t>(row)];
+            for (int column = 0; column < parameters; ++column)
+            {
+                const auto& w = jacobian[static_cast<std::size_t>(column)];
+                double sum = 0.0;
+                for (int i = 0; i < residuals; ++i)
+                    sum += u[static_cast<std::size_t>(i)] * w[static_cast<std::size_t>(i)];
+                system[static_cast<std::size_t>(row)][static_cast<std::size_t>(column)] = sum;
+            }
+            double gradient = 0.0;
+            for (int i = 0; i < residuals; ++i)
+                gradient += u[static_cast<std::size_t>(i)] * cents[static_cast<std::size_t>(i)];
+            system[static_cast<std::size_t>(row)][parameters] = -gradient;
+            system[static_cast<std::size_t>(row)][static_cast<std::size_t>(row)] *= 1.0 + damping;
+        }
+        bool solved = true;
+        for (int column = 0; column < parameters && solved; ++column)
+        {
+            int pivot = column;
+            for (int row = column + 1; row < parameters; ++row)
+                if (std::abs(system[static_cast<std::size_t>(row)][static_cast<std::size_t>(column)])
+                    > std::abs(system[static_cast<std::size_t>(pivot)][static_cast<std::size_t>(column)]))
+                    pivot = row;
+            std::swap(system[static_cast<std::size_t>(column)], system[static_cast<std::size_t>(pivot)]);
+            const double diagonal = system[static_cast<std::size_t>(column)][static_cast<std::size_t>(column)];
+            solved = std::abs(diagonal) > 1.0e-300;
+            for (int row = column + 1; row < parameters && solved; ++row)
+            {
+                const double factor = system[static_cast<std::size_t>(row)][static_cast<std::size_t>(column)] / diagonal;
+                for (int k = column; k <= parameters; ++k)
+                    system[static_cast<std::size_t>(row)][static_cast<std::size_t>(k)]
+                        -= factor * system[static_cast<std::size_t>(column)][static_cast<std::size_t>(k)];
+            }
+        }
+        DispersionFit delta {};
+        for (int row = parameters - 1; row >= 0 && solved; --row)
+        {
+            double sum = system[static_cast<std::size_t>(row)][parameters];
+            for (int k = row + 1; k < parameters; ++k)
+                sum -= system[static_cast<std::size_t>(row)][static_cast<std::size_t>(k)] * delta[static_cast<std::size_t>(k)];
+            delta[static_cast<std::size_t>(row)] = sum / system[static_cast<std::size_t>(row)][static_cast<std::size_t>(row)];
+        }
+        DispersionFit next = fit;
+        for (int k = 0; k < parameters; ++k)
+            next[static_cast<std::size_t>(k)] += delta[static_cast<std::size_t>(k)];
+        const double candidate = solved ? cost(next, trial) : std::numeric_limits<double>::infinity();
+        if (candidate < current)
+        {
+            // Settled once a step gains under a millionth.
+            const bool settled = current - candidate < 1.0e-6 * current;
+            fit = next;
+            cents = trial;
+            current = candidate;
+            damping = std::max(1.0e-9, damping / 3.0);
+            if (settled)
+                break;
+        }
+        else
+            damping *= 4.0;
+    }
+    const double worst = worstOf(cents, partials);
+    if (worst < result.worstCents)
+    {
+        result.coefficient = fit[0];
+        result.pairs = dispersionPairs;
+        for (int k = 0; k < dispersionPairs; ++k)
+        {
+            const double r = fit[static_cast<std::size_t>(1 + 2 * k)];
+            const double theta = fit[static_cast<std::size_t>(2 + 2 * k)];
+            result.pair[static_cast<std::size_t>(k)] = { -2.0 * r * std::cos(theta), r * r };
+        }
+        result.worstCents = worst;
+    }
+    return result;
+}
 
 DispersionDesign designDispersion(double fundamental, double inharmonicity, double sampleRate) noexcept
 {
     const double omega1 = 2.0 * pi * fundamental / sampleRate;
     const int partials = std::clamp(static_cast<int>(std::floor(std::min(5000.0, 0.2 * sampleRate) / fundamental)), 2, 12);
-    // A first-order section's phase lag and group delay, (a + z^-1)/(1 + a z^-1).
-    const auto lag = [] (double a, double omega)
-    {
-        return omega - 2.0 * std::atan2(a * std::sin(omega), 1.0 + a * std::cos(omega));
-    };
-    const auto groupDelay = [] (double a, double omega)
-    {
-        return (1.0 - a * a) / (1.0 + 2.0 * a * std::cos(omega) + a * a);
-    };
+    const auto lag = firstOrderLag;
+    const auto groupDelay = firstOrderGroupDelay;
     const double infinity = std::numeric_limits<double>::infinity();
     // The worst partial's error in cents with coefficient a = -0.0025 step.
     const auto worstAt = [&] (int stages, int step)
@@ -438,12 +667,16 @@ DispersionDesign designDispersion(double fundamental, double inharmonicity, doub
     {
         const DispersionDesign& design = best[static_cast<std::size_t>(stages)];
         if (design.worstCents <= 1.0)
-            return design;
+        {
+            chosen = design;
+            break;
+        }
         if (design.worstCents < chosen.worstCents)
             chosen = design;
     }
-    return chosen;
+    return refineDispersion(chosen, fundamental, inharmonicity, sampleRate);
 }
+
 
 Complex lossSectionResponse(const LossSectionDesign& s, double omega) noexcept
 {
@@ -500,6 +733,8 @@ struct LoopDesign
     double gain { 1.0 };
     int dispersionStages { 0 };
     double dispersion { 0.0 };
+    int dispersionPairs { 0 };
+    std::array<std::array<double, 2>, aculyre::dispersionPairs> pair {};
     double dispersionCents { 0.0 };  // the design's worst partial error
     LossSectionDesign constantDesign {};
     LossSectionDesign bendingDesign {};
@@ -518,6 +753,8 @@ struct LoopDesign
         double lag = 0.0;
         for (int stage = 0; stage < dispersionStages; ++stage)
             lag += allpassLag(1, dispersion, 0.0, omega);
+        for (int k = 0; k < dispersionPairs; ++k)
+            lag += allpassLag(2, pair[static_cast<std::size_t>(k)][0], pair[static_cast<std::size_t>(k)][1], omega);
         lag -= std::arg(lossSectionResponse(constantDesign, omega));
         lag -= std::arg(lossSectionResponse(bendingDesign, omega));
         return lag;
@@ -545,6 +782,9 @@ struct Loop
     double dispersion { 0.0 };
     double dispersionCents { 0.0 };  // the design's worst partial error
     std::array<double, maxDispersionStages> dispersionState {};
+    int dispersionPairs { 0 };
+    std::array<std::array<double, 2>, aculyre::dispersionPairs> pair {};
+    std::array<std::array<double, 2>, aculyre::dispersionPairs> pairState {};
     UnitDcSection constantLoss {};
     UnitDcSection bendingLoss {};
     LossSectionDesign constantDesign {};
@@ -567,6 +807,7 @@ struct Loop
         pending.fill(0.0f);
         tx1 = tx2 = ty1 = ty2 = 0.0;
         dispersionState.fill(0.0);
+        pairState = {};
         constantLoss.reset();
         bendingLoss.reset();
     }
@@ -604,6 +845,15 @@ struct Loop
         {
             const double out = dispersion * y + dispersionState[stage];
             dispersionState[stage] = y - dispersion * out;
+            y = out;
+        }
+        for (int k = 0; k < dispersionPairs; ++k)
+        {
+            const double c1 = pair[static_cast<std::size_t>(k)][0], c2 = pair[static_cast<std::size_t>(k)][1];
+            auto& state = pairState[static_cast<std::size_t>(k)];
+            const double out = c2 * y + state[0];
+            state[0] = c1 * (y - out) + state[1];
+            state[1] = y - c2 * out;
             y = out;
         }
         y = constantLoss.process(y);
@@ -663,9 +913,13 @@ struct Loop
         // Sections the old design left idle hold stale state.
         for (int stage = dispersionStages; stage < design.dispersionStages; ++stage)
             dispersionState[static_cast<std::size_t>(stage)] = 0.0;
+        for (int k = dispersionPairs; k < design.dispersionPairs; ++k)
+            pairState[static_cast<std::size_t>(k)] = {};
         gain = design.gain;
         dispersionStages = design.dispersionStages;
         dispersion = design.dispersion;
+        dispersionPairs = design.dispersionPairs;
+        pair = design.pair;
         dispersionCents = design.dispersionCents;
         constantDesign = design.constantDesign;
         bendingDesign = design.bendingDesign;
@@ -1492,6 +1746,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 const DispersionDesign design = designDispersion(f0, pitch.inharmonicity, fs);
                 loop.dispersionStages = design.stages;
                 loop.dispersion = design.coefficient;
+                loop.dispersionPairs = design.pairs;
+                loop.pair = design.pair;
                 loop.dispersionCents = design.worstCents;
                 loop.loopDelay = fs / f0;
             }
@@ -2365,6 +2621,7 @@ AculyreEngine::StringReport AculyreEngine::stringReport(int string) const noexce
     report.intrinsicT60 = voice.intrinsicT60;
     report.dispersion = voice.normal.dispersion;
     report.dispersionStages = voice.normal.dispersionStages;
+    report.dispersionPairs = voice.normal.dispersionPairs;
     report.dispersionCents = voice.normal.dispersionCents;
     return report;
 }

@@ -43,7 +43,8 @@ reference recording below.
   A4), and the level spread across the strings at one velocity falls from
   13 to 16 dB to 2 to 6, the register's own slope. The piezo, which hears
   the bridge rather than the soundbox, keeps its own even touch, and the
-  PIEZO blend moves between the two.
+  PIEZO blend moves between the two. The room's tail is smooth from its
+  start instead of fluttering with separate echoes after each pluck.
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
   blended with the microphones from none to the piezo alone. Levels follow
   Reason's VU meter: typical playing reads about -9 VU on every instrument,
@@ -148,7 +149,10 @@ phase and a symmetric one alike, with a seeded sign for which way its lobe
 faces them: each string sounds from where it sits along the bar, the steel
 lyre harp's G3 9 dB to the left and its A5 8 dB to the right. The far-field
 pressure at 0.5 m is rho/(4 pi r) times the volume acceleration. A
-small feedback-delay room follows.
+small feedback-delay room follows: six early reflections, then an
+eight-line network fed through Dattorro's four input diffusers, so its tail
+is dense from about 70 ms, as a room's is, rather than a train of separate
+echoes for its first 300 ms.
 
 **Piezo.** A pickup strip under the bridge bar presses with the bar's whole
 force on the top, so it hears the bar's heave and not its rock, and it hears no

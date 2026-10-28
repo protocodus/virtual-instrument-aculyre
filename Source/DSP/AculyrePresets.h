@@ -130,7 +130,7 @@ inline constexpr InstrumentSpec lyreHarpNylon {
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 6, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.22, 0.3, 2.5, 0.35, 2.381, 0.297
+    Technique::Finger, 0.22, 0.3, 2.5, 0.35, 2.27, 0.297
 };
 
 inline constexpr std::array<const InstrumentSpec*, 3> presets {{

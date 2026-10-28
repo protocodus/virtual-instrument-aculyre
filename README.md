@@ -48,7 +48,10 @@ reference recording below.
   3.6 dB below. The soundbox radiates its upper modes by a published plate
   formula instead of an authored curve: up to 3 dB more air around 6 kHz
   (5 kHz on the gut lyre), where the old curve dipped before a step, and
-  under 1 dB less from 1 to 3 kHz. A finger re-plucking a ringing string
+  under 1 dB less from 1 to 3 kHz. The finger plucks at a point, as
+  harp-plucking measurements take it, where the pluck had been rounded
+  over the widest a fingertip touches: 1 to 2.4 dB more air from 5 to
+  12 kHz. A finger re-plucking a ringing string
   stops it without a click. Pitch
   bends stay in tune over their full twelve semitones, where an octave had
   fallen up to 59 cents flat. The room's early reflections keep their timing
@@ -132,10 +135,13 @@ are tuned by hand: each instrument's sit a few cents off their notes, the
 same ones every time, spread by 4.1 cents about the instrument's pitch as the
 six strings of a lyre harp phrase are (Freesound 649925).
 
-**Pluck.** The released shape is a triangle rounded by the fingertip's contact
-width (a harpist's finger touches at most 2 cm of string: Chadefaux et al.,
-JASA 131 (2012) 844), and the held force unloads exponentially over the
-release time as the string slides off, as Acustra's slip does. A harpist's
+**Pluck.** The released shape is a triangle. A finger meets the string at a
+point: a harpist's finger touches at most 2 cm of string, too little to
+filter it (Chadefaux et al., JASA 131 (2012) 844, who take the pluck as a
+point), and the string leaves the fingertip's edge wrapped round it only
+over its kink angle, a few hundredths of a radian. A nail or a plectrum
+rounds the apex over its edge, an authored width of about a millimetre.
+The held force unloads exponentially over the release time as the string slides off, as Acustra's slip does. A harpist's
 string slips 0.04 mm along the fingertip and leaves at about 1.5 m/s
 (Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444), a release time of
 0.053 ms. A harder pluck slips off faster: the release velocity rises with

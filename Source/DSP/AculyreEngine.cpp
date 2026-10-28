@@ -2563,18 +2563,24 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
                        + 4.0 * pi / 180.0 * s.random.gaussian();
     const double normalShare = std::clamp(std::sin(angle) * std::sin(angle), 0.01, 0.9);
 
-    // Contact width and release time of the technique: the fingertip's pad,
-    // a nail's or a plectrum's edge. A harpist's string slips 0.04 mm along
-    // the harder fingertip before it leaves at about 1.5 m/s (Chadefaux, Le
-    // Carrou and Fabre, JASA 133 (2013) 2444); accelerating evenly, that
-    // takes 0.053 ms, the finger's release time constant. Chosen by ear over
-    // the pad's 0.2 mm (0.27 ms) and an authored 0.10 ms (Docs/decisions.md,
-    // 2026-10-28). The nail's and the plectrum's are authored, of the order
-    // of Acustra's (a 0.2 mm edge over a metre or two per second).
-    double contact = 0.005, release = 0.053e-3;
+    // Contact width and release time of the technique: a fingertip, a
+    // nail's or a plectrum's edge. A harpist's finger touches at most 2 cm
+    // of string, which Chadefaux et al. find too little to filter the
+    // string and so take the pluck as a point (JASA 131 (2012) 844,
+    // Sec. IV.A.5, Table V); the string leaves the fingertip's edge wrapped
+    // round it only over its kink angle, at most a few hundredths of a
+    // radian, so the finger is a point here too. A harpist's string slips
+    // 0.04 mm along the harder fingertip before it leaves at about 1.5 m/s
+    // (Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444); accelerating
+    // evenly, that takes 0.053 ms, the finger's release time constant.
+    // Chosen by ear over the pad's 0.2 mm (0.27 ms) and an authored 0.10 ms
+    // (Docs/decisions.md, 2026-10-28). The nail's and the plectrum's are
+    // authored, of the order of Acustra's (a 0.2 mm edge over a metre or two
+    // per second).
+    double contact = 0.0, release = 0.053e-3;
     switch (controls.technique)
     {
-        case Technique::Finger: contact = 0.005; release = 0.053e-3; break;
+        case Technique::Finger: contact = 0.0; release = 0.053e-3; break;
         case Technique::Nail: contact = 0.0012; release = 0.035e-3; break;
         case Technique::Plectrum: contact = 0.0008; release = 0.025e-3; break;
     }
@@ -2630,16 +2636,15 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         // The displacement the held force sets, A = F x (L - x) / (T L).
         const double amplitude = force * pluckPoint * (length - pluckPoint) / (voice.tension * length)
                                * std::sqrt(plane == 0 ? normalShare : 1.0 - normalShare);
-        // The contact only rounds the apex: harpists' fingers touch at most
-        // 2 cm of string, which filters nothing below 6.7 kHz on a concert
-        // harp (Chadefaux et al., JASA 131 (2012) 844, Table V).
-        const double width = contact;
         const double kink = amplitude * (1.0 / pluckPoint + 1.0 / (length - pluckPoint));
-        // The released shape, a triangle rounded by a Gaussian of `width`.
+        // The released shape, a triangle rounded by a Gaussian of the
+        // contact's width.
         const auto shape = [&] (double x)
         {
-            const double u = (x - pluckPoint) / width;
-            return amplitude * x / pluckPoint - kink * width * (u * normalCdf(u) + normalPdf(u));
+            if (contact == 0.0)
+                return amplitude * x / pluckPoint - kink * std::max(0.0, x - pluckPoint);
+            const double u = (x - pluckPoint) / contact;
+            return amplitude * x / pluckPoint - kink * contact * (u * normalCdf(u) + normalPdf(u));
         };
         // The wave reaching the bridge over the next round trip, one period
         // of the loop: first the half that travels straight there,

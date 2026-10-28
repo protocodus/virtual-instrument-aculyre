@@ -337,10 +337,15 @@ nothing until the next pluck.
   measured spread, chosen by ear ([decisions](Docs/decisions.md)).
 - Against a recorded lyre harp A4, the model's fundamental decays faster
   (42 against 32 dB/s), drained by the assumed body's 467 Hz top mode, and
-  its partials are less inharmonic (B = 2.4e-4 against 4.0e-4): the body
-  and the string gauges are both assumed. Only G3 is wound: the string set
-  it follows is for a harp tuned up from D3 and winds its four lowest
-  strings, and no set for a G3-A5 harp lists its gauges.
+  its partials are less inharmonic (B = 2.4e-4 against 4.0e-4). The lyre
+  harp phrase's other strings do not follow: fitted over each note's
+  partials to 6 kHz, its D4, E4 and G4 read 1.5e-4 to 3.0e-4 where the
+  model's read 2.3e-4 to 4.0e-4, and its A4 and B4 3.6e-4 to 4.0e-4 where
+  the model's read 1.6e-4 to 1.9e-4, a jump at A4 that no smooth run of
+  gauges makes. The body and the string gauges are both assumed. Only G3
+  is wound: the string set it follows is for a harp tuned up from D3 and
+  winds its four lowest strings, and no set for a G3-A5 harp lists its
+  gauges.
 - The sway coupling of the parallel polarisation through the bar's height is
   simple geometry; with the 6 g bar it moves some partials by up to about
   11 cents.

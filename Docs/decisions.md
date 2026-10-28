@@ -3,6 +3,40 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-28: the finger plucks at a point
+
+**What was decided.** The finger's pluck had been rounded by a Gaussian 5 mm
+wide, the 2 cm a harpist's finger touches at most (Chadefaux et al., JASA 131
+(2012) 844, Table V). The paper gives the 2 cm as an upper bound, finds the
+low-pass it implies negligible and takes the pluck as a point
+(Sec. IV.A.5); the string leaves the fingertip's edge wrapped round it only
+over its kink angle, a few hundredths of a radian. The finger is now a point.
+The nail's and the plectrum's authored edges stay.
+
+**What the measurements say.**
+
+- **Lyre harp phrase** (Freesound 649925, eight seeds): the shortfall from
+  1.25 to 5 kHz falls from 1.34 to 0.96 dB at the shipping quarter pluck.
+  With each note at the pluck point fitted to it, it falls from 3.7 to
+  3.2 dB, and from 6.3 to 10 kHz from 5.5 to 4.0 dB.
+- **Diagnostic, not shipped:** an instant release as well would still leave
+  that per-note shortfall at 2.3 dB from 1.25 to 5 kHz, so most of it is not
+  in the pluck.
+- **Listening phrase**, RMS-matched: +0.3 dB at 2 kHz, rising to +1.4 dB
+  (steel), +2.0 (nylon) and +2.4 (gut) by 10 kHz.
+- **Contracts:** the even touch, the levels (within 0.1 VU of -9) and the 1x
+  top octave hold unchanged; the gut lyre's 10-16 kHz at 1x comes from
+  -1.78 to -1.18 dB of its 4x sound.
+
+**Not yet by ear.** Two readings were defensible: the finger's widest
+contact and the paper's point. The point went to main under the owner's
+standing instruction to accept candidates and push improvements to main. The
+pair is on the listening page (A the 5 mm contact, B the point); choosing A
+undoes it.
+
+**What it licenses.** A point contact for the finger. It does not license
+narrowing the nail's or the plectrum's edges, which stay authored.
+
 ## 2026-10-28: the soundbox radiates by Maidanik's clamped-panel efficiency
 
 **What was decided.** Below the top's coincidence frequency each mode's edge

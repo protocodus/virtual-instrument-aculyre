@@ -26,7 +26,7 @@ reference recording below.
   bridge bar, so the piezo rings up near 9 kHz (6.5 kHz on the gut lyre) and
   rolls off above, as an under-saddle pickup does. The bridge bar bends
   with the top, so the strings hear the top's upper modes and their colour
-  runs more evenly from string to string, at about twice the CPU. The
+  runs more evenly from string to string, at 1.4 to 1.8 times the CPU. The
   fingertip slips off the string as quickly as harpists' were measured to,
   quicker for a hard pluck and slower for a soft one, so soft playing is
   darker and hard playing brighter. With the rest of 0.6.0, the two bring
@@ -207,9 +207,12 @@ assumed body's 467 Hz top mode. In 0.6.0 it decays at 33 dB/s with a
 centroid of 520 Hz. Over its first 45 ms the 3rd, 5th, 6th, 7th and 10th
 partials sit on average 4.5 dB further under the fundamental than the
 recording's, where they sat 14.5 dB under before the bending bar and the
-measured slip; by 100-200 ms they stand 6.7 dB over, so the model's upper
-partials outlast the recording's. Its partials now follow the string's own
-stiffness (B = 2.4e-4 against the recording's 4.0e-4 by the same fit).
+measured slip; by 100-200 ms they stand 6.7 dB over. Partials 3-12 decay
+alike (40 against 36 dB/s on average from 60 to 400 ms, the recording's
+length), but the fundamental falls away faster (55 against 32 dB/s), drained
+by the assumed body's top mode beside it. The model's partials follow its
+string's own stiffness (B = 2.4e-4 against the recording's 4.0e-4 by the same
+fit).
 Replaying a lyre harp phrase note for note (Freesound 649925, CC BY), the
 model's 1/3-octave long-term spectrum fell short of the recording's by
 7.6 dB on average from 1.25 to 5 kHz in 0.3.0 (10.0 dB in 0.2.0), and by
@@ -271,12 +274,15 @@ the output by 2 ms rounded down to 4 samples (88 at 44.1 kHz, 96 at
 48 kHz).
 
 **Cost.** The steel lyre harp (32 waveguides, 234 modes, seven bar bends
-and the room), plucked every half second, renders about 8 times faster than
-real time on one core of a cloud container at 1x (162-172 us per 64-sample
-block at 48 kHz, GCC -O3, the nylon lyre harp alike; 81-84 with 0.5.0's
-rigid bar) and twice at 4x. The modes run in one pass a compiler can vectorize. Once
-everything has died away below -170 dBFS for half a second the engine
-sleeps, and a sleeping instance costs next to nothing until the next pluck.
+and the room), plucked every half second, renders about 11 times faster
+than real time on one core of a cloud container at 1x (118-128 us per
+64-sample block at 48 kHz, GCC -O3, the nylon lyre harp alike; 80-89 with
+0.5.0's rigid bar, in alternating runs) and about 3 times at 4x. The modes
+run in passes a compiler can vectorize. On a bar centred on the top most
+modes are even or odd about its middle, and their passes skip the bar
+motions they cannot meet. Once everything has died away below -170 dBFS for
+half a second the engine sleeps, and a sleeping instance costs next to
+nothing until the next pluck.
 
 ## Known gaps
 
@@ -287,13 +293,13 @@ sleeps, and a sleeping instance costs next to nothing until the next pluck.
   not strings from these instruments; gut varied most from string to string
   in that study.
 - The bridge bar bends as a free beam of an assumed maple section; no
-  lyre's bar is measured, and the bends double the CPU of a rigid bar. The
-  body's mode damping is a point in a guitar bridge's measured spread,
-  chosen by ear ([decisions](Docs/decisions.md)).
-- After its first 100 ms the A4's upper partials stand above a recording's
-  and the model's partials are less inharmonic than that recording's: the
-  model's string losses above a few kilohertz and its body's pull on the
-  string are both unmeasured for a lyre harp.
+  lyre's bar is measured, and the bends cost 1.4 to 1.8 times the CPU of a
+  rigid bar. The body's mode damping is a point in a guitar bridge's
+  measured spread, chosen by ear ([decisions](Docs/decisions.md)).
+- Against a recorded lyre harp A4, the model's fundamental decays faster
+  (55 against 32 dB/s), drained by the assumed body's 467 Hz top mode, and
+  its partials are less inharmonic (B = 2.4e-4 against 4.0e-4): the body
+  and the string gauges are both assumed.
 - The sway coupling of the parallel polarisation through the bar's height is
   simple geometry; with the 6 g bar it moves some partials by up to about
   11 cents.

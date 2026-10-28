@@ -330,7 +330,10 @@ nothing until the next pluck.
   partials fall flat of the law: at 48 kHz the design leaves them up to 33
   cents flat by 8 kHz on the wound steel G3, 69 on the steel A3 and 104 on
   the gut D3. Holding them to 8 kHz would take up to eight second-order
-  sections a string, where two to four hold them to 5 kHz.
+  sections a string, where two to four hold them to 5 kHz, for partials
+  that sound 56 to 70 dB below a steel A3's strongest over its first
+  0.1 s at velocity 0.7 (64 to 80 on the wound G3, 87 to 100 on the gut
+  D3).
 - No plucking-hand model beyond a contact width and a release time, no
   buzzing, no string-to-string contact, no hand damping gestures beyond
   note-off.

@@ -195,7 +195,8 @@ for note (Freesound 649925, CC BY), the model's 1/3-octave long-term spectrum
 falls short of the recording's by 7.6 dB on average from 1.25 to 5 kHz
 (10.0 dB in 0.2.0). With 0.4.0's scattered plucks the shortfall depends on
 the draws: 8.0 dB on average over eight seeds (7.1-8.9), against 7.4
-(7.1-7.9) for 0.3.0's authored spreads. Over a CC0 Iron Age lyre recording (Freesound 191883,
+(7.1-7.9) for 0.3.0's authored spreads; 0.6.0 brings it to 5.0 dB (4.7-5.6),
+both microphones summed. Over a CC0 Iron Age lyre recording (Freesound 191883,
 another instrument and tuning), the gut lyre's notes decay at a similar rate
 (median 18-22 against 18 dB/s over 80-550 ms) and are a little darker
 (centroid 448-496 Hz against 557 Hz); 0.4.0's measured gut damping
@@ -262,7 +263,7 @@ sleeps, and a sleeping instance costs next to nothing until the next pluck.
   not strings from these instruments; gut varied most from string to string
   in that study.
 - The bridge bar is rigid, so above a kilohertz it averages the top's modes
-  away and the steel lyre harp stays 7.6 dB darker than a lyre harp recording
+  away and the steel lyre harp stays 5.0 dB darker than a lyre harp recording
   from 1.25 to 5 kHz. A bar that bends with the top (commit f209037) closed
   more of that gap, but by ear it sounded much like the release change alone
   and it doubled the CPU ([decisions](Docs/decisions.md)).

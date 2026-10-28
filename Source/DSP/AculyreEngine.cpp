@@ -735,6 +735,14 @@ const std::array<double, bendPoints> bendRatios = []
     return ratios;
 }();
 
+// The line's whole samples for a delay of `samples`, leaving the Thiran
+// section a fraction in [1.3, 2.3): about 2, where the section is a pure
+// delay at every frequency (Loop::setLineDelay).
+int wholeFor(double samples) noexcept
+{
+    return static_cast<int>(std::floor(samples - 1.3));
+}
+
 // What sets one polarisation's pitch: its frequency, its filters and the
 // line that tunes them. A sharping lever swaps one for another.
 struct LoopDesign
@@ -832,21 +840,23 @@ struct Loop
         setLineDelay(restLineDelay);
     }
 
-    // Keeps the Thiran fraction in [1.1, 5.1), and once it leaves moves the
-    // tap to bring it back into [2, 3): the section is a pure delay at 2 and
-    // falls short at high frequencies the further it is from it (at 11 kHz
-    // and 48 kHz by 0.27 samples at 3, 1.2 at 4.5, which had left the steel
-    // A5's partials above 6 kHz up to 50 cents sharp). A treble string's
-    // tension glide is under 0.4 samples at 48 kHz and moves no tap; a hard
-    // pluck's glide moves a bass string's a few times. The section's past
-    // inputs move with the tap, so the wave passes it unbroken.
+    // Keeps the Thiran fraction in [1.1, 2.3), and once it leaves moves the
+    // tap to bring it back into [1.3, 2.3) (wholeFor): the section is a pure
+    // delay at 2 and strays from it at high frequencies the further the
+    // fraction is from 2, at 11 kHz and 48 kHz by under 0.05 samples in that
+    // range, 0.27 at 3 and 1.2 at 4.5. Fractions resting 4 to 5 deep had
+    // left the steel A5's partials above 6 kHz up to 50 cents sharp, and up
+    // to 33 under a held bend of half a semitone while the tap could drift
+    // to 5. A treble string's tension glide is under 0.4 samples at 48 kHz;
+    // a hard pluck's glide moves a bass string's tap a few times. The
+    // section's past inputs move with the tap, so the wave passes it
+    // unbroken.
     void setLineDelay(double samples) noexcept
     {
         const double current = samples - whole;
-        // Truncation is floor here: every line is longer than 6 samples.
-        if (current < 1.1 || current >= 5.1)
+        if (current < 1.1 || current >= 2.3)
         {
-            whole = std::clamp(static_cast<int>(samples - 2.0), 1, delayCapacity - 8);
+            whole = std::clamp(wholeFor(samples), 1, delayCapacity - 8);
             tx1 = line[static_cast<std::size_t>((write - 1 - whole) & (delayCapacity - 1))];
             tx2 = line[static_cast<std::size_t>((write - 2 - whole) & (delayCapacity - 1))];
         }
@@ -1950,7 +1960,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             };
             const auto lagAt = [&] (double omega, double lineDelay)
             {
-                const int whole = static_cast<int>(std::floor(lineDelay - 2.0));
+                const int whole = wholeFor(lineDelay);
                 const double fraction = lineDelay - whole;
                 double t1 = 0.0, t2 = 0.0;
                 thiranCoefficients(fraction, t1, t2);
@@ -1978,8 +1988,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 loop.lagCycles[k] = (lagAt(omega, loop.restLineDelay) - omega * loop.restLineDelay) / (2.0 * pi);
             }
         }
-        voice.normal.whole = static_cast<int>(voice.pitch[0].planes[0].restLineDelay - 2.0);
-        voice.parallel.whole = static_cast<int>(voice.pitch[0].planes[1].restLineDelay - 2.0);
+        voice.normal.whole = wholeFor(voice.pitch[0].planes[0].restLineDelay);
+        voice.parallel.whole = wholeFor(voice.pitch[0].planes[1].restLineDelay);
         applyPitch(index, false);
     }
 

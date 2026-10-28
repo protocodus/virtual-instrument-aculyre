@@ -189,9 +189,12 @@ int main()
     }
 
     // The treble string's partials follow the law too, past the dispersion
-    // fit's 5 kHz, at 48 kHz: with the line's fractional delay resting 4 to 5
-    // samples deep the steel A5's partials above 6 kHz ran up to 49 cents
-    // sharp, where 4x oversampling kept them within 7.
+    // fit's 5 kHz, at 48 kHz, held under a bend as well: with the line's
+    // fractional delay resting 4 to 5 samples deep the steel A5's partials
+    // above 6 kHz ran up to 49 cents sharp, where 4x oversampling kept them
+    // within 7, and with the tap free to drift to 5 a held bend of half a
+    // semitone left them 33 sharp.
+    for (const bool bent : { false, true })
     {
         aculyre::InstrumentSpec spec = aculyre::lyreHarpSteel;
         spec.pluckPosition = 0.13;
@@ -200,8 +203,11 @@ int main()
         engine.prepare(48000.0);
         engine.setInstrument(spec);
         const auto report = engine.stringReport(spec.stringCount - 1);
-        const auto audio = renderNote(spec, report.midiNote, 0.6, 64, false, false);
-        const double fundamental = peakNear(audio, 2400, 24000, report.frequency).frequency;
+        const double bend = bent ? -0.5 : 0.0;
+        const auto halfDown = [] (aculyre::PlayingControls& c) { c.pitchBend = -0.5; };
+        const auto audio = renderNote(spec, report.midiNote, 0.6, 64, false, false,
+                                      bent ? +halfDown : nullptr);
+        const double fundamental = peakNear(audio, 2400, 24000, report.frequency * std::pow(2.0, bend / 12.0)).frequency;
         double worst = 0.0;
         int last = 1;
         for (int n = 2;; ++n)
@@ -213,7 +219,7 @@ int main()
             last = n;
             worst = std::max(worst, std::abs(1200.0 * std::log2(peakNear(audio, 2400, 24000, law).frequency / law)));
         }
-        std::printf("steel A5 partials 2-%d: worst %.1f cents from the stiff-string law\n", last, worst);
+        std::printf("steel A5 partials 2-%d, bend %+.1f: worst %.1f cents from the stiff-string law\n", last, bend, worst);
         check(worst < 10.0, "the treble string's partials follow the stiff-string law to 12 kHz");
     }
 

@@ -345,7 +345,8 @@ int main()
     // the pluck point by 0.012 of the length on a 17.6 cm string to 0.022 on
     // a 97.5 cm one (Fig. 7), the force by 14% and the release time by 20%
     // (Fig. 8), the angle from the top by 4 degrees (Table VI), each about
-    // the control. A finger's release at velocity 0.7 is 0.1 ms x 0.88.
+    // the control. A finger's release at velocity 0.7 is 0.053 ms x
+    // (0.7 / 0.5)^-1.68.
     for (int note : { 55, 81 })
     {
         aculyre::AculyreEngine engine;
@@ -364,7 +365,7 @@ int main()
             const double deviation[4] = { pluck.position - controls.pluckPosition,
                                           std::log(pluck.force / (aculyre::lyreHarpSteel.pluckForce * string.touch * std::pow(0.7, 1.4))),
                                           std::asin(std::sqrt(pluck.normalShare)) - angle,
-                                          std::log(pluck.release / (0.10e-3 * (1.3 - 0.6 * 0.7))) };
+                                          std::log(pluck.release / (0.053e-3 * std::pow(0.7 / 0.5, -1.68))) };
             for (int i = 0; i < 4; ++i)
             {
                 sum[i] += deviation[i];

@@ -964,6 +964,25 @@ struct Loop
     }
 };
 
+// The bridge bar's generalized coordinates: the rigid bar's heave, rock and
+// sway, then its first bending modes (setInstrument()).
+constexpr int maxBends = 7;
+constexpr std::size_t barCoordinates = 3 + maxBends;
+using BarVector = std::array<double, barCoordinates>;
+
+// A free-free beam's bend at u, from -1 at one end to 1 at the other:
+// cosh + cos - sigma (sinh + sin) of beta x / L. Each has a mean square of 1
+// along the beam and is orthogonal to its heave and rock.
+constexpr std::array<double, maxBends> bendBetas { 4.730040745, 7.853204624, 10.995607838, 14.137165491,
+                                                   17.27875966, 20.42035225, 23.5619449 };
+double bendShape(int bend, double u) noexcept
+{
+    const double beta = bendBetas[static_cast<std::size_t>(bend)];
+    const double z = 0.5 * (u + 1.0) * beta;
+    const double sigma = (std::cosh(beta) - std::cos(beta)) / (std::sinh(beta) - std::sin(beta));
+    return std::cosh(z) + std::cos(z) - sigma * (std::sinh(z) + std::sin(z));
+}
+
 // One soundbox mode with unit modal mass: velocity per generalized force
 // s / (s^2 + (w/Q) s + w^2), bilinear at its own frequency (passive at every
 // rate): b0 (1 - z^-2) / (1 + a1 z^-1 + a2 z^-2).
@@ -972,7 +991,7 @@ struct Mode
     double frequency { 0.0 };
     double q { 1.0 };
     double b0 { 0.0 }, a1 { 0.0 }, a2 { 0.0 };
-    std::array<double, 3> participation {};  // heave, rock, sway
+    BarVector participation {};  // heave, rock, sway, bends
     double radiationLeft { 0.0 };
     double radiationRight { 0.0 };
     double monopole { 0.0 };
@@ -987,54 +1006,72 @@ struct ModeBank
 {
     static constexpr int lanes = 8;
     int count { 0 };
-    std::array<std::array<double, maxModes>, 3> drive {}, pull {};
+    std::array<std::array<double, maxModes>, barCoordinates> drive {}, pull {};
     std::array<double, maxModes> a1 {}, a2 {}, left {}, right {}, s1 {}, s2 {};
 };
 
-struct Matrix3
+struct BarMatrix
 {
-    std::array<std::array<double, 3>, 3> m {};
+    std::array<std::array<double, barCoordinates>, barCoordinates> m {};
 
-    static Matrix3 identity() noexcept
+    static BarMatrix identity() noexcept
     {
-        Matrix3 r;
-        for (int i = 0; i < 3; ++i)
+        BarMatrix r;
+        for (std::size_t i = 0; i < barCoordinates; ++i)
             r.m[i][i] = 1.0;
         return r;
     }
-    Matrix3 operator*(const Matrix3& o) const noexcept
+    BarMatrix operator*(const BarMatrix& o) const noexcept
     {
-        Matrix3 r;
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-                for (int k = 0; k < 3; ++k)
+        BarMatrix r;
+        for (std::size_t i = 0; i < barCoordinates; ++i)
+            for (std::size_t j = 0; j < barCoordinates; ++j)
+                for (std::size_t k = 0; k < barCoordinates; ++k)
                     r.m[i][j] += m[i][k] * o.m[k][j];
         return r;
     }
-    std::array<double, 3> apply(const std::array<double, 3>& v) const noexcept
+    BarVector apply(const BarVector& v) const noexcept
     {
-        return { m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
-                 m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
-                 m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2] };
+        BarVector r {};
+        for (std::size_t i = 0; i < barCoordinates; ++i)
+            for (std::size_t j = 0; j < barCoordinates; ++j)
+                r[i] += m[i][j] * v[j];
+        return r;
     }
 };
 
-template <typename T>
-std::array<std::array<T, 3>, 3> inverse3(const std::array<std::array<T, 3>, 3>& a) noexcept
+// Gauss-Jordan with partial pivoting (setup only).
+template <typename T, std::size_t N>
+std::array<std::array<T, N>, N> inverse(std::array<std::array<T, N>, N> a) noexcept
 {
-    const T det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
-                - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
-                + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
-    std::array<std::array<T, 3>, 3> r {};
-    r[0][0] = (a[1][1] * a[2][2] - a[1][2] * a[2][1]) / det;
-    r[0][1] = (a[0][2] * a[2][1] - a[0][1] * a[2][2]) / det;
-    r[0][2] = (a[0][1] * a[1][2] - a[0][2] * a[1][1]) / det;
-    r[1][0] = (a[1][2] * a[2][0] - a[1][0] * a[2][2]) / det;
-    r[1][1] = (a[0][0] * a[2][2] - a[0][2] * a[2][0]) / det;
-    r[1][2] = (a[0][2] * a[1][0] - a[0][0] * a[1][2]) / det;
-    r[2][0] = (a[1][0] * a[2][1] - a[1][1] * a[2][0]) / det;
-    r[2][1] = (a[0][1] * a[2][0] - a[0][0] * a[2][1]) / det;
-    r[2][2] = (a[0][0] * a[1][1] - a[0][1] * a[1][0]) / det;
+    std::array<std::array<T, N>, N> r {};
+    for (std::size_t i = 0; i < N; ++i)
+        r[i][i] = T(1.0);
+    for (std::size_t c = 0; c < N; ++c)
+    {
+        std::size_t pivot = c;
+        for (std::size_t i = c + 1; i < N; ++i)
+            if (std::abs(a[i][c]) > std::abs(a[pivot][c]))
+                pivot = i;
+        std::swap(a[c], a[pivot]);
+        std::swap(r[c], r[pivot]);
+        const T scale = T(1.0) / a[c][c];
+        for (std::size_t j = 0; j < N; ++j)
+        {
+            a[c][j] *= scale;
+            r[c][j] *= scale;
+        }
+        for (std::size_t i = 0; i < N; ++i)
+            if (i != c)
+            {
+                const T factor = a[i][c];
+                for (std::size_t j = 0; j < N; ++j)
+                {
+                    a[i][j] -= factor * a[c][j];
+                    r[i][j] -= factor * r[c][j];
+                }
+            }
+    }
     return r;
 }
 
@@ -1227,11 +1264,14 @@ double warburtonH(int m) noexcept
 
 // The body's mode damping. Wooden-box statistics, not a lyre measurement:
 // Acustra's measured guitar bridge (g21, MeasuredBridgeData.h) holds mode Qs
-// of 16-75 (median about 35) below 1.5 kHz and 5-36 above 2 kHz.
+// of 16-75 (median about 35) below 1.5 kHz and 5-36 above 2 kHz. The anchors
+// sit at that spread's lower quartile below 1 kHz and its median above
+// 2 kHz, chosen by ear over 40-32 below and 18-12 above (Docs/decisions.md,
+// 2026-10-28).
 double woodQ(double frequency) noexcept
 {
-    constexpr double anchorsHz[] { 300.0, 1000.0, 4000.0, 10000.0 };
-    constexpr double anchorsQ[] { 40.0, 32.0, 18.0, 12.0 };
+    constexpr double anchorsHz[] { 300.0, 1000.0, 2000.0, 10000.0 };
+    constexpr double anchorsQ[] { 23.0, 23.0, 10.0, 9.0 };
     if (frequency <= anchorsHz[0])
         return anchorsQ[0];
     for (int index = 1; index < 4; ++index)
@@ -1354,6 +1394,8 @@ struct AculyreEngine::State
         double impedance { 0.0 };
         double linearMass { 0.0 };
         double lever { 0.0 };  // bridge position, -1 bass end to +1 treble end
+        // The bar's bending shapes where the string crosses it.
+        std::array<double, maxBends> bend {};
         double energy { 0.0 };
         bool keyDown { false };
         bool sustained { false };
@@ -1362,6 +1404,19 @@ struct AculyreEngine::State
         bool dampingDirty { true };
         int midiNote { -1 };      // its own note, lever down
         int ownerNote { -1 };     // the note that last plucked it
+
+        // How the bar's coordinates move the string's end normal to the top:
+        // the heave, the rock at its lever, no sway, and each bend where it
+        // crosses the bar.
+        BarVector normalPort() const noexcept
+        {
+            BarVector port {};
+            port[0] = 1.0;
+            port[1] = lever;
+            for (std::size_t index = 0; index < maxBends; ++index)
+                port[3 + index] = bend[index];
+            return port;
+        }
     };
     std::array<StringVoice, maxStrings> strings {};
 
@@ -1370,18 +1425,37 @@ struct AculyreEngine::State
     ModeBank bank {};
     // The modes' state at the bridge, sum(pull s1): process() sums it as it
     // updates them, noteOn's preload makes it stale.
-    std::array<double, 3> modalPast {};
+    BarVector modalPast {};
     bool modalPastStale { true };
 
     // The bridge junction (process() derives it): the immediate generalized
     // mobility Y0 of the modes, the strings' generalized impedance Zg, the
-    // bridge bar's bilinear mass impedance Zm (diagonal) and
-    // solve = (I + Y0 (Zg + Zm))^-1.
-    Matrix3 immediateMobility {};
-    Matrix3 stringImpedance {};
-    std::array<double, 3> massImpedance {};
-    Matrix3 solve {};
-    std::array<double, 3> massPast {};
+    // bridge bar's own bilinear impedance Zb (diagonal: its mass, and for
+    // each bend its loss and stiffness) and solve = (I + Y0 (Zg + Zb))^-1.
+    // massPast and springPast hold the mass's and the stiffness's states.
+    BarMatrix immediateMobility {};
+    BarMatrix stringImpedance {};
+    BarVector massImpedance {}, lossImpedance {}, springImpedance {};
+    BarMatrix solve {};
+    BarVector massPast {}, springPast {};
+    // The bar's bends in vacuo (setInstrument()); bends past bendCount are
+    // left out and their coordinates stay still.
+    std::array<double, maxBends> bendFrequency {};
+    int bendCount { 0 };
+
+    // The bar's own impedance on coordinate i at omega: its mass, and for
+    // each bend its loss and stiffness, as the junction's are.
+    Complex barImpedance(double omega, std::size_t i) const noexcept
+    {
+        const double mass = instrument.body.bridgeMass;
+        if (i < 3)
+            return Complex(0.0, omega * (i == 0 ? mass : mass / 3.0));
+        const std::size_t bend = i - 3;
+        if (static_cast<int>(bend) >= bendCount)
+            return 0.0;
+        const double bent = 2.0 * pi * bendFrequency[bend];
+        return Complex(mass * bent / woodQ(bendFrequency[bend]), omega * mass - mass * bent * bent / omega);
+    }
 
     double radiationScale { 0.0 };
     double previousLeft { 0.0 };
@@ -1406,7 +1480,7 @@ struct AculyreEngine::State
     bool idle { true };
     int quietSamples { 0 };
     int controlCountdown { 0 };
-    std::array<double, 3> lastGeneralizedVelocity {};
+    BarVector lastGeneralizedVelocity {};
     std::array<double, delayCapacity> pluckWave {};
 
     // PlayingControls as the signal path uses them. The hands' damping as
@@ -1464,7 +1538,7 @@ struct PlateMode
     double frequency { 0.0 };
     double mass { 0.0 };
     double volume { 0.0 };
-    std::array<double, 3> participation {};
+    BarVector participation {};
     double multipoleLeft { 0.0 };
     double multipoleRight { 0.0 };
 };
@@ -1545,16 +1619,52 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     std::sort(plate.begin(), plate.begin() + plateCount,
               [] (const PlateMode& x, const PlateMode& y) { return x.frequency < y.frequency; });
 
-    // Participations along the bridge bar (a rigid bar: heave, rock about its
-    // middle, normalized so its ends move h +- r; sway of its top, where the
-    // strings cross it, as the bar tips about its foot).
+    // The bar bends. As a free-free Euler-Bernoulli beam its bends stand at
+    // (beta / L)^2 sqrt(EI / mu); its section is solid and bridgeHeight tall,
+    // so EI / mu = E h^2 / (12 rho) whatever its mass: from 790 Hz (then 2.2,
+    // 4.3, 7.1, 10.6, 14.7 and 19.6 kHz) for the lyre harp's 24 cm maple
+    // bar, 6.8 and 18.6 kHz for the gut lyre's 9 cm one. On a top this light
+    // the bar is no rigid line even below its first bend: the top under it
+    // bends with it, where a bar that only heaved and rocked spread every
+    // string's force evenly along its length. So the junction carries each
+    // bend below the top's highest mode as a coordinate beside the rigid
+    // three. Fewer leave the top along the bar too free: the decay of a
+    // string beside the main mode (the lyre harp's A4) moves with their
+    // count until all are in. Each bend's modal mass is the bar's
+    // (bendShape). Chosen by ear over the rigid bar (Docs/decisions.md,
+    // 2026-10-28).
+    const double barLength = (body.bridgeTo - body.bridgeFrom) * b;
+    const double beamConstant = body.bridgeHeight
+        * std::sqrt(body.bridgeWood.eAlong / (12.0 * body.bridgeWood.density));  // sqrt(EI / mu), m^2/s
+    s.bendCount = 0;
+    s.bendFrequency = {};
+    for (int bend = 0; bend < maxBends; ++bend)
+    {
+        const double frequency = std::pow(bendBetas[static_cast<std::size_t>(bend)] / barLength, 2.0)
+                               * beamConstant / (2.0 * pi);
+        if (frequency >= topFrequencyLimit)
+            break;
+        s.bendFrequency[static_cast<std::size_t>(bend)] = frequency;
+        s.bendCount = bend + 1;
+    }
+    constexpr int points = 64;
+    std::array<std::array<double, points>, maxBends> barShapes {};
+    for (int bend = 0; bend < s.bendCount; ++bend)
+        for (int point = 0; point < points; ++point)
+            barShapes[static_cast<std::size_t>(bend)][static_cast<std::size_t>(point)]
+                = bendShape(bend, 2.0 * (point + 0.5) / points - 1.0);
+
+    // Participations along the bridge bar: the rigid bar's heave, rock about
+    // its middle, normalized so its ends move h +- r, and sway of its top,
+    // where the strings cross it, as the bar tips about its foot; then its
+    // bends.
     for (int index = 0; index < plateCount; ++index)
     {
         PlateMode& mode = plate[static_cast<std::size_t>(index)];
         const double kx = mode.m * pi / a;
         const double ky = mode.n * pi / b;
-        constexpr int points = 64;
         double meanSine = 0.0, meanLeveredSine = 0.0;
+        std::array<double, maxBends> meanBentSine {};
         for (int point = 0; point < points; ++point)
         {
             const double t = (point + 0.5) / points;
@@ -1563,22 +1673,24 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             const double sine = std::sin(ky * y);
             meanSine += sine / points;
             meanLeveredSine += u * sine / points;
+            for (int bend = 0; bend < s.bendCount; ++bend)
+                meanBentSine[static_cast<std::size_t>(bend)]
+                    += barShapes[static_cast<std::size_t>(bend)][static_cast<std::size_t>(point)] * sine / points;
         }
         mode.mass = 0.25 * plateMass;
         mode.participation[0] = std::sin(kx * bridgeX) * meanSine;
         mode.participation[1] = 3.0 * std::sin(kx * bridgeX) * meanLeveredSine;
         mode.participation[2] = body.bridgeHeight * kx * std::cos(kx * bridgeX) * meanSine;
+        for (std::size_t bend = 0; bend < maxBends; ++bend)
+            mode.participation[3 + bend] = std::sin(kx * bridgeX) * meanBentSine[bend];
         mode.volume = (mode.m % 2 == 1 && mode.n % 2 == 1)
             ? 4.0 * a * b / (mode.m * mode.n * pi * pi) : 0.0;
         // What a mode radiates besides its net volume: edge and corner
         // radiation below coincidence, all of it above (radiation efficiency
         // sigma; an equivalent volume velocity c sqrt(4 pi S sigma <v^2>) /
-        // omega). The pair stands symmetrically about the top's long axis, so
-        // a mode symmetric across the width reaches both microphones alike
-        // and one antisymmetric across it (n even) reaches them in opposite
-        // phase: the strings sound from where they sit along the bar, bass to
-        // the left. The sign itself, which way the mode's lobe faces the
-        // pair, is a seeded draw.
+        // omega). Its sign and weight at each microphone are seeded draws: a
+        // symmetric pair, each string placed by where it sits on the bar, was
+        // heard against this and not chosen (Docs/decisions.md, 2026-10-28).
         const double omega = 2.0 * pi * mode.frequency;
         const double ratio = mode.frequency / coincidenceHz;
         const double sigma = ratio >= 1.0 ? 1.0 : std::min(1.0, 0.28 * std::sqrt(ratio));
@@ -1586,11 +1698,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             * std::sqrt(4.0 * pi * a * b * sigma) * 0.5;
         mode.multipoleLeft = multipole * (modeRandom.bipolar() < 0.0 ? -1.0 : 1.0)
                            * (0.7 + 0.3 * std::abs(modeRandom.bipolar()));
-        mode.multipoleRight = (mode.n % 2 == 0 ? -1.0 : 1.0) * mode.multipoleLeft;
-        // The right microphone's two former draws, kept so that every later
-        // draw, and the left microphone, stay as they were.
-        modeRandom.bipolar();
-        modeRandom.bipolar();
+        mode.multipoleRight = multipole * (modeRandom.bipolar() < 0.0 ? -1.0 : 1.0)
+                            * (0.7 + 0.3 * std::abs(modeRandom.bipolar()));
     }
 
     // The air in the soundhole couples to every plate mode with a net volume
@@ -1645,7 +1754,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
 
     s.modeCount = 0;
     const auto addMode = [&] (double frequency, double airShare,
-                              const std::array<double, 3>& participation,
+                              const BarVector& participation,
                               double monopole, double left, double right)
     {
         if (!(frequency > 20.0) || frequency >= topFrequencyLimit || s.modeCount >= maxModes)
@@ -1673,15 +1782,15 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     {
         const auto sj = static_cast<std::size_t>(j);
         const double frequency = std::sqrt(std::max(0.0, values[sj])) / (2.0 * pi);
-        std::array<double, 3> participation {};
+        BarVector participation {};
         double monopole = 0.0, left = 0.0, right = 0.0;
         for (int i = 0; i < coupledCount; ++i)
         {
             const auto si = static_cast<std::size_t>(i);
             const PlateMode& mode = plate[static_cast<std::size_t>(coupledIndex[si])];
             const double psi = vectors[si][sj] / std::sqrt(masses[si]);
-            for (int c = 0; c < 3; ++c)
-                participation[static_cast<std::size_t>(c)] += psi * mode.participation[static_cast<std::size_t>(c)];
+            for (std::size_t c = 0; c < barCoordinates; ++c)
+                participation[c] += psi * mode.participation[c];
             monopole += psi * mode.volume;
             left += psi * mode.multipoleLeft;
             right += psi * mode.multipoleRight;
@@ -1706,9 +1815,10 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             continue;
         const PlateMode& mode = plate[static_cast<std::size_t>(index)];
         const double scale = 1.0 / std::sqrt(mode.mass);
-        addMode(mode.frequency, 0.0,
-                { mode.participation[0] * scale, mode.participation[1] * scale,
-                  mode.participation[2] * scale },
+        BarVector participation = mode.participation;
+        for (double& value : participation)
+            value *= scale;
+        addMode(mode.frequency, 0.0, participation,
                 mode.volume * scale, mode.multipoleLeft * scale, mode.multipoleRight * scale);
     }
     std::sort(s.modes.begin(), s.modes.begin() + s.modeCount,
@@ -1769,6 +1879,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         // Strings sit evenly across the bridge, bass at the u = -1 end.
         voice.lever = stringCount_ > 1
             ? -0.9 + 1.8 * index / (stringCount_ - 1) : 0.0;
+        for (int bend = 0; bend < s.bendCount; ++bend)
+            voice.bend[static_cast<std::size_t>(bend)] = bendShape(bend, voice.lever);
 
         for (int raised = 0; raised < 2; ++raised)
         {
@@ -1827,14 +1939,13 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     }
 
     // ---- The junction ---------------------------------------------------
-    Matrix3 y0m {};
+    BarMatrix y0m {};
     for (int index = 0; index < s.modeCount; ++index)
     {
         const Mode& mode = s.modes[static_cast<std::size_t>(index)];
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-                y0m.m[i][j] += mode.b0 * mode.participation[static_cast<std::size_t>(i)]
-                             * mode.participation[static_cast<std::size_t>(j)];
+        for (std::size_t i = 0; i < barCoordinates; ++i)
+            for (std::size_t j = 0; j < barCoordinates; ++j)
+                y0m.m[i][j] += mode.b0 * mode.participation[i] * mode.participation[j];
     }
     s.immediateMobility = y0m;
     ModeBank& bank = s.bank;
@@ -1844,7 +1955,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     {
         const Mode& mode = s.modes[static_cast<std::size_t>(index)];
         const auto k = static_cast<std::size_t>(index);
-        for (std::size_t c = 0; c < 3; ++c)
+        for (std::size_t c = 0; c < barCoordinates; ++c)
         {
             bank.drive[c][k] = mode.b0 * mode.participation[c];
             bank.pull[c][k] = mode.participation[c];
@@ -1854,30 +1965,45 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         bank.left[k] = mode.radiationLeft;
         bank.right[k] = mode.radiationRight;
     }
-    Matrix3 zg {};
+    BarMatrix zg {};
     for (int index = 0; index < stringCount_; ++index)
     {
         const State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
-        zg.m[0][0] += voice.impedance;
-        zg.m[0][1] += voice.impedance * voice.lever;
-        zg.m[1][1] += voice.impedance * voice.lever * voice.lever;
+        const BarVector port = voice.normalPort();
+        for (std::size_t i = 0; i < barCoordinates; ++i)
+            for (std::size_t j = 0; j < barCoordinates; ++j)
+                zg.m[i][j] += voice.impedance * port[i] * port[j];
         zg.m[2][2] += voice.impedance;
     }
-    zg.m[1][0] = zg.m[0][1];
     s.stringImpedance = zg;
     // The bar's mass: heave m, rock m/3 (r is its ends' displacement), sway
-    // m/3 (its top as it tips about its foot). Bilinear: Z = m 2 fs.
-    s.massImpedance = { body.bridgeMass * 2.0 * fs, body.bridgeMass / 3.0 * 2.0 * fs,
-                        body.bridgeMass / 3.0 * 2.0 * fs };
-    Matrix3 load = zg;
-    for (int i = 0; i < 3; ++i)
-        load.m[i][i] += s.massImpedance[static_cast<std::size_t>(i)];
-    Matrix3 system3 = Matrix3::identity();
-    const Matrix3 product = y0m * load;
-    for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j)
-            system3.m[i][j] += product.m[i][j];
-    s.solve.m = inverse3(system3.m);
+    // m/3 (its top as it tips about its foot), each bend m. Bilinear,
+    // Z = m 2 fs. Each bend is a mass on its spring, k = m w^2, with the
+    // wood's loss (woodQ), bilinear prewarped at its frequency so that it
+    // stands where the beam does at every rate.
+    s.massImpedance = {};
+    s.lossImpedance = {};
+    s.springImpedance = {};
+    s.massImpedance[0] = body.bridgeMass * 2.0 * fs;
+    s.massImpedance[1] = s.massImpedance[2] = body.bridgeMass / 3.0 * 2.0 * fs;
+    for (int bend = 0; bend < s.bendCount; ++bend)
+    {
+        const auto c = static_cast<std::size_t>(3 + bend);
+        const double omega = 2.0 * pi * s.bendFrequency[static_cast<std::size_t>(bend)];
+        const double warp = omega / std::tan(omega / (2.0 * fs));
+        s.massImpedance[c] = body.bridgeMass * warp;
+        s.lossImpedance[c] = body.bridgeMass * omega / woodQ(s.bendFrequency[static_cast<std::size_t>(bend)]);
+        s.springImpedance[c] = body.bridgeMass * omega * omega / warp;
+    }
+    BarMatrix load = zg;
+    for (std::size_t i = 0; i < barCoordinates; ++i)
+        load.m[i][i] += s.massImpedance[i] + s.lossImpedance[i] + s.springImpedance[i];
+    BarMatrix junction = BarMatrix::identity();
+    const BarMatrix product = y0m * load;
+    for (std::size_t i = 0; i < barCoordinates; ++i)
+        for (std::size_t j = 0; j < barCoordinates; ++j)
+            junction.m[i][j] += product.m[i][j];
+    s.solve.m = inverse(junction.m);
 
     // ---- Tuning: each port's reflection phase from the continuous model --
     for (int index = 0; index < stringCount_; ++index)
@@ -1893,66 +2019,52 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             const auto reflectionLead = [&] (double frequency)
             {
                 const double omega = 2.0 * pi * frequency;
-                std::array<std::array<Complex, 3>, 3> plateMobility {};
+                std::array<std::array<Complex, barCoordinates>, barCoordinates> plateMobility {};
                 for (int m = 0; m < s.modeCount; ++m)
                 {
                     const Mode& mode = s.modes[static_cast<std::size_t>(m)];
                     const double wm = 2.0 * pi * mode.frequency;
                     const Complex response = Complex(0.0, omega)
                         / Complex(wm * wm - omega * omega, omega * wm / mode.q);
-                    for (int i = 0; i < 3; ++i)
-                        for (int j = 0; j < 3; ++j)
-                            plateMobility[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)]
-                                += response * mode.participation[static_cast<std::size_t>(i)]
-                                 * mode.participation[static_cast<std::size_t>(j)];
+                    for (std::size_t i = 0; i < barCoordinates; ++i)
+                        for (std::size_t j = 0; j < barCoordinates; ++j)
+                            plateMobility[i][j] += response * mode.participation[i] * mode.participation[j];
                 }
-                std::array<std::array<Complex, 3>, 3> others {};
-                for (int i = 0; i < 3; ++i)
-                    for (int j = 0; j < 3; ++j)
-                        others[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = zg.m[i][j];
-                std::array<double, 3> port { 0.0, 0.0, 1.0 };
+                std::array<std::array<Complex, barCoordinates>, barCoordinates> others {};
+                for (std::size_t i = 0; i < barCoordinates; ++i)
+                    for (std::size_t j = 0; j < barCoordinates; ++j)
+                        others[i][j] = zg.m[i][j];
+                BarVector port {};
+                port[2] = 1.0;
                 if (plane == 0)
-                {
-                    port = { 1.0, voice.lever, 0.0 };
-                    others[0][0] -= voice.impedance;
-                    others[0][1] -= voice.impedance * voice.lever;
-                    others[1][0] -= voice.impedance * voice.lever;
-                    others[1][1] -= voice.impedance * voice.lever * voice.lever;
-                }
-                else
-                {
-                    others[2][2] -= voice.impedance;
-                }
-                const std::array<double, 3> barMass { body.bridgeMass, body.bridgeMass / 3.0,
-                                                      body.bridgeMass / 3.0 };
-                for (int i = 0; i < 3; ++i)
-                    others[static_cast<std::size_t>(i)][static_cast<std::size_t>(i)]
-                        += Complex(0.0, omega * barMass[static_cast<std::size_t>(i)]);
+                    port = voice.normalPort();
+                for (std::size_t i = 0; i < barCoordinates; ++i)
+                    for (std::size_t j = 0; j < barCoordinates; ++j)
+                        others[i][j] -= voice.impedance * port[i] * port[j];
+                for (std::size_t i = 0; i < barCoordinates; ++i)
+                    others[i][i] += s.barImpedance(omega, i);
                 // Y_port = e^T (I + Yp W)^-1 Yp e.
-                std::array<std::array<Complex, 3>, 3> system {};
-                for (int i = 0; i < 3; ++i)
-                    for (int j = 0; j < 3; ++j)
+                std::array<std::array<Complex, barCoordinates>, barCoordinates> system {};
+                for (std::size_t i = 0; i < barCoordinates; ++i)
+                    for (std::size_t j = 0; j < barCoordinates; ++j)
                     {
                         Complex sum = i == j ? 1.0 : 0.0;
-                        for (int k = 0; k < 3; ++k)
-                            sum += plateMobility[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)]
-                                 * others[static_cast<std::size_t>(k)][static_cast<std::size_t>(j)];
-                        system[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = sum;
+                        for (std::size_t k = 0; k < barCoordinates; ++k)
+                            sum += plateMobility[i][k] * others[k][j];
+                        system[i][j] = sum;
                     }
-                const auto inverse = inverse3(system);
-                std::array<Complex, 3> ype {};
-                for (int i = 0; i < 3; ++i)
-                    for (int k = 0; k < 3; ++k)
-                        ype[static_cast<std::size_t>(i)] += plateMobility[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)]
-                                                         * port[static_cast<std::size_t>(k)];
+                const auto inverted = inverse(system);
+                std::array<Complex, barCoordinates> ype {};
+                for (std::size_t i = 0; i < barCoordinates; ++i)
+                    for (std::size_t k = 0; k < barCoordinates; ++k)
+                        ype[i] += plateMobility[i][k] * port[k];
                 Complex admittance = 0.0;
-                for (int i = 0; i < 3; ++i)
+                for (std::size_t i = 0; i < barCoordinates; ++i)
                 {
                     Complex row = 0.0;
-                    for (int k = 0; k < 3; ++k)
-                        row += inverse[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)]
-                             * ype[static_cast<std::size_t>(k)];
-                    admittance += port[static_cast<std::size_t>(i)] * row;
+                    for (std::size_t k = 0; k < barCoordinates; ++k)
+                        row += inverted[i][k] * ype[k];
+                    admittance += port[i] * row;
                 }
                 const Complex zy = voice.impedance * admittance;
                 // R = (ZY - 1)/(1 + ZY); the loop carries -R.
@@ -2073,6 +2185,7 @@ void AculyreEngine::reset() noexcept
     s.bank.s2.fill(0.0);
     s.modalPastStale = true;
     s.massPast = {};
+    s.springPast = {};
     s.previousLeft = s.previousRight = 0.0;
     s.piezoPreviousForce = s.piezoPrevious = 0.0;
     s.piezoMountZ1 = s.piezoMountZ2 = 0.0;
@@ -2222,13 +2335,14 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // contact, as one step). The finger's 10 ms are slow against the body's
     // periods, so the body takes the force the stopped wave leaves as the
     // held force below: preloaded, without the click of a step.
-    std::array<double, 3> preload {};
+    BarVector preload {};
+    const BarVector port = voice.normalPort();
     if (voice.keyDown || voice.sustained || voice.energy > silentEnergy)
     {
         const double stopped = controls.technique == Technique::Plectrum ? 0.7 : 1.0;
         const double normalForce = 2.0 * voice.impedance * stopped * voice.normal.last;
-        preload[0] -= normalForce;
-        preload[1] -= normalForce * voice.lever;
+        for (std::size_t c = 0; c < barCoordinates; ++c)
+            preload[c] -= normalForce * port[c];
         preload[2] -= 2.0 * voice.impedance * stopped * voice.parallel.last;
         for (Loop* loop : { &voice.normal, &voice.parallel })
         {
@@ -2276,22 +2390,33 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     const double normalShare = std::clamp(std::sin(angle) * std::sin(angle), 0.01, 0.9);
 
     // Contact width and release time of the technique: the fingertip's pad,
-    // a nail's or a plectrum's edge. The string slides off faster from a
-    // harder stroke, so it leaves brighter. Authored values; the release
-    // time is of the order of Acustra's (a 0.2 mm edge over the string's
-    // speed of a metre or two per second).
-    double contact = 0.005, release = 0.10e-3;
+    // a nail's or a plectrum's edge. A harpist's string slips 0.04 mm along
+    // the harder fingertip before it leaves at about 1.5 m/s (Chadefaux, Le
+    // Carrou and Fabre, JASA 133 (2013) 2444); accelerating evenly, that
+    // takes 0.053 ms, the finger's release time constant. Chosen by ear over
+    // the pad's 0.2 mm (0.27 ms) and an authored 0.10 ms (Docs/decisions.md,
+    // 2026-10-28). The nail's and the plectrum's are authored, of the order
+    // of Acustra's (a 0.2 mm edge over a metre or two per second).
+    double contact = 0.005, release = 0.053e-3;
     switch (controls.technique)
     {
-        case Technique::Finger: contact = 0.005; release = 0.10e-3; break;
+        case Technique::Finger: contact = 0.005; release = 0.053e-3; break;
         case Technique::Nail: contact = 0.0012; release = 0.035e-3; break;
         case Technique::Plectrum: contact = 0.0008; release = 0.025e-3; break;
     }
-    // The slip's speed scatters more than the displacement does: one
-    // harpist's release velocity by about 25%, the displacement by 14%
-    // (Chadefaux et al., Fig. 8), so the release time takes the rest, about
-    // 20%, and each pluck's brightness with it.
-    release *= (1.3 - 0.6 * v) * std::exp(0.2 * s.random.gaussian());
+    // A harder stroke slips off faster, so it leaves brighter. Harpists'
+    // release velocity rises with the string's displacement, about as D^1.2
+    // from 0.5 mm at 0.2 m/s to 7 mm at 5 m/s around an average of 4 mm at
+    // 2 m/s (Chadefaux et al., JASA 131 (2012) 844, Sec. III.B.1), and the
+    // displacement follows the force, v^1.4 here: the release time goes as
+    // v^-1.68 about v = 0.5, within the 0.2-5 m/s the harpists reached.
+    // Chosen by ear over a gentler authored law (Docs/decisions.md,
+    // 2026-10-28). The slip's speed also scatters more than the displacement
+    // does: one harpist's release velocity by about 25%, the displacement by
+    // 14% (Fig. 8), so the release time takes the rest, about 20%, and each
+    // pluck's brightness with it.
+    release *= std::clamp(std::pow(v / 0.5, -1.4 * 1.2), 0.4, 10.0)
+             * std::exp(0.2 * s.random.gaussian());
     s.lastPluck = { position, force, normalShare, release };
 
     voice.keyDown = true;
@@ -2405,8 +2530,8 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         const double heldForce = 2.0 * voice.impedance * (wave[0] - mean);
         if (plane == 0)
         {
-            preload[0] += heldForce;
-            preload[1] += heldForce * voice.lever;
+            for (std::size_t c = 0; c < barCoordinates; ++c)
+                preload[c] += heldForce * port[c];
         }
         else
         {
@@ -2421,8 +2546,9 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     for (int k = 0; k < bank.count; ++k)
     {
         const auto m = static_cast<std::size_t>(k);
-        const double modal = bank.drive[0][m] * preload[0] + bank.drive[1][m] * preload[1]
-                           + bank.drive[2][m] * preload[2];
+        double modal = 0.0;
+        for (std::size_t c = 0; c < barCoordinates; ++c)
+            modal += bank.drive[c][m] * preload[c];
         bank.s1[m] -= modal;
         bank.s2[m] -= modal;
     }
@@ -2481,6 +2607,7 @@ void AculyreEngine::sleep() noexcept
     s.bank.s2.fill(0.0);
     s.modalPastStale = true;
     s.massPast = {};
+    s.springPast = {};
     s.lastGeneralizedVelocity = {};
     s.previousLeft = s.previousRight = 0.0;
     s.piezoPreviousForce = s.piezoPrevious = 0.0;
@@ -2505,9 +2632,9 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
     const int count = stringCount_;
     std::array<double, maxStrings> normalIn {};
     std::array<double, maxStrings> parallelIn {};
-    const Matrix3& y0 = s.immediateMobility;
-    const Matrix3& zg = s.stringImpedance;
-    const Matrix3& solve = s.solve;
+    const BarMatrix& y0 = s.immediateMobility;
+    const BarMatrix& zg = s.stringImpedance;
+    const BarMatrix& solve = s.solve;
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
@@ -2557,7 +2684,7 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             }
         }
 
-        std::array<double, 3> drive {};
+        BarVector drive {};
         for (int index = 0; index < count; ++index)
         {
             State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
@@ -2569,6 +2696,8 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             drive[0] += twiceZ * vn;
             drive[1] += twiceZ * voice.lever * vn;
             drive[2] += twiceZ * vp;
+            for (std::size_t bend = 0; bend < maxBends; ++bend)
+                drive[3 + bend] += twiceZ * voice.bend[bend] * vn;
             // The loop's mean squared velocity over a round trip; both
             // directions' slopes count, hence the factor in glidePerEnergy.
             const float square = static_cast<float>(vn * vn + vp * vp);
@@ -2585,45 +2714,48 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         if (s.modalPastStale)
         {
             s.modalPast = {};
-            for (std::size_t c = 0; c < 3; ++c)
+            for (std::size_t c = 0; c < barCoordinates; ++c)
                 for (int k = 0; k < bank.count; ++k)
                     s.modalPast[c] += bank.pull[c][static_cast<std::size_t>(k)] * bank.s1[static_cast<std::size_t>(k)];
             s.modalPastStale = false;
         }
-        const std::array<double, 3>& past = s.modalPast;
-        std::array<double, 3> net { drive[0] - s.massPast[0], drive[1] - s.massPast[1],
-                                    drive[2] - s.massPast[2] };
-        std::array<double, 3> rhs = y0.apply(net);
-        for (int i = 0; i < 3; ++i)
-            rhs[static_cast<std::size_t>(i)] += past[static_cast<std::size_t>(i)];
-        const std::array<double, 3> velocity = solve.apply(rhs);
-        const std::array<double, 3> stringLoad = zg.apply(velocity);
-        std::array<double, 3> plateForce {};
-        for (std::size_t i = 0; i < 3; ++i)
+        const BarVector& past = s.modalPast;
+        BarVector net {};
+        for (std::size_t i = 0; i < barCoordinates; ++i)
+            net[i] = drive[i] - s.massPast[i] - s.springPast[i];
+        BarVector rhs = y0.apply(net);
+        for (std::size_t i = 0; i < barCoordinates; ++i)
+            rhs[i] += past[i];
+        const BarVector velocity = solve.apply(rhs);
+        const BarVector stringLoad = zg.apply(velocity);
+        BarVector plateForce {};
+        for (std::size_t i = 0; i < barCoordinates; ++i)
         {
             const double massForce = s.massImpedance[i] * velocity[i] + s.massPast[i];
-            plateForce[i] = drive[i] - stringLoad[i] - massForce;
+            const double springForce = s.springImpedance[i] * velocity[i] + s.springPast[i];
+            plateForce[i] = drive[i] - stringLoad[i] - massForce - springForce - s.lossImpedance[i] * velocity[i];
             s.massPast[i] = -massForce - s.massImpedance[i] * velocity[i];
+            s.springPast[i] = springForce + s.springImpedance[i] * velocity[i];
         }
 
         // Each lane sums its own share, so a group runs as one vector.
         constexpr int lanes = ModeBank::lanes;
-        double laneLeft[lanes] {}, laneRight[lanes] {}, lanePast[3][lanes] {};
+        double laneLeft[lanes] {}, laneRight[lanes] {}, lanePast[barCoordinates][lanes] {};
         for (int group = 0; group < bank.count; group += lanes)
             for (int lane = 0; lane < lanes; ++lane)
             {
                 const auto k = static_cast<std::size_t>(group + lane);
-                const double x = bank.drive[0][k] * plateForce[0] + bank.drive[1][k] * plateForce[1]
-                               + bank.drive[2][k] * plateForce[2];
+                double x = 0.0;
+                for (std::size_t c = 0; c < barCoordinates; ++c)
+                    x += bank.drive[c][k] * plateForce[c];
                 const double y = x + bank.s1[k];
                 const double s1 = bank.s2[k] - bank.a1[k] * y;
                 bank.s2[k] = -x - bank.a2[k] * y;
                 bank.s1[k] = s1;
                 laneLeft[lane] += bank.left[k] * y;
                 laneRight[lane] += bank.right[k] * y;
-                lanePast[0][lane] += bank.pull[0][k] * s1;
-                lanePast[1][lane] += bank.pull[1][k] * s1;
-                lanePast[2][lane] += bank.pull[2][k] * s1;
+                for (std::size_t c = 0; c < barCoordinates; ++c)
+                    lanePast[c][lane] += bank.pull[c][k] * s1;
             }
         double radiatedLeft = 0.0, radiatedRight = 0.0;
         s.modalPast = {};
@@ -2631,14 +2763,16 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         {
             radiatedLeft += laneLeft[lane];
             radiatedRight += laneRight[lane];
-            for (std::size_t c = 0; c < 3; ++c)
+            for (std::size_t c = 0; c < barCoordinates; ++c)
                 s.modalPast[c] += lanePast[c][lane];
         }
 
         for (int index = 0; index < count; ++index)
         {
             State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
-            const double normalPort = velocity[0] + voice.lever * velocity[1];
+            double normalPort = velocity[0] + voice.lever * velocity[1];
+            for (std::size_t bend = 0; bend < maxBends; ++bend)
+                normalPort += voice.bend[bend] * velocity[3 + bend];
             voice.normal.writeSample(normalIn[static_cast<std::size_t>(index)] - normalPort);
             voice.parallel.writeSample(parallelIn[static_cast<std::size_t>(index)] - velocity[2]);
         }
@@ -2750,27 +2884,40 @@ double AculyreEngine::bridgeMobilityMagnitude(double frequency, double lever) co
 {
     const State& s = *state_;
     const double omega = 2.0 * pi * frequency;
-    std::array<std::array<Complex, 3>, 3> plateMobility {};
+    std::array<std::array<Complex, barCoordinates>, barCoordinates> plateMobility {};
     for (int m = 0; m < s.modeCount; ++m)
     {
         const Mode& mode = s.modes[static_cast<std::size_t>(m)];
         const double wm = 2.0 * pi * mode.frequency;
         const Complex response = Complex(0.0, omega) / Complex(wm * wm - omega * omega, omega * wm / mode.q);
-        for (int i = 0; i < 2; ++i)
-            for (int j = 0; j < 2; ++j)
-                plateMobility[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)]
-                    += response * mode.participation[static_cast<std::size_t>(i)]
-                     * mode.participation[static_cast<std::size_t>(j)];
+        // Sway held still, as the normal force drives the bar.
+        for (std::size_t i = 0; i < barCoordinates; ++i)
+            for (std::size_t j = 0; j < barCoordinates; ++j)
+                if (i != 2 && j != 2)
+                    plateMobility[i][j] += response * mode.participation[i] * mode.participation[j];
     }
-    // The bar's mass in series: Y = e^T (Yp^-1 + j w M)^-1 e on heave/rock.
-    const double mass = s.instrument.body.bridgeMass;
-    const Complex det = plateMobility[0][0] * plateMobility[1][1] - plateMobility[0][1] * plateMobility[1][0];
-    Complex z00 = plateMobility[1][1] / det + Complex(0.0, omega * mass);
-    Complex z11 = plateMobility[0][0] / det + Complex(0.0, omega * mass / 3.0);
-    Complex z01 = -plateMobility[0][1] / det;
-    const Complex zdet = z00 * z11 - z01 * z01;
-    const Complex y00 = z11 / zdet, y11 = z00 / zdet, y01 = -z01 / zdet;
-    return std::abs(y00 + 2.0 * lever * y01 + lever * lever * y11);
+    // The point on the bar at the lever, normal to the top; the bar's own
+    // impedance in series: Y = e^T (I + Yp Zb)^-1 Yp e.
+    BarVector point {};
+    point[0] = 1.0;
+    point[1] = lever;
+    for (int bend = 0; bend < s.bendCount; ++bend)
+        point[3 + static_cast<std::size_t>(bend)] = bendShape(bend, lever);
+    std::array<std::array<Complex, barCoordinates>, barCoordinates> system {};
+    for (std::size_t i = 0; i < barCoordinates; ++i)
+        for (std::size_t j = 0; j < barCoordinates; ++j)
+            system[i][j] = (i == j ? 1.0 : 0.0) + plateMobility[i][j] * s.barImpedance(omega, j);
+    const auto inverted = inverse(system);
+    Complex mobility = 0.0;
+    for (std::size_t i = 0; i < barCoordinates; ++i)
+        for (std::size_t k = 0; k < barCoordinates; ++k)
+        {
+            Complex ype = 0.0;
+            for (std::size_t j = 0; j < barCoordinates; ++j)
+                ype += plateMobility[k][j] * point[j];
+            mobility += point[i] * inverted[i][k] * ype;
+        }
+    return std::abs(mobility);
 }
 
 } // namespace aculyre

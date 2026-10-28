@@ -78,6 +78,9 @@ struct BodySpec
     double bridgeTo;
     double bridgeHeight;   // string height above the soundboard, m
     double bridgeMass;     // kg
+    // The bar's wood: a solid section bridgeHeight tall, as wide as its mass
+    // needs; it sets how the bar bends.
+    WoodSpec bridgeWood;
 };
 
 enum class Technique

@@ -7,6 +7,7 @@
 #include "AculyrePresets.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <complex>
 #include <cstdio>
@@ -544,6 +545,39 @@ int main()
             check(std::abs(db) < 1.0, "oversampling keeps the note's level (within 1 dB)");
             check(fast == play(oversampling, 37), "the oversampled output does not depend on the block size");
         }
+    }
+
+    // The room's first reflection follows the sound by 7.3 ms at every engine
+    // rate. At 176.4 and 192 kHz (4x on a 44.1 or 48 kHz host) its taps once
+    // wrapped around too short a line and arrived after 0.6 to 2.5 ms.
+    for (double rate : { 48000.0, 176400.0, 192000.0 })
+    {
+        std::array<std::vector<float>, 2> left;
+        for (int room = 0; room < 2; ++room)
+        {
+            auto engine = std::make_unique<aculyre::AculyreEngine>();
+            engine->prepare(rate);
+            engine->setInstrument(aculyre::lyreHarpSteel);
+            aculyre::PlayingControls controls = engine->controls();
+            if (room == 0)
+                controls.room = 0.0;
+            engine->setControls(controls);
+            engine->noteOn(67, 0.7f);
+            const auto total = static_cast<int>(0.05 * rate);
+            std::vector<float> right(static_cast<std::size_t>(total));
+            left[static_cast<std::size_t>(room)].resize(static_cast<std::size_t>(total));
+            for (int position = 0; position < total; position += 64)
+                engine->process(left[static_cast<std::size_t>(room)].data() + position, right.data() + position,
+                                std::min(64, total - position));
+        }
+        std::size_t onset = 0, reflection = 0;
+        while (left[0][onset] == 0.0f)
+            ++onset;
+        while (std::abs(left[1][reflection] - left[0][reflection]) < 1e-6f)
+            ++reflection;
+        const double milliseconds = 1000.0 * static_cast<double>(reflection - onset) / rate;
+        std::printf("room at %.1f kHz: first reflection %.2f ms after the sound\n", rate / 1000.0, milliseconds);
+        check(milliseconds > 7.0, "the room's first reflection keeps its time at every engine rate");
     }
 
     // Level, as Reason's VU meter reads it: the RMS over 300 ms, 0 VU at

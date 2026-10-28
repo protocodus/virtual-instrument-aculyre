@@ -33,7 +33,9 @@ reference recording below.
   the stiff-string law to 5 kHz, where they had fallen up to 95 cents flat.
   A finger re-plucking a ringing string stops it without a click. Pitch
   bends stay in tune over their full twelve semitones, where an octave had
-  fallen up to 59 cents flat.
+  fallen up to 59 cents flat. The room's early reflections keep their timing
+  whenever the strings run above 96 kHz (4x on a 44.1 or 48 kHz host), where
+  they had arrived after 0.6 to 2.5 ms instead of 7.3.
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
   blended with the microphones from none to the piezo alone. Levels follow
   Reason's VU meter: typical playing reads about -9 VU on every instrument,

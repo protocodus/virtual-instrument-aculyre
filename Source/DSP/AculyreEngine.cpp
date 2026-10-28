@@ -1054,7 +1054,9 @@ struct Room
 {
     static constexpr int lineCount = 8;
     static constexpr int capacity = 16384;
-    static constexpr int earlyCapacity = 4096;
+    // A power of two above the longest early tap, the right channel's 31.7 ms,
+    // at the Performer's highest engine rate, 192 kHz.
+    static constexpr int earlyCapacity = 8192;
     std::array<std::array<float, capacity>, lineCount> lines {};
     std::array<int, lineCount> lengths {};
     std::array<int, lineCount> positions {};

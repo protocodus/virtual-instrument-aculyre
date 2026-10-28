@@ -49,6 +49,9 @@ struct StringSpec
     int midiNote;
     double length;    // speaking length, bridge to the yoke, m
     double diameter;  // m
+    // The player's force on this string as a share of the instrument's
+    // pluckForce: an even touch (AculyrePresets.h).
+    double touch { 1.0 };
 };
 
 struct WoodSpec

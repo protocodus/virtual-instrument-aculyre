@@ -209,6 +209,63 @@ int main()
               "strings sit a few cents off their notes about the instrument's pitch");
     }
 
+    // An even touch: at velocity 90 each string's level over its first
+    // 300 ms (the instrument's own controls, without the room) lies within
+    // 1 dB of the straight line through every string's level.
+    for (const auto* preset : aculyre::presets)
+    {
+        const int count = preset->stringCount;
+        std::array<double, aculyre::maxStrings> levels {};
+        double meanNote = 0.0, meanLevel = 0.0;
+        for (int index = 0; index < count; ++index)
+        {
+            const int note = preset->strings[static_cast<std::size_t>(index)].midiNote;
+            auto engine = std::make_unique<aculyre::AculyreEngine>();
+            engine->prepare(48000.0);
+            engine->setInstrument(*preset);
+            aculyre::PlayingControls controls = engine->controls();
+            controls.room = 0.0;
+            engine->setControls(controls);
+            engine->noteOn(note, 90.0f / 127.0f);
+            std::vector<float> l(14400), r(14400);
+            for (int position = 0; position < 14400; position += 64)
+                engine->process(l.data() + position, r.data() + position, 64);
+            double sum = 0.0;
+            for (std::size_t i = 0; i < l.size(); ++i)
+            {
+                const double mid = 0.5 * (static_cast<double>(l[i]) + r[i]);
+                sum += mid * mid;
+            }
+            levels[static_cast<std::size_t>(index)] = 10.0 * std::log10(sum / 14400.0);
+            meanNote += note;
+            meanLevel += levels[static_cast<std::size_t>(index)];
+        }
+        meanNote /= count;
+        meanLevel /= count;
+        double covariance = 0.0, variance = 0.0;
+        for (int index = 0; index < count; ++index)
+        {
+            const double x = preset->strings[static_cast<std::size_t>(index)].midiNote - meanNote;
+            covariance += x * (levels[static_cast<std::size_t>(index)] - meanLevel);
+            variance += x * x;
+        }
+        const double slope = covariance / variance;
+        double worst = 0.0;
+        for (int index = 0; index < count; ++index)
+        {
+            const auto& string = preset->strings[static_cast<std::size_t>(index)];
+            const double off = levels[static_cast<std::size_t>(index)]
+                             - (meanLevel + slope * (string.midiNote - meanNote));
+            worst = std::max(worst, std::abs(off));
+            if (std::abs(off) > 1.0)
+                std::printf("%-16s note %d: %+.2f dB off the line, wants touch %.2f\n", preset->name,
+                            string.midiNote, off, string.touch * std::pow(10.0, -off / 20.0));
+        }
+        std::printf("%-16s even touch: every string within %.2f dB of the register's line (%+.2f dB per semitone)\n",
+                    preset->name, worst, slope);
+        check(worst < 1.0, "an even touch keeps every string within 1 dB of the register's line");
+    }
+
     // The steel lyre harp's pluck a quarter of the way from the bridge leaves
     // out the 4th harmonic, as in the CC0 reference recording. Plucks scatter
     // about the control's point, and a fresh engine draws the same scatter,
@@ -256,7 +313,8 @@ int main()
         engine.prepare(48000.0);
         engine.setInstrument(aculyre::lyreHarpSteel);
         const aculyre::PlayingControls controls = engine.controls();
-        const double length = aculyre::lyreHarpSteel.strings[static_cast<std::size_t>(engine.stringForNote(note))].length;
+        const aculyre::StringSpec& string = aculyre::lyreHarpSteel.strings[static_cast<std::size_t>(engine.stringForNote(note))];
+        const double length = string.length;
         const double angle = std::asin(std::sqrt(controls.normalShare));
         constexpr int plucks = 2000;
         double sum[4] {}, squares[4] {};
@@ -265,7 +323,7 @@ int main()
             engine.noteOn(note, 0.7f);
             const auto pluck = engine.lastPluck();
             const double deviation[4] = { pluck.position - controls.pluckPosition,
-                                          std::log(pluck.force / (aculyre::lyreHarpSteel.pluckForce * std::pow(0.7, 1.4))),
+                                          std::log(pluck.force / (aculyre::lyreHarpSteel.pluckForce * string.touch * std::pow(0.7, 1.4))),
                                           std::asin(std::sqrt(pluck.normalShare)) - angle,
                                           std::log(pluck.release / (0.10e-3 * (1.3 - 0.6 * 0.7))) };
             for (int i = 0; i < 4; ++i)

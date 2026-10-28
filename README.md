@@ -37,7 +37,11 @@ reference recording below.
   whenever the strings run above 96 kHz (4x on a 44.1 or 48 kHz host), where
   they had arrived after 0.6 to 2.5 ms instead of 7.3. A held key or pedal
   no longer keeps a silent instrument running: once its strings have died
-  away it sleeps, as it does after they are released.
+  away it sleeps, as it does after they are released. Every string is
+  plucked with an even touch, so the level runs smoothly from bass to
+  treble: single strings had stood up to 11.5 dB out of line (the nylon
+  A4), and the level spread across the strings at one velocity falls from
+  13 to 16 dB to 2 to 6, the register's own slope.
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
   blended with the microphones from none to the piezo alone. Levels follow
   Reason's VU meter: typical playing reads about -9 VU on every instrument,
@@ -111,7 +115,13 @@ of it. A finger's contact silences a string in about 10 ms (Laurson et al.,
 CMJ 25(3) 2001), slow against the body's periods, so the body takes the
 force the stopped wave leaves as it takes the held force, without the click
 of a step. Tension modulation raises the pitch of a hard pluck
-for its first moments.
+for its first moments. The touch is even, a voicing rather than a
+measurement: as a player evens out a scale by ear, each string is plucked
+with the share of the full force (1 on the quietest string, down to 0.16
+on the nylon A4 and the gut E3, which the strongest body modes favour)
+that puts its first 300 ms on the
+straight line through every string's level, so the register keeps its
+slope of about -0.2 dB per semitone and no string stands out of it.
 
 **Bridge and body.** All strings end on one rigid bar with three degrees of
 freedom: heave and rock carry the strings' motion normal to the top, sway the

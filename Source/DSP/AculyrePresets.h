@@ -139,12 +139,12 @@ constexpr BodySpec gutLyreBody {
 // piezo alone within 1 dB of that (AculyreEngineTests, README Level).
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 16, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.47, 0.25, 2.0, 0.35, 1.845, 0.437
+    Technique::Finger, 0.47, 0.25, 2.0, 0.35, 1.845, 0.368
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {
     "Nylon Lyre Harp", nylonMonofilament, 16, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.47, 0.25, 2.0, 0.35, 2.320, 0.391
+    Technique::Finger, 0.47, 0.25, 2.0, 0.35, 2.320, 0.361
 };
 
 inline constexpr InstrumentSpec gutLyre {

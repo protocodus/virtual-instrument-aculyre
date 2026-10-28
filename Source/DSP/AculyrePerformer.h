@@ -7,9 +7,10 @@
 // filters the result back down; it changes how finely the strings, bridge
 // and body are sampled, not what they are designed to be.
 //
-// The output stage is the portfolio's (OutputStage.h) with its VU guard: a
-// soft-knee compressor that keeps the loudest playing out of the red and
-// leaves typical playing alone, then a look-ahead peak limiter that holds
+// The output stage is the portfolio's (OutputStage.h) with Aculyre's own VU
+// guard (AculyrePerformer.cpp): a soft-knee compressor that keeps the
+// loudest playing out of the red, leaves typical playing alone and still
+// lets harder chords read louder, then a look-ahead peak limiter that holds
 // every sample under -1.5 dBFS.
 
 #pragma once

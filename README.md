@@ -45,6 +45,8 @@ reference recording below.
   the bridge rather than the soundbox, keeps its own even touch, and the
   PIEZO blend moves between the two. The room's tail is smooth from its
   start instead of fluttering with separate echoes after each pluck.
+  Harder chords read louder all the way to full velocity, where the output
+  stage had held them level or even quieter.
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
   blended with the microphones from none to the piezo alone. Levels follow
   Reason's VU meter: typical playing reads about -9 VU on every instrument,
@@ -226,13 +228,21 @@ controls; `piezoGain` puts the piezo alone within 1 dB of that. Unchecked,
 the hardest playing, chords of up to six strings at full velocity with a
 plectrum, would read up to +8 VU and peak at +10 dBFS. So the Performer
 ends in the portfolio's shared output stage (`OutputStage.h`, the same in
-every new instrument) with its VU guard: a compressor on the louder
-channel's power with ballistics near the meter's (80 ms attack, 300 ms
-release, ratio 10, knee centred at -2 VU), then a peak limiter that looks
-2 ms ahead and holds every sample under -1.5 dBFS. Single notes pass it
-untouched, typical chords read 0.1-1.4 dB lower, mostly from their attacks,
-and the hardest chords read -1 VU or less. The look-ahead delays the output
-by 2 ms rounded down to 4 samples (88 at 44.1 kHz, 96 at 48 kHz).
+every new instrument) with Aculyre's own VU guard: a compressor on the
+louder channel's power averaged over the meter's 300 ms (10 ms attack,
+300 ms release, ratio 10 over a 16 dB knee from -11 to +5 VU), then a peak
+limiter that looks 2 ms ahead and holds every sample under -1.5 dBFS. The
+portfolio's guard reads each sample's power with an 80 ms attack and its
+knee centred at -2 VU, so a chord's attack set its gain: the median
+four-note chord read 0.2-0.4 dB quieter at velocity 127 than at 110 on the
+microphones, and the gut lyre's 0.8 dB quieter than at 90. Through
+Aculyre's it rises 1.7-2.4 dB from velocity 90 to 127 on the lyre harps and
+0.6-1.9 dB on the gut lyre, whose plucks gain only 1.8 dB there unguarded.
+Typical playing passes it unchanged, single notes read within 0.3 dB of
+their own level but for the loudest strings at full velocity (up to 2.1 dB
+lower), and the hardest chords read -1.6 VU or less. The look-ahead delays
+the output by 2 ms rounded down to 4 samples (88 at 44.1 kHz, 96 at
+48 kHz).
 
 **Cost.** The steel lyre harp (32 waveguides, 234 modes and the room),
 plucked every half second, renders about 12 times faster than real time on

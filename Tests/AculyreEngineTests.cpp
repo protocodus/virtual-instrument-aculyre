@@ -211,8 +211,10 @@ int main()
 
     // An even touch: at velocity 90 each string's level over its first
     // 300 ms (the instrument's own controls, without the room) lies within
-    // 1 dB of the straight line through every string's level.
+    // 1 dB of the straight line through every string's level, by the
+    // microphones and by the piezo alone.
     for (const auto* preset : aculyre::presets)
+    for (const bool piezo : { false, true })
     {
         const int count = preset->stringCount;
         std::array<double, aculyre::maxStrings> levels {};
@@ -225,6 +227,7 @@ int main()
             engine->setInstrument(*preset);
             aculyre::PlayingControls controls = engine->controls();
             controls.room = 0.0;
+            controls.piezo = piezo ? 1.0 : 0.0;
             engine->setControls(controls);
             engine->noteOn(note, 90.0f / 127.0f);
             std::vector<float> l(14400), r(14400);
@@ -258,11 +261,12 @@ int main()
                              - (meanLevel + slope * (string.midiNote - meanNote));
             worst = std::max(worst, std::abs(off));
             if (std::abs(off) > 1.0)
-                std::printf("%-16s note %d: %+.2f dB off the line, wants touch %.2f\n", preset->name,
-                            string.midiNote, off, string.touch * std::pow(10.0, -off / 20.0));
+                std::printf("%-16s note %d: %+.2f dB off the line, wants %s %.2f\n", preset->name,
+                            string.midiNote, off, piezo ? "piezoTouch" : "touch",
+                            (piezo ? string.piezoTouch : string.touch) * std::pow(10.0, -off / 20.0));
         }
-        std::printf("%-16s even touch: every string within %.2f dB of the register's line (%+.2f dB per semitone)\n",
-                    preset->name, worst, slope);
+        std::printf("%-16s even touch (%s): every string within %.2f dB of the register's line (%+.2f dB per semitone)\n",
+                    preset->name, piezo ? "piezo" : "mics", worst, slope);
         check(worst < 1.0, "an even touch keeps every string within 1 dB of the register's line");
     }
 

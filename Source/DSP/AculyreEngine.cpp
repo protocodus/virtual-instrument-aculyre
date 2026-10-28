@@ -2215,8 +2215,11 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     const double positionSpread = std::clamp(0.012 + 0.010 * (voice.length - 0.176) / (0.975 - 0.176),
                                              0.012, 0.022);
     const double position = std::clamp(controls.pluckPosition + positionSpread * s.random.gaussian(), 0.05, 0.7);
-    const double force = instrument.pluckForce * instrument.strings[static_cast<std::size_t>(index)].touch
-                       * std::pow(v, 1.4) * std::exp(0.14 * s.random.gaussian());
+    // The player evens the scale by what is heard: the microphones, the
+    // piezo, or between the two as the blend sets.
+    const StringSpec& string = instrument.strings[static_cast<std::size_t>(index)];
+    const double touch = std::pow(string.touch, 1.0 - controls.piezo) * std::pow(string.piezoTouch, controls.piezo);
+    const double force = instrument.pluckForce * touch * std::pow(v, 1.4) * std::exp(0.14 * s.random.gaussian());
     const double angle = std::asin(std::sqrt(std::clamp(controls.normalShare, 0.0, 1.0)))
                        + 4.0 * pi / 180.0 * s.random.gaussian();
     const double normalShare = std::clamp(std::sin(angle) * std::sin(angle), 0.01, 0.9);

@@ -50,8 +50,10 @@ struct StringSpec
     double length;    // speaking length, bridge to the yoke, m
     double diameter;  // m
     // The player's force on this string as a share of the instrument's
-    // pluckForce: an even touch (AculyrePresets.h).
+    // pluckForce: an even touch by the microphones and by the piezo
+    // (AculyrePresets.h).
     double touch { 1.0 };
+    double piezoTouch { 1.0 };
 };
 
 struct WoodSpec

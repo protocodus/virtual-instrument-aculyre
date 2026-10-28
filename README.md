@@ -41,7 +41,9 @@ reference recording below.
   plucked with an even touch, so the level runs smoothly from bass to
   treble: single strings had stood up to 11.5 dB out of line (the nylon
   A4), and the level spread across the strings at one velocity falls from
-  13 to 16 dB to 2 to 6, the register's own slope.
+  13 to 16 dB to 2 to 6, the register's own slope. The piezo, which hears
+  the bridge rather than the soundbox, keeps its own even touch, and the
+  PIEZO blend moves between the two.
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
   blended with the microphones from none to the piezo alone. Levels follow
   Reason's VU meter: typical playing reads about -9 VU on every instrument,
@@ -121,7 +123,11 @@ with the share of the full force (1 on the quietest string, down to 0.16
 on the nylon A4 and the gut E3, which the strongest body modes favour)
 that puts its first 300 ms on the
 straight line through every string's level, so the register keeps its
-slope of about -0.2 dB per semitone and no string stands out of it.
+slope of about -0.2 dB per semitone and no string stands out of it. The
+piezo hears the force on the bar, not what the soundbox radiates, so it
+favours other strings (the microphones' touch would leave one string 6 to
+8.5 dB out of the piezo's line); it has a touch of its own, evened the same
+way, and the touch blends geometrically between the two as PIEZO does.
 
 **Bridge and body.** All strings end on one rigid bar with three degrees of
 freedom: heave and rock carry the strings' motion normal to the top, sway the

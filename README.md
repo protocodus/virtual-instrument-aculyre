@@ -24,10 +24,16 @@ reference recording below.
 
 - **0.6.0** (prototype, not released): the piezo strip flexes under the
   bridge bar, so the piezo rings up near 9 kHz (6.5 kHz on the gut lyre) and
-  rolls off above, as an under-saddle pickup does. The microphones hear the
-  soundbox as a symmetric pair does, so each string sounds from its place
-  along the bridge bar, bass to the left, instead of every string sitting
-  slightly left. A hard pluck on a steel bass string decays as a soft one
+  rolls off above, as an under-saddle pickup does. The bridge bar bends
+  with the top, so the strings hear the top's upper modes and their colour
+  runs more evenly from string to string, at about twice the CPU. The
+  fingertip slips off the string as quickly as harpists' were measured to,
+  quicker for a hard pluck and slower for a soft one, so soft playing is
+  darker and hard playing brighter. With the rest of 0.6.0, the two bring
+  the lyre harp's treble from 1.25 to 5 kHz to within 0.5 dB of a
+  recording's on average, where 0.5.0 fell 8.0 dB short. The body's modes
+  are more damped, taking the edge off a ring near 2 kHz and evening the
+  sustain of the strings beside the main mode. A hard pluck on a steel bass string decays as a soft one
   does: the tension glide's energy no longer pumps the string, which held
   it ringing and sharp for seconds. The bass strings' upper partials follow
   the stiff-string law to 5 kHz, where they had fallen up to 95 cents flat,
@@ -43,7 +49,7 @@ reference recording below.
   plucked with an even touch, so the level runs smoothly from bass to
   treble: single strings had stood up to 11.5 dB out of line (the nylon
   A4), and the level spread across the strings at one velocity falls from
-  13 to 16 dB to 2 to 6, the register's own slope. The piezo, which hears
+  13 to 16 dB to 3.5 to 9, the register's own slope. The piezo, which hears
   the bridge rather than the soundbox, keeps its own even touch, and the
   PIEZO blend moves between the two. The room's tail is smooth from its
   start instead of fluttering with separate echoes after each pluck.
@@ -108,7 +114,13 @@ six strings of a lyre harp phrase are (Freesound 649925).
 **Pluck.** The released shape is a triangle rounded by the fingertip's contact
 width (a harpist's finger touches at most 2 cm of string: Chadefaux et al.,
 JASA 131 (2012) 844), and the held force unloads exponentially over the
-release time as the string slides off, as Acustra's slip does. The wave that
+release time as the string slides off, as Acustra's slip does. A harpist's
+string slips 0.04 mm along the fingertip and leaves at about 1.5 m/s
+(Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444), a release time of
+0.053 ms. A harder pluck slips off faster: the release velocity rises with
+the string's displacement, about as its 1.2th power, from 0.2 m/s at
+0.5 mm to 5 m/s at 7 mm (Chadefaux et al. 2012), so the release time runs
+as the velocity to the -1.68 about the middle of its range. The wave that
 reaches the bridge over the first round trip is loaded as one full period of
 the loop (cell-averaged slopes, so the release is band-limited). The soundbox starts deflected under the held
 force, so only the release reaches it and the top springs back. Plucks
@@ -124,36 +136,37 @@ force the stopped wave leaves as it takes the held force, without the click
 of a step. Tension modulation raises the pitch of a hard pluck
 for its first moments. The touch is even, a voicing rather than a
 measurement: as a player evens out a scale by ear, each string is plucked
-with the share of the full force (1 on the quietest string, down to 0.16
-on the nylon A4 and the gut E3, which the strongest body modes favour)
-that puts its first 300 ms on the
+with the share of the full force (1 on the quietest string, down to 0.15
+on the nylon A4 and 0.24 on the gut E3, which the strongest body modes
+favour) that puts its first 300 ms on the
 straight line through every string's level, so the register keeps its
-slope of about -0.2 dB per semitone and no string stands out of it. The
+slope (about -0.3 dB per semitone on the lyre harps) and no string stands
+out of it. The
 piezo hears the force on the bar, not what the soundbox radiates, so it
-favours other strings (the microphones' touch would leave one string 6 to
-8.5 dB out of the piezo's line); it has a touch of its own, evened the same
+favours other strings (the microphones' touch would leave one string 7 to
+8 dB out of the piezo's line); it has a touch of its own, evened the same
 way, and the touch blends geometrically between the two as PIEZO does.
 
-**Bridge and body.** All strings end on one rigid bar with three degrees of
-freedom: heave and rock carry the strings' motion normal to the top, sway the
-motion parallel to it, through the bar's height. The bar stands on a modal
+**Bridge and body.** All strings end on one bar: heave and rock carry the
+strings' motion normal to the top, sway the motion parallel to it, through
+the bar's height, and the bar bends as a free maple beam (from 790 Hz to
+19.6 kHz in seven bends on the lyre harps' 24 cm bar, 6.8 and 18.6 kHz on
+the gut lyre's 9 cm one). On a top this light the top under the bar bends
+with it, so each string drives the modes beneath its own place instead of
+an average along the bar. The bar stands on a modal
 soundbox: an orthotropic plate (Warburton's clamped-plate frequencies,
 simply-supported shapes for the bar's participation), coupled through the
 cavity's stiffness to a Helmholtz air plug when the box has a soundhole. Mode
 Qs are authored from the spread of Acustra's measured guitar bridge (16-75
-below 1.5 kHz, 5-36 above 2 kHz): 40 at 300 Hz falling to 12 at 10 kHz, and 20
-for the air mode. The junction is solved implicitly every sample, so it
-is passive and every string, played or idle, is coupled to every other.
+below 1.5 kHz, 5-36 above 2 kHz): 23 to 1 kHz, its lower quartile, falling
+to 10 at 2 kHz and 9 at 10 kHz, its median, and 20 for the air mode. The
+junction is solved implicitly every sample, so it is passive and every string, played or idle, is coupled to every other.
 
 **Radiation and room.** Each mode radiates its net volume change as a
 monopole, plus an equivalent volume for its edge and corner radiation, from a
-radiation efficiency. The two microphones stand symmetrically about the top's
-long axis, so a mode antisymmetric across the width reaches them in opposite
-phase and a symmetric one alike, with a seeded sign for which way its lobe
-faces them: each string sounds from where it sits along the bar, the steel
-lyre harp's G3 9 dB to the left and its A5 8 dB to the right. The far-field
-pressure at 0.5 m is rho/(4 pi r) times the volume acceleration. A
-small feedback-delay room follows: six early reflections, then an
+radiation efficiency, with a seeded sign and weight at each of the two
+microphones; the far-field pressure at 0.5 m is rho/(4 pi r) times the
+volume acceleration. A small feedback-delay room follows: six early reflections, then an
 eight-line network fed through Dattorro's four input diffusers, so its tail
 is dense from about 70 ms, as a room's is, rather than a train of separate
 echoes for its first 300 ms.
@@ -184,26 +197,35 @@ The gut lyre has six 50 cm strings D3 E3 G3 A3 B3 D4 at about 37 N over a
 closed maple box whose first mode is 343 Hz. Dimensions are typical of each
 kind of instrument, not measurements of one.
 
-**Measured against recordings** (0.3.0 unless noted). On the A4 of a CC0
-lyre harp note (Freesound 722897), the model at the reference's quarter-length pluck point is close in
-spectral centroid over the first 250 ms (482 Hz against 465 Hz) and in the
-apparent inharmonicity of partials 2-12 (B = 3.86e-4 against 3.93e-4, the
-string's own 2.36e-4 plus the body's pull), and both lack the 4th harmonic.
-The model's note decays faster over 80-450 ms (43 against 30 dB/s): A4 sits
-beside the assumed body's 467 Hz top mode. Replaying a lyre harp phrase note
-for note (Freesound 649925, CC BY), the model's 1/3-octave long-term spectrum
-falls short of the recording's by 7.6 dB on average from 1.25 to 5 kHz
-(10.0 dB in 0.2.0). With 0.4.0's scattered plucks the shortfall depends on
-the draws: 8.0 dB on average over eight seeds (7.1-8.9), against 7.4
-(7.1-7.9) for 0.3.0's authored spreads; 0.6.0 brings it to 5.0 dB (4.7-5.6),
-both microphones summed. Over a CC0 Iron Age lyre recording (Freesound 191883,
-another instrument and tuning), the gut lyre's notes decay at a similar rate
-(median 18-22 against 18 dB/s over 80-550 ms) and are a little darker
-(centroid 448-496 Hz against 557 Hz). Compared again in 0.6.0 on the shared
-phrase, they decay at 20 against the recording's 18 dB/s over 80-550 ms and
-are still darker: over each note's first 250 ms, a median centroid of
-489-495 Hz by either microphone against 551-590 Hz by either channel of the
-recording. These are order-of-magnitude checks, not a calibration.
+**Measured against recordings.** On the A4 of a CC0 lyre harp note
+(Freesound 722897), with the model at the reference's quarter-length pluck
+point, 0.3.0 was close in spectral centroid over the first 250 ms (482 Hz
+against 465 Hz) and in the apparent inharmonicity of partials 2-12
+(B = 3.86e-4 against 3.93e-4), both lacked the 4th harmonic, and the model's
+note decayed faster over 80-450 ms (43 against 30 dB/s): A4 sits beside the
+assumed body's 467 Hz top mode. In 0.6.0 it decays at 33 dB/s with a
+centroid of 520 Hz. Over its first 45 ms the 3rd, 5th, 6th, 7th and 10th
+partials sit on average 4.5 dB further under the fundamental than the
+recording's, where they sat 14.5 dB under before the bending bar and the
+measured slip; by 100-200 ms they stand 6.7 dB over, so the model's upper
+partials outlast the recording's. Its partials now follow the string's own
+stiffness (B = 2.4e-4 against the recording's 4.0e-4 by the same fit).
+Replaying a lyre harp phrase note for note (Freesound 649925, CC BY), the
+model's 1/3-octave long-term spectrum fell short of the recording's by
+7.6 dB on average from 1.25 to 5 kHz in 0.3.0 (10.0 dB in 0.2.0), and by
+8.0 dB over eight seeds of 0.4.0's scattered plucks (7.1-8.9). In 0.6.0 it
+falls 0.5 dB short over the same seeds (from 0.4 over to 1.4 short), both
+microphones summed; band by band it still runs from 8 dB under at 5 kHz to
+6 dB over at 2 kHz, and 1.4 to 3.6 dB under from 6.3 to 10 kHz. Over a CC0
+Iron Age lyre recording (Freesound 191883, another instrument and tuning),
+0.3.0's gut lyre decayed at a similar rate (median 18-22 against 18 dB/s
+over 80-550 ms) and was a little darker (centroid 448-496 Hz against
+557 Hz). In 0.6.0, on the shared phrase, its notes decay at 22 against
+18 dB/s, and over each note's first 250 ms their median centroid is 499 Hz
+at the left microphone and 735 Hz at the right, where the recording's
+channels read 551 and 590 Hz: the body's drawn radiation signs part the
+two microphones further than the recording's channels. These are
+order-of-magnitude checks, not a calibration.
 
 **Playing.** `PlayingControls` holds what a player and the room change while
 the instrument sounds; the plucking fields apply at the next pluck, the rest at
@@ -248,10 +270,11 @@ lower), and the hardest chords read -1.6 VU or less. The look-ahead delays
 the output by 2 ms rounded down to 4 samples (88 at 44.1 kHz, 96 at
 48 kHz).
 
-**Cost.** The steel lyre harp (32 waveguides, 234 modes and the room),
-plucked every half second, renders about 15 times faster than real time on
-one core of a cloud container at 1x (86-88 us per 64-sample block at
-48 kHz, GCC -O3, the nylon lyre harp alike) and 4 times at 4x. The modes run in one pass a compiler can vectorize. Once
+**Cost.** The steel lyre harp (32 waveguides, 234 modes, seven bar bends
+and the room), plucked every half second, renders about 8 times faster than
+real time on one core of a cloud container at 1x (162-172 us per 64-sample
+block at 48 kHz, GCC -O3, the nylon lyre harp alike; 81-84 with 0.5.0's
+rigid bar) and twice at 4x. The modes run in one pass a compiler can vectorize. Once
 everything has died away below -170 dBFS for half a second the engine
 sleeps, and a sleeping instance costs next to nothing until the next pluck.
 
@@ -263,11 +286,14 @@ sleeps, and a sleeping instance costs next to nothing until the next pluck.
 - Nylon and gut damping follow one published fit to measured harp strings,
   not strings from these instruments; gut varied most from string to string
   in that study.
-- The bridge bar is rigid, so above a kilohertz it averages the top's modes
-  away and the steel lyre harp stays 5.0 dB darker than a lyre harp recording
-  from 1.25 to 5 kHz. A bar that bends with the top (commit f209037) closed
-  more of that gap, but by ear it sounded much like the release change alone
-  and it doubled the CPU ([decisions](Docs/decisions.md)).
+- The bridge bar bends as a free beam of an assumed maple section; no
+  lyre's bar is measured, and the bends double the CPU of a rigid bar. The
+  body's mode damping is a point in a guitar bridge's measured spread,
+  chosen by ear ([decisions](Docs/decisions.md)).
+- After its first 100 ms the A4's upper partials stand above a recording's
+  and the model's partials are less inharmonic than that recording's: the
+  model's string losses above a few kilohertz and its body's pull on the
+  string are both unmeasured for a lyre harp.
 - The sway coupling of the parallel polarisation through the bar's height is
   simple geometry; with the 6 g bar it moves some partials by up to about
   11 cents.

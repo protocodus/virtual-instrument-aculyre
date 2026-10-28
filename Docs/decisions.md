@@ -3,6 +3,66 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-28: six listening verdicts for 0.6.0 (piezo, stereo, finger, body, bar, dynamics)
+
+**What was decided.** Six open questions about the 0.6.0 sound, each heard on
+its own against today's engine (A) on a listening page, one mechanism
+changed per question, 48 kHz 24-bit, matched on whole-file RMS:
+
+| Question | Material | Letters | Trims on the candidates (dB) |
+| --- | --- | --- | --- |
+| Piezo strip flexes under the bar? | steel, piezo alone: six plucks G3-A5, a rolled chord, a fast figure, a loud octave | A rigid force sensor; B the strip flexing, Acustra's element scaled to the bar's length | B -0.07 |
+| Each string from its place along the bar? | steel, microphones: all sixteen strings up and back, G3 and A5 in turn, a rolled chord | A each mode's sign and weight drawn per microphone; B a symmetric microphone pair | B +0.17 |
+| How quickly the string leaves the finger? | each lyre harp: repeated A4s, chords, an arpeggio, repeated G3s | A 0.10 ms (authored); B 0.053 ms (harder fingertip); C 0.27 ms (pad) | steel B -0.10, C +0.75; nylon B -0.10, C +0.68 |
+| How long the body's modes ring? | each instrument, velocity 90: every string held a second, then a chord | A Q 40 at 300 Hz, 32 at 1 kHz, 18 at 4 kHz, 12 at 10 kHz; B 10 at 2 kHz and 9 at 10 kHz; C 23 at 300 Hz and 1 kHz; D both | B/C/D steel +0.06/+0.57/+0.72, nylon +0.04/+0.40/+0.47, gut +0.08/+0.16/+0.33 |
+| Bridge bar bends or stays rigid? | each instrument: a rising scale at velocity 90, a chord | A rigid; B a free-free maple beam, seven bends on the harps, two on the gut lyre, touches re-evened | steel +2.42, nylon +2.96, gut +0.42 |
+| How much tone follows velocity? | each instrument: D4 at velocity 20 to 127, soft and loud arpeggios and chords | A an authored law, less than twice as quick from softest to hardest; B release velocity as harpists' (Chadefaux et al., JASA 131 (2012) 844, Sec. III.B.1), a 25-fold range | steel -0.09, nylon -0.07, gut -0.11 |
+
+**What the measurements said** (each against A, before choosing).
+
+- **Piezo B:** +1.7 dB at 4 kHz, +4.9 at 6.3, +8.1 at 8, +7.0 at 10, then
+  -3.2 at 12.5 and -12.7 at 16 kHz; unchanged below 3 kHz.
+- **Stereo:** A leans 3.5 dB left over the file; B balances to 0.1 dB with
+  G3 9 dB left and A5 8 dB right, but is thinner in mono and 2.6 dB darker
+  against the lyre harp recording's treble.
+- **Finger:** from 2 to 5 kHz B is 1.2-2.2 dB brighter and C 1.6-3.6 dB
+  darker. On the recorded A4 (Freesound 722897) the 3rd, 5th, 6th, 7th and
+  10th partials over the first 45 ms sat 14.5 dB further under the
+  fundamental than the recording's with A, 11.9 with B.
+- **Body:** B lowers the worst partial standing over its neighbours from
+  16.6 to 14.3 dB on steel and 16.0 to 12.4 on nylon; C brings the steel A4's
+  decay from 38 to 26 dB/s (a recorded A4: 30).
+- **Bar:** the spread of spectral tilt across strings falls from 1.8 to
+  1.5 dB on steel and 1.6 to 1.1 on nylon; the recorded A4's partials come to
+  10.9 dB under (from 14.5); about twice the CPU.
+- **Dynamics:** B is 2-6 dB darker above 2 kHz at velocity 30-40 and 1-2 dB
+  brighter at 100-127, nearly the same at 60-80. At the softest plucks its
+  slip reaches a millisecond, longer than the release model was built for.
+
+**Verdict, by ear.** The owner chose piezo B, stereo A, finger B, body D,
+bar B and dynamics B. The bar is a second bending bar. 0.3.0's (f209037)
+folded the bar into the plate's modes by Rayleigh-Ritz, each string driving
+them at its own point, and sounded much like the rigid bar; this one keeps
+the plate's modes and adds the bar's own free bends below the top's highest
+mode as junction coordinates beside heave, rock and sway.
+
+**After combining.** The six were heard one at a time; together, with every
+string's touch re-evened by each pickup and the output gains re-levelled to
+-9 VU, the steel lyre harp phrase (Freesound 649925) falls 0.5 dB short of
+the recording from 1.25 to 5 kHz over eight seeds (5.0 dB before), and the
+recorded A4's partials sit 4.5 dB under over the first 45 ms but 6.7 dB over
+by 100-200 ms. The steel lyre harp renders at 162-172 us per 64-sample block
+at 1x, against 81-84 before.
+
+**What it licenses.** The flexing piezo strip with Acustra's element
+stiffness per metre of bar; per-microphone drawn signs and weights (the
+symmetric pair stays out); the fingertip's 0.053 ms release and the measured
+velocity law for every technique's release, within the model's 0.4-10 times
+clamp; body Qs at the guitar bridge's lower quartile below 1 kHz and median
+above 2 kHz; and the bending maple bar. It does not license moving the body
+Qs outside that measured spread, retuning the piezo resonance by ear, or
+calling the nail's and plectrum's release times measured.
+
 ## 2026-10-27: five realism changes ship, with the lyre harp phrase's 4.1-cent tuning (0.4.0)
 
 **What was decided.** The owner asked for five audible steps towards the real

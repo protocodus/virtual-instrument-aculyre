@@ -228,15 +228,15 @@ controls; `piezoGain` puts the piezo alone within 1 dB of that. Unchecked,
 the hardest playing, chords of up to six strings at full velocity with a
 plectrum, would read up to +8 VU and peak at +10 dBFS. So the Performer
 ends in the portfolio's shared output stage (`OutputStage.h`, the same in
-every new instrument) with Aculyre's own VU guard: a compressor on the
-louder channel's power averaged over the meter's 300 ms (10 ms attack,
-300 ms release, ratio 10 over a 16 dB knee from -11 to +5 VU), then a peak
-limiter that looks 2 ms ahead and holds every sample under -1.5 dBFS. The
-portfolio's guard reads each sample's power with an 80 ms attack and its
-knee centred at -2 VU, so a chord's attack set its gain: the median
-four-note chord read 0.2-0.4 dB quieter at velocity 127 than at 110 on the
-microphones, and the gut lyre's 0.8 dB quieter than at 90. Through
-Aculyre's it rises 1.7-2.4 dB from velocity 90 to 127 on the lyre harps and
+every new instrument) with its guard for the plucked instruments
+(`kVuGuard`): a compressor on the louder channel's power averaged over the
+meter's 300 ms (10 ms attack, 300 ms release, ratio 10 over a 16 dB knee
+from -11 to +5 VU), then a peak limiter that looks 2 ms ahead and holds
+every sample under -1.5 dBFS. The portfolio's earlier guard read each
+sample's power with an 80 ms attack and its knee centred at -2 VU, so a
+chord's attack set its gain: the median four-note chord read 0.2-0.4 dB
+quieter at velocity 127 than at 110 on the microphones, and the gut lyre's
+0.8 dB quieter than at 90. Through this one it rises 1.7-2.4 dB from velocity 90 to 127 on the lyre harps and
 0.6-1.9 dB on the gut lyre, whose plucks gain only 1.8 dB there unguarded.
 Typical playing passes it unchanged, single notes read within 0.3 dB of
 their own level but for the loudest strings at full velocity (up to 2.1 dB

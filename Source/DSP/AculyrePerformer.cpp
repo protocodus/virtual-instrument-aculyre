@@ -15,18 +15,6 @@ Performer::Performer()
 
 Performer::~Performer() = default;
 
-namespace
-{
-// The portfolio's kVuGuard follows each sample's power with an 80 ms attack,
-// so a chord's first tens of milliseconds set its gain for the whole 300 ms
-// the meter reads, at 10:1: chords at velocities 90, 110 and 127 read within
-// 0.5 dB of one another, and the gut lyre's harder chords read quieter.
-// Aculyre's guard reads the power averaged over the meter's own 300 ms and
-// bends over a 16 dB knee (-11 to +5 VU), so harder playing still reads
-// louder while the factory patches' hardest chords stay at -1.4 VU or less.
-constexpr protocodus::CompressorSettings guard { -15.0, 16.0, 10.0, 0.3, 0.01, 0.3 };
-} // namespace
-
 PlayingControls Performer::defaultControls(int index) noexcept
 {
     const InstrumentSpec& spec = *presets[static_cast<std::size_t>(std::clamp(index, 0, instrumentCount - 1))];
@@ -45,7 +33,7 @@ void Performer::prepare(double sampleRate, int oversampling)
         factor_ *= 2;
     for (auto& decimator : decimators_)
         decimator.design(factor_);
-    stage_.Prepare(sampleRate, guard);
+    stage_.Prepare(sampleRate, protocodus::kVuGuard);
     stageSilence_ = stage_.DelaySamples() + 1;
     for (int index = 0; index < instrumentCount; ++index)
     {

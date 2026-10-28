@@ -677,7 +677,6 @@ DispersionDesign designDispersion(double fundamental, double inharmonicity, doub
     return refineDispersion(chosen, fundamental, inharmonicity, sampleRate);
 }
 
-
 Complex lossSectionResponse(const LossSectionDesign& s, double omega) noexcept
 {
     const Complex z1 = std::exp(Complex(0.0, -omega));
@@ -1733,6 +1732,11 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             pitch.intrinsicT60 = 3.0 * std::log(10.0) / intrinsicDecay;
             pitch.roundTrip = std::clamp(static_cast<int>(std::lround(fs / frequency)), 1, delayCapacity - 1);
 
+            // The parallel plane, 0.1 to 0.3% lower, takes the normal
+            // plane's dispersion: fitted on its own it settled no closer (the
+            // steel G3's partials to the 21st 7.0 cents out at worst, against
+            // 5.5 shared) and doubled the design time.
+            DispersionDesign design {};
             for (int plane = 0; plane < 2; ++plane)
             {
                 LoopDesign& loop = pitch.planes[static_cast<std::size_t>(plane)];
@@ -1746,7 +1750,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 // Dispersion (designDispersion), the line then solved so the
                 // fundamental is exact once the junction exists and the
                 // bridge's reflection phase is known (tuning below).
-                const DispersionDesign design = designDispersion(f0, pitch.inharmonicity, fs);
+                if (plane == 0)
+                    design = designDispersion(f0, pitch.inharmonicity, fs);
                 loop.dispersionStages = design.stages;
                 loop.dispersion = design.coefficient;
                 loop.dispersionPairs = design.pairs;

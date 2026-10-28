@@ -109,10 +109,13 @@ Dispersion is a cascade of up to eight identical first-order allpass sections
 whose count and coefficient are searched so the 2nd to 12th partials (the range
 Acustra fits) land within 6.3 cents of the stiff-string law
 f_n = n f0 sqrt((1 + B n^2) / (1 + B)). Where partials past the 12th fall below
-5 kHz (strings under about 417 Hz), two second-order sections are fitted with
-the first-order coefficient to all of them, by least squares in cents: the
-steel and nylon G3 land within 6.3 cents up to their 21st partial at 48 kHz
-(8 at 192 kHz), which first-order sections alone left up to 95 cents flat.
+5 kHz (strings under about 417 Hz), second-order sections are fitted with
+the first-order coefficient to all of them, by least squares in cents: two,
+and a third and a fourth, each fit resuming from the last, while a partial
+lands more than 5 cents off. Every string of the three instruments, lever
+up or down, lands within 4.2 cents up to 5 kHz at 48 kHz (5.6 at most from
+44.1 to 192 kHz), where first-order sections alone left the steel G3 up to
+95 cents flat and two sections the gut D3 25 cents off.
 A second-order Thiran section sets the fractional delay, solved with the
 bridge's reflection phase so the coupled string sounds its note. The strings
 are tuned by hand: each instrument's sit a few cents off their notes, the
@@ -322,9 +325,11 @@ nothing until the next pluck.
 - The sway coupling of the parallel polarisation through the bar's height is
   simple geometry; with the 6 g bar it moves some partials by up to about
   11 cents.
-- The dispersion fit stops at 5 kHz, and two second-order sections cannot
-  follow all 24 of the gut lyre's D3 partials below it: the worst lands 25
-  cents from the law (9 on E3).
+- The dispersion fit stops at 5 kHz, and above it the bass strings'
+  partials fall flat of the law: at 48 kHz the design leaves them up to 33
+  cents flat by 8 kHz on the wound steel G3, 69 on the steel A3 and 104 on
+  the gut D3. Holding them to 8 kHz would take up to eight second-order
+  sections a string, where two to four hold them to 5 kHz.
 - No plucking-hand model beyond a contact width and a release time, no
   buzzing, no string-to-string contact, no hand damping gestures beyond
   note-off.

@@ -31,7 +31,7 @@ constexpr double yokeRoundTripGain = 0.9995;
 constexpr int delayCapacity = 4096;  // a string down to 47 Hz at 192 kHz
 constexpr int controlPeriod = 16;
 constexpr int maxDispersionStages = 8;
-constexpr int dispersionPairs = 2;
+constexpr int dispersionPairs = 4;
 
 // ---------------------------------------------------------------------------
 // String loss laws, copied from Acustra 1.9.0 (Source/DSP/AcustraEngine.cpp),
@@ -365,8 +365,9 @@ double allpassLag(int order, double c1, double c2, double omega) noexcept
 // to 5th partials 30 to 120 cents sharp. No cascade of identical sections
 // fits a bass string's 25 partials below 5 kHz either: the steel G3's 13th to
 // 21st fell 10 to 95 cents flat. Where partials past the 12th fall below
-// 5 kHz (strings under about 417 Hz), two second-order sections are fitted
-// with the first-order coefficient to every one of them (refineDispersion).
+// 5 kHz (strings under about 417 Hz), two to four second-order sections are
+// fitted with the first-order coefficient to every one of them
+// (refineDispersion).
 struct DispersionDesign
 {
     int stages { 1 };
@@ -446,60 +447,38 @@ double worstOf(const std::array<double, maxFittedPartials>& cents, int partials)
     return worst;
 }
 
-// Levenberg-Marquardt on the partials' cents, the Jacobian by forward
-// differences, from the first-order design and poles near 1.25 and 2.5 kHz,
-// 800 Hz wide (where a steel G3's fit settles). On the lyre harps' bass
-// strings it holds every partial below 5 kHz within 5 cents and the first 12
-// within 2; the design is kept only where it beats the first-order one.
-DispersionDesign refineDispersion(const DispersionDesign& firstOrder, double fundamental,
-                                  double inharmonicity, double sampleRate) noexcept
+// Levenberg-Marquardt on the partials' cents over the first-order
+// coefficient and `pairs` second-order sections, the Jacobian by forward
+// differences, from `fit`, which it leaves where the fit settles and `cents`
+// at that fit's errors; false where `fit` is out of bounds to begin with.
+bool fitSections(DispersionFit& fit, int pairs, int stages, double omega1, double inharmonicity,
+                 int partials, std::array<double, maxFittedPartials>& cents) noexcept
 {
-    const double omega1 = 2.0 * pi * fundamental / sampleRate;
-    // The partials whose stretched frequency is below the band's top.
-    const double top = std::min(5000.0, 0.2 * sampleRate);
-    int partials = 1;
-    while (partials < maxFittedPartials + 1 && fundamental * stretchedPartial(partials + 1, inharmonicity) < top)
-        ++partials;
-    DispersionDesign result = firstOrder;
-    if (partials <= 12)
-        return result;
-    std::array<double, maxFittedPartials> cents {};
-    DispersionFit fit {};
-    fit[0] = firstOrder.coefficient;
-    if (!dispersionErrors(fit, firstOrder.stages, 0, omega1, inharmonicity, partials, cents))
-        return result;
-    result.worstCents = worstOf(cents, partials);
-
-    fit[0] = firstOrder.coefficient;
-    for (int k = 0; k < dispersionPairs; ++k)
-    {
-        fit[static_cast<std::size_t>(1 + 2 * k)] = std::exp(-2.0 * pi * 800.0 / sampleRate);
-        fit[static_cast<std::size_t>(2 + 2 * k)] = 2.0 * pi * 1250.0 * (k + 1) / sampleRate;
-    }
-    const auto valid = [] (const DispersionFit& p)
+    const auto valid = [pairs] (const DispersionFit& p)
     {
         bool ok = std::abs(p[0]) < 0.98;
-        for (int k = 0; k < dispersionPairs; ++k)
+        for (int k = 0; k < pairs; ++k)
             ok = ok && p[static_cast<std::size_t>(1 + 2 * k)] >= 0.0 && p[static_cast<std::size_t>(1 + 2 * k)] < 0.99
                  && p[static_cast<std::size_t>(2 + 2 * k)] > 0.0 && p[static_cast<std::size_t>(2 + 2 * k)] < pi;
         return ok;
     };
     const auto cost = [&] (const DispersionFit& p, std::array<double, maxFittedPartials>& e)
     {
-        if (!valid(p) || !dispersionErrors(p, firstOrder.stages, dispersionPairs, omega1, inharmonicity, partials, e))
+        if (!valid(p) || !dispersionErrors(p, stages, pairs, omega1, inharmonicity, partials, e))
             return std::numeric_limits<double>::infinity();
         double sum = 0.0;
         for (int n = 2; n <= partials; ++n)
             sum += e[static_cast<std::size_t>(n - 2)] * e[static_cast<std::size_t>(n - 2)];
         return sum;
     };
-    constexpr int parameters = 1 + 2 * dispersionPairs;
+    const int parameters = 1 + 2 * pairs;
+    constexpr int maxParameters = 1 + 2 * dispersionPairs;
     const int residuals = partials - 1;
     double current = cost(fit, cents);
     if (!(current < std::numeric_limits<double>::infinity()))
-        return result;
+        return false;
     double damping = 1.0e-3;
-    std::array<std::array<double, maxFittedPartials>, parameters> jacobian {};
+    std::array<std::array<double, maxFittedPartials>, maxParameters> jacobian {};
     std::array<double, maxFittedPartials> trial {};
     for (int iteration = 0; iteration < 100 && damping < 1.0e10; ++iteration)
     {
@@ -528,7 +507,7 @@ DispersionDesign refineDispersion(const DispersionDesign& firstOrder, double fun
         }
         // (J^T J + damping diag(J^T J)) delta = -J^T e, by Gaussian
         // elimination with partial pivoting.
-        std::array<std::array<double, parameters + 1>, parameters> system {};
+        std::array<std::array<double, maxParameters + 1>, maxParameters> system {};
         for (int row = 0; row < parameters; ++row)
         {
             const auto& u = jacobian[static_cast<std::size_t>(row)];
@@ -591,18 +570,61 @@ DispersionDesign refineDispersion(const DispersionDesign& firstOrder, double fun
         else
             damping *= 4.0;
     }
-    const double worst = worstOf(cents, partials);
-    if (worst < result.worstCents)
+    return true;
+}
+
+// Two sections start near 1.25 and 2.5 kHz, 800 Hz wide (where a steel G3's
+// fit settles), and hold the steel lyre harp's strings within 2 cents. Where
+// a partial below 5 kHz still lands more than 5 cents from the law, a section
+// is added at 3 kHz, 800 Hz wide, and the fit resumes from where the last one
+// settled, up to four sections. At 48 kHz the gut lyre's D3 lands 25 cents
+// off with two, 11 with three and 4.2 with four, its E3 8.9 with two and 2.7
+// with three, the nylon G3 6.3 and 1.4. Fitted from scratch, a third section
+// settled at 0 Hz and left the D3 33 cents off. The design is kept only where
+// it beats the first-order one.
+DispersionDesign refineDispersion(const DispersionDesign& firstOrder, double fundamental,
+                                  double inharmonicity, double sampleRate) noexcept
+{
+    const double omega1 = 2.0 * pi * fundamental / sampleRate;
+    // The partials whose stretched frequency is below the band's top.
+    const double top = std::min(5000.0, 0.2 * sampleRate);
+    int partials = 1;
+    while (partials < maxFittedPartials + 1 && fundamental * stretchedPartial(partials + 1, inharmonicity) < top)
+        ++partials;
+    DispersionDesign result = firstOrder;
+    if (partials <= 12)
+        return result;
+    std::array<double, maxFittedPartials> cents {};
+    DispersionFit fit {};
+    fit[0] = firstOrder.coefficient;
+    if (!dispersionErrors(fit, firstOrder.stages, 0, omega1, inharmonicity, partials, cents))
+        return result;
+    result.worstCents = worstOf(cents, partials);
+
+    for (int pairs = 2; pairs <= dispersionPairs; ++pairs)
     {
-        result.coefficient = fit[0];
-        result.pairs = dispersionPairs;
-        for (int k = 0; k < dispersionPairs; ++k)
+        for (int k = pairs == 2 ? 0 : pairs - 1; k < pairs; ++k)
         {
-            const double r = fit[static_cast<std::size_t>(1 + 2 * k)];
-            const double theta = fit[static_cast<std::size_t>(2 + 2 * k)];
-            result.pair[static_cast<std::size_t>(k)] = { -2.0 * r * std::cos(theta), r * r };
+            fit[static_cast<std::size_t>(1 + 2 * k)] = std::exp(-2.0 * pi * 800.0 / sampleRate);
+            fit[static_cast<std::size_t>(2 + 2 * k)] = 2.0 * pi * (pairs == 2 ? 1250.0 * (k + 1) : 3000.0) / sampleRate;
         }
-        result.worstCents = worst;
+        if (!fitSections(fit, pairs, firstOrder.stages, omega1, inharmonicity, partials, cents))
+            break;
+        const double worst = worstOf(cents, partials);
+        if (worst < result.worstCents)
+        {
+            result.coefficient = fit[0];
+            result.pairs = pairs;
+            for (int k = 0; k < pairs; ++k)
+            {
+                const double r = fit[static_cast<std::size_t>(1 + 2 * k)];
+                const double theta = fit[static_cast<std::size_t>(2 + 2 * k)];
+                result.pair[static_cast<std::size_t>(k)] = { -2.0 * r * std::cos(theta), r * r };
+            }
+            result.worstCents = worst;
+        }
+        if (result.worstCents <= 5.0)
+            break;
     }
     return result;
 }

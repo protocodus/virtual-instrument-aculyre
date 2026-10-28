@@ -188,6 +188,23 @@ int main()
         check(worst < 10.0, "the bass string's partials follow the stiff-string law");
     }
 
+    // Every string's dispersion is fitted within 5 cents of the law below
+    // 5 kHz: with two second-order sections at most, the gut D3 landed 25
+    // cents off, its E3 8.9 and the nylon G3 6.3. (Over its first 0.1 s the
+    // gut D3's partials above 2.4 kHz sound 85 to 115 dB below its strongest,
+    // too faint for the scan above to follow.)
+    for (const auto* preset : aculyre::presets)
+    {
+        aculyre::AculyreEngine engine;
+        engine.prepare(48000.0);
+        engine.setInstrument(*preset);
+        double worst = 0.0;
+        for (int index = 0; index < preset->stringCount; ++index)
+            worst = std::max(worst, engine.stringReport(index).dispersionCents);
+        std::printf("%-16s dispersion: worst %.2f cents from the stiff-string law below 5 kHz\n", preset->name, worst);
+        check(worst <= 5.0, "every string's dispersion is fitted within 5 cents of the law");
+    }
+
     // The treble string's partials follow the law too, past the dispersion
     // fit's 5 kHz, at 48 kHz, held under a bend as well: with the line's
     // fractional delay resting 4 to 5 samples deep the steel A5's partials

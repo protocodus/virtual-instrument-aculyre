@@ -466,6 +466,29 @@ int main()
         for (float sample : l)
             finite = finite && std::isfinite(sample);
         check(finite && rms(l, 0, 24000) > 1.0e-3, "a pluck after sleeping sounds");
+        // Nor does a key or the pedal held on a string that has died away,
+        // as both once did for as long as they were held.
+        for (const bool pedal : { false, true })
+        {
+            engine.setSustain(pedal);
+            engine.noteOn(57, 0.8f);
+            if (pedal)
+                engine.noteOff(57);
+            double held = -1.0;
+            for (int half = 1; half <= 60 && held < 0.0; ++half)
+            {
+                engine.process(l.data(), r.data(), 24000);
+                if (engine.idle())
+                    held = 0.5 * half;
+            }
+            std::printf("a held A3 (%s) sends the gut lyre to sleep after %.1f s\n", pedal ? "pedal" : "key", held);
+            check(held > 0.0, "a held key or pedal lets the engine sleep once its string has died away");
+            engine.noteOff(57);
+            engine.setSustain(false);
+        }
+        engine.noteOn(57, 0.8f);
+        engine.process(l.data(), r.data(), 24000);
+        check(rms(l, 0, 24000) > 1.0e-3, "a pluck after a held string has slept sounds");
     }
 
     // The Performer switches instruments in real time: the old one fades,

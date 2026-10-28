@@ -2472,7 +2472,9 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                 }
                 if (voice.dampingDirty)
                     updateDamping(index);
-                if (voice.keyDown || voice.sustained || voice.energy > idleEnergy)
+                // A held key or pedal does not keep a string sounding: a
+                // string that has died away under it lets the engine sleep.
+                if (voice.energy > idleEnergy)
                     s.quietSamples = 0;
                 // Tension modulation (Kirchhoff-Carrier): the string's mean
                 // squared slope stretches it, Delta f / f = EA <y'^2> / (4T);

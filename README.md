@@ -35,7 +35,9 @@ reference recording below.
   bends stay in tune over their full twelve semitones, where an octave had
   fallen up to 59 cents flat. The room's early reflections keep their timing
   whenever the strings run above 96 kHz (4x on a 44.1 or 48 kHz host), where
-  they had arrived after 0.6 to 2.5 ms instead of 7.3.
+  they had arrived after 0.6 to 2.5 ms instead of 7.3. A held key or pedal
+  no longer keeps a silent instrument running: once its strings have died
+  away it sleeps, as it does after they are released.
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
   blended with the microphones from none to the piezo alone. Levels follow
   Reason's VU meter: typical playing reads about -9 VU on every instrument,

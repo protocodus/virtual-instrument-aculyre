@@ -42,6 +42,11 @@ struct StringMaterial
     // Air damping by Woodhouse and Lynch-Aird's fit to measured polymer and
     // gut strings rather than Valette's law.
     bool measuredAirDamping;
+    // A wound string's dry friction between its turns, a constant loss angle
+    // on its tension, and its bending loss factor in place of the plain
+    // wire's E''/E' (AculyreEngine::setInstrument).
+    double windingFriction { 0.0 };
+    double woundBendingLoss { 0.0 };
 };
 
 struct StringSpec
@@ -54,6 +59,11 @@ struct StringSpec
     // (AculyrePresets.h).
     double touch { 1.0 };
     double piezoTouch { 1.0 };
+    // A wound string: its maker's unit weight (kg/m), and the core diameter
+    // (m) that sets its bending stiffness and carries its tension, the wrap
+    // adding mass but almost no stiffness. Zero for plain wire.
+    double woundMass { 0.0 };
+    double coreDiameter { 0.0 };
 };
 
 struct WoodSpec

@@ -1938,15 +1938,25 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         voice = {};
         const StringSpec& spec = instrument.strings[static_cast<std::size_t>(index)];
         voice.midiNote = spec.midiNote;
-        const double area = 0.25 * pi * spec.diameter * spec.diameter;
-        voice.linearMass = material.density * area;
+        const bool wound = spec.coreDiameter > 0.0;
+        const double bendingDiameter = wound ? spec.coreDiameter : spec.diameter;
+        const double area = 0.25 * pi * bendingDiameter * bendingDiameter;
+        voice.linearMass = wound ? spec.woundMass : material.density * area;
         const double waveSpeed = 2.0 * spec.length * 440.0
             * std::pow(2.0, (spec.midiNote - 69) / 12.0 + detune[static_cast<std::size_t>(index)] / 1200.0);
         voice.tension = voice.linearMass * waveSpeed * waveSpeed;
         voice.impedance = std::sqrt(voice.tension * voice.linearMass);
-        const double secondMoment = pi * std::pow(spec.diameter, 4.0) / 64.0;
+        const double secondMoment = pi * std::pow(bendingDiameter, 4.0) / 64.0;
         const double modulus = material.youngModulus + material.modulusPerStress * voice.tension / area;
-        const double bendingLoss = material.lossModulus / modulus;
+        // A wound string's friction acts on its tension's share of each
+        // partial's energy, 1 / (1 + B n^2), as its bending loss acts on the
+        // rest: (delta_W + eta B n^2) / (1 + B n^2) = delta_W + (eta -
+        // delta_W) B n^2 / (1 + B n^2), the constant section taking delta_W
+        // and the bending section eta - delta_W (Acustra's split, after Paté,
+        // Le Carrou and Fabre, JASA 135 (2014) 3045, Sec. III.A).
+        const double constantLoss = material.constantLoss + (wound ? material.windingFriction : 0.0);
+        const double bendingLoss = wound ? std::max(0.0, material.woundBendingLoss - material.windingFriction)
+                                         : material.lossModulus / modulus;
         // Woodhouse and Lynch-Aird's air damping (Acta Acustica 105 (2019)
         // 516, Equation (13) with their (d + 0.2) correction, d in mm): a
         // loss factor (d + 0.2) 8 sqrt(2) rho_a / (rho d) sqrt(nu / (2 pi f)),
@@ -1984,7 +1994,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             const double airDecay = material.measuredAirDamping ? airRoot * std::sqrt(frequency)
                                                                 : airResistance / (2.0 * voice.linearMass);
             const double intrinsicDecay = airDecay
-                + pi * frequency * material.constantLoss
+                + pi * frequency * constantLoss
                 - std::log(yokeRoundTripGain) * frequency;
             pitch.intrinsicT60 = 3.0 * std::log(10.0) / intrinsicDecay;
             pitch.roundTrip = std::clamp(static_cast<int>(std::lround(fs / frequency)), 1, delayCapacity - 1);
@@ -2000,7 +2010,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 const double f0 = plane == 0 ? frequency : frequency * pitch.length / pitch.parallelLength;
                 loop.frequency = f0;
                 loop.gain = std::exp(-airDecay / f0) * yokeRoundTripGain;
-                loop.constantDesign = constantLossSection(material.constantLoss, airRoot,
+                loop.constantDesign = constantLossSection(constantLoss, airRoot,
                                                           pitch.inharmonicity, f0, fs);
                 loop.bendingDesign = bendingLossSection(bendingLoss,
                                                         pitch.inharmonicity, f0, fs);
@@ -2920,7 +2930,8 @@ AculyreEngine::StringReport AculyreEngine::stringReport(int string) const noexce
     report.tension = voice.tension;
     report.impedance = voice.impedance;
     report.inharmonicity = voice.inharmonicity;
-    report.stress = voice.tension / (0.25 * pi * spec.diameter * spec.diameter);
+    const double carrying = spec.coreDiameter > 0.0 ? spec.coreDiameter : spec.diameter;
+    report.stress = voice.tension / (0.25 * pi * carrying * carrying);
     report.intrinsicT60 = voice.intrinsicT60;
     report.dispersion = voice.normal.dispersion;
     report.dispersionStages = voice.normal.dispersionStages;

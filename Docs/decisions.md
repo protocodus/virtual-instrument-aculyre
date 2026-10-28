@@ -3,6 +3,47 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-28: the steel lyre harp's G3 is wound, and the 0.6.0 round is heard as a whole
+
+**What was decided.** Two more questions on the listening page, 48 kHz
+24-bit, matched on whole-file RMS:
+
+| Question | Material | Letters | Trims on the candidates (dB) |
+| --- | --- | --- | --- |
+| Should the steel lyre harp's lowest string be wound? | steel, room on: G3 alone medium then hard, a G3 B3 D4 G4 arpeggio, then G3, D4 and G4 together; only G3 differs | A plain steel 0.022 inch; B nickel-wound 0.024 inch, as Roosebeck's 16-string set winds its G3, with D'Addario's unit weight for that gauge (NW024) and Acustra's wound core (0.38 mm) and losses (friction 2.25e-4, bending 0.0175) | B +0.21 |
+| Is this round better as a whole? | each lyre's demo phrase as a freshly loaded instrument plays it, room on | A main (0.5.0); B the 0.6.0 branch with the six verdicts above and this round's fixes | steel +1.21, nylon -1.93, gut +0.68 |
+
+**What the measurements said** (against A, before choosing).
+
+- **Wound G3:** B = 1.8e-4 against 8.5e-4, so the 10th partial sits 16
+  cents sharp of harmonic instead of 71 and the 20th 61 instead of 254.
+  B has 9 dB less from 3 to 8 kHz over the first quarter second and, from
+  0.5 s on, 7 dB less from 1 to 3 kHz and 25 dB less above 8 kHz. Its
+  octave, in tune with the G4 string ringing along, holds 8 dB more at
+  392 Hz from 0.5 to 2 s; A's, 3 cents sharp of G4, beats against it.
+  Tension 57.6 N against 57.2, and every string's touch stays within 0.5 dB
+  of the register's line by either pickup.
+- **The round:** against the lyre harp recording's phrase (Freesound
+  649925), the steel lyre harp's treble from 1.25 to 5 kHz falls 0.5 dB
+  short in B and 8.0 dB short in A.
+
+**Verdict, by ear.** The owner chose B on both, with no note on what still
+sounds off.
+
+**After choosing.** With G3 wound, the lyre harp phrase falls 0.9 dB short
+of the recording from 1.25 to 5 kHz over the eight seeds (0.6 to 1.4),
+where it fell 0.5 short with the plain G3: G3 is not played in the phrase,
+but the plain string, ringing in sympathy, had filled the 1.25 kHz band
+2.3 dB more than the wound one does. The recorded A4's partials read as
+before (4.5 dB under over the first 45 ms, 6.7 over by 100-200 ms).
+
+**What it licenses.** A wound G3 on the steel lyre harp with a published
+unit weight and Acustra's wound-string losses and authored core. The set it
+follows is for a harp tuned from D3, which winds its four lowest strings;
+winding more than G3 here, or a different gauge, needs its own source. The
+round's B confirms the six verdicts above heard together; it is not a
+verdict on any one of this round's fixes.
+
 ## 2026-10-28: six listening verdicts for 0.6.0 (piezo, stereo, finger, body, bar, dynamics)
 
 **What was decided.** Six open questions about the 0.6.0 sound, each heard on

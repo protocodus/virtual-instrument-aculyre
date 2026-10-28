@@ -12,9 +12,12 @@ namespace aculyre
 // Plain music wire. Its dislocation Q of 5500 is Paté, Le Carrou and Fabre's
 // fit (JASA 135 (2014) 3045) and its bending loss factor Acustra's plain
 // steel (FittedPhysicalData.h: steelPlainBendingLoss, a by-ear point between
-// two fits to steel-string recordings).
+// two fits to steel-string recordings). A wound string takes Acustra's wound
+// steel, both by ear: dry friction between its turns, a loss angle of 2.25e-4
+// on its tension, and a bending loss factor of 0.0175 in place of the plain
+// wire's (FittedPhysicalData.h, after steelPlainBendingLoss).
 inline constexpr StringMaterial steelWire { "steel", 7850.0, 2.0e11, 0.0, 1.0 / 5500.0,
-                                            0.002334375 * 2.0e11, false };
+                                            0.002334375 * 2.0e11, false, 2.25e-4, 0.0175 };
 // Monofilament nylon: density 1072-1159 kg/m^3 measured on harp strings
 // (Lynch-Aird and Woodhouse, Materials 11 (2018) 2160, Table 1). Stiffness
 // and damping are Woodhouse and Lynch-Aird's fit to their measured nylon
@@ -42,6 +45,13 @@ constexpr double inch = 0.0254;
 // listings: Early Music Shop, Larkin in the Morning). Speaking lengths fall
 // from 44 to 22 cm along the slanted yoke (assumed), and the gauges are
 // chosen so every string carries 54-63 N, under half the wire's strength.
+// G3 is a nickel-wound .024, as Roosebeck's set winds it. That set is for a
+// harp tuned up from D3 and winds D3 at .028 and E3-G3 at .024; no set for a
+// G3-A5 harp lists its gauges, so only the note both share is wound.
+// Its mass is D'Addario's published unit weight for that string (NW024,
+// 0.00010857 lb/in) and its core the 0.38 mm Acustra authors for its own
+// .024 wound G (AcustraEngine.cpp, steelBendingDiameter). It was chosen by
+// ear over a plain .022 on 2026-10-28 (Docs/decisions.md).
 //
 // Each string's fourth value is an even touch, a voicing rather than a
 // measurement: as a player evens out a scale by ear, the strings the
@@ -65,7 +75,7 @@ constexpr double inch = 0.0254;
 // pickup and reports the touch each would need after a change to the strings
 // or the body.
 constexpr std::array<StringSpec, maxStrings> lyreHarpSteel {{
-    { 55, 0.440, 0.022 * inch, 0.89, 0.63 }, { 57, 0.425, 0.020 * inch, 0.44, 0.73 },
+    { 55, 0.440, 0.024 * inch, 0.89, 0.63, 0.00010857 * 17.857967, 0.38e-3 }, { 57, 0.425, 0.020 * inch, 0.44, 0.73 },
     { 59, 0.411, 0.019 * inch, 0.41, 0.63 }, { 60, 0.396, 0.018 * inch, 0.45, 0.60 },
     { 62, 0.381, 0.017 * inch, 0.57, 0.52 }, { 64, 0.367, 0.016 * inch, 0.54, 0.47 },
     { 65, 0.352, 0.015 * inch, 0.50, 0.48 }, { 67, 0.337, 0.014 * inch, 0.35, 0.45 },

@@ -30,8 +30,11 @@ reference recording below.
   fingertip slips off the string as quickly as harpists' were measured to,
   quicker for a hard pluck and slower for a soft one, so soft playing is
   darker and hard playing brighter. With the rest of 0.6.0, the two bring
-  the lyre harp's treble from 1.25 to 5 kHz to within 0.5 dB of a
-  recording's on average, where 0.5.0 fell 8.0 dB short. The body's modes
+  the lyre harp's treble from 1.25 to 5 kHz to within 1 dB of a
+  recording's on average, where 0.5.0 fell 8.0 dB short. The steel lyre
+  harp's lowest string, G3, is nickel-wound, as string sets for these harps
+  wind it: far less inharmonic than the plain wire it replaces, darker, and
+  its octave rings in tune with the G4 string. The body's modes
   are more damped, taking the edge off a ring near 2 kHz and evening the
   sustain of the strings beside the main mode. A hard pluck on a steel bass string decays as a soft one
   does: the tension glide's energy no longer pumps the string, which held
@@ -92,7 +95,12 @@ holding the round trip from the bridge to the yoke and back. The plane parallel
 to the soundboard is longer by one string diameter (Woodhouse, Acta Acustica
 90 (2004)). Steel carries Acustra 1.9.0's string loss laws unchanged: a
 constant loss angle for dislocation damping, Valette's and Woodhouse's bending
-loss, and Valette's air damping. Nylon and gut carry Woodhouse and
+loss, and Valette's air damping. A wound steel string takes its maker's
+unit weight for its mass and a smaller core for its stiffness, with
+Acustra's wound losses: friction between the turns, a constant loss angle
+on the share of each partial's energy its tension carries, and a bending
+loss of its own (after Paté, Le Carrou and Fabre, JASA 135 (2014) 3045).
+Nylon and gut carry Woodhouse and
 Lynch-Aird's fit to measured harp strings (Acta Acustica 105 (2019) 516):
 nylon stiffens under tension, bending loses by each material's loss modulus,
 and air damping rises with the square root of frequency, with no constant
@@ -190,7 +198,8 @@ the steel lyre harp phrase. Against the microphones, the piezo carries more of
 the strings' fundamentals and of the top two octaves.
 
 **Presets.** The steel lyre harp has 16 strings G3-A5 in C major, 0.44-0.22 m,
-gauges 0.022-0.010 inch, 54-63 N, over a 20 x 30 cm spruce top on a 5 cm box
+plain gauges 0.020-0.010 inch over a nickel-wound 0.024 inch G3, 54-63 N,
+over a 20 x 30 cm spruce top on a 5 cm box
 with a 6 cm soundhole: its air mode is 212 Hz and its first top mode 467 Hz.
 The nylon harp uses the same frame with 1.30-0.47 mm monofilament at 29-44 N.
 The gut lyre has six 50 cm strings D3 E3 G3 A3 B3 D4 at about 37 N over a
@@ -217,8 +226,9 @@ Replaying a lyre harp phrase note for note (Freesound 649925, CC BY), the
 model's 1/3-octave long-term spectrum fell short of the recording's by
 7.6 dB on average from 1.25 to 5 kHz in 0.3.0 (10.0 dB in 0.2.0), and by
 8.0 dB over eight seeds of 0.4.0's scattered plucks (7.1-8.9). In 0.6.0 it
-falls 0.5 dB short over the same seeds (from 0.4 over to 1.4 short), both
-microphones summed; band by band it still runs from 8 dB under at 5 kHz to
+falls 0.9 dB short over the same seeds (0.6 to 1.4 short), both
+microphones summed: 0.5 with a plain G3, whose ringing in sympathy filled
+the 1.25 kHz band 2.3 dB more than the wound string's. Band by band it still runs from 8 dB under at 5 kHz to
 6 dB over at 2 kHz, and 1.4 to 3.6 dB under from 6.3 to 10 kHz. Over a CC0
 Iron Age lyre recording (Freesound 191883, another instrument and tuning),
 0.3.0's gut lyre decayed at a similar rate (median 18-22 against 18 dB/s
@@ -299,7 +309,9 @@ nothing until the next pluck.
 - Against a recorded lyre harp A4, the model's fundamental decays faster
   (55 against 32 dB/s), drained by the assumed body's 467 Hz top mode, and
   its partials are less inharmonic (B = 2.4e-4 against 4.0e-4): the body
-  and the string gauges are both assumed.
+  and the string gauges are both assumed. Only G3 is wound: the string set
+  it follows is for a harp tuned up from D3 and winds its four lowest
+  strings, and no set for a G3-A5 harp lists its gauges.
 - The sway coupling of the parallel polarisation through the bar's height is
   simple geometry; with the 6 g bar it moves some partials by up to about
   11 cents.

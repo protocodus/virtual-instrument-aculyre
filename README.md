@@ -113,9 +113,10 @@ f_n = n f0 sqrt((1 + B n^2) / (1 + B)). Where partials past the 12th fall below
 the first-order coefficient to all of them, by least squares in cents: two,
 and a third and a fourth, each fit resuming from the last, while a partial
 lands more than 5 cents off. Every string of the three instruments, lever
-up or down, lands within 4.2 cents up to 5 kHz at 48 kHz (5.6 at most from
-44.1 to 192 kHz), where first-order sections alone left the steel G3 up to
-95 cents flat and two sections the gut D3 25 cents off.
+up or down, lands within 4.2 cents up to 5 kHz at 48 kHz (6.8 at most from
+44.1 to 192 kHz, the gut D3 with its lever up at 176.4 kHz), where
+first-order sections alone left the steel G3 up to 95 cents flat and two
+sections the gut D3 25 cents off.
 A second-order Thiran section sets the fractional delay, solved with the
 bridge's reflection phase so the coupled string sounds its note. The strings
 are tuned by hand: each instrument's sit a few cents off their notes, the

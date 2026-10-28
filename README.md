@@ -27,7 +27,9 @@ reference recording below.
   rolls off above, as an under-saddle pickup does. The microphones hear the
   soundbox as a symmetric pair does, so each string sounds from its place
   along the bridge bar, bass to the left, instead of every string sitting
-  slightly left.
+  slightly left. A hard pluck on a steel bass string decays as a soft one
+  does: the tension glide's energy no longer pumps the string, which held
+  it ringing and sharp for seconds.
 - **0.5.0** (prototype, not released): a piezo pickup under the bridge bar,
   blended with the microphones from none to the piezo alone. Levels follow
   Reason's VU meter: typical playing reads about -9 VU on every instrument,

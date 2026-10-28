@@ -1001,7 +1001,7 @@ struct AculyreEngine::State
         double inharmonicity { 0.0 };
         double intrinsicT60 { 0.0 };
         double glidePerEnergy { 0.0 };
-        double energySmoothing { 0.0 };
+        int roundTrip { 1 };  // samples, the nearest whole number
     };
 
     struct StringVoice
@@ -1018,7 +1018,18 @@ struct AculyreEngine::State
         double intrinsicT60 { 0.0 };
         // Delta f / f per unit of the loop's mean squared wave velocity.
         double glidePerEnergy { 0.0 };
-        double energySmoothing { 0.0 };
+        // The last round trip's squared wave velocities, both planes, and
+        // their sum: `energy` is their mean. A mean over exactly one period
+        // holds no ripple at the partials' frequencies; a one-pole of that
+        // time constant left a ripple at twice the pitch that, through the
+        // glide, modulated the line at 2 f0 and pumped the fundamental (a
+        // hard-plucked steel G3 kept its energy for seconds). A pluck enters
+        // its wave's squares at once: the string is stretched from the
+        // moment it is released, not a round trip later.
+        std::array<float, delayCapacity> squares {};
+        int squaresIndex { 0 };
+        int roundTrip { 1 };
+        double squaresSum { 0.0 };
         double tension { 0.0 };
         double impedance { 0.0 };
         double linearMass { 0.0 };
@@ -1463,7 +1474,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 + pi * frequency * material.constantLoss
                 - std::log(yokeRoundTripGain) * frequency;
             pitch.intrinsicT60 = 3.0 * std::log(10.0) / intrinsicDecay;
-            pitch.energySmoothing = std::exp(-frequency / fs);
+            pitch.roundTrip = std::clamp(static_cast<int>(std::lround(fs / frequency)), 1, delayCapacity - 1);
 
             for (int plane = 0; plane < 2; ++plane)
             {
@@ -1723,6 +1734,8 @@ void AculyreEngine::reset() noexcept
             applyPitch(index, false);
         voice.normal.reset();
         voice.parallel.reset();
+        voice.squares.fill(0.0f);
+        voice.squaresSum = 0.0;
         voice.energy = 0.0;
         voice.keyDown = voice.sustained = voice.plucked = false;
         voice.ownerNote = -1;
@@ -1789,7 +1802,12 @@ void AculyreEngine::applyPitch(int string, bool raised) noexcept
     voice.inharmonicity = pitch.inharmonicity;
     voice.intrinsicT60 = pitch.intrinsicT60;
     voice.glidePerEnergy = pitch.glidePerEnergy;
-    voice.energySmoothing = pitch.energySmoothing;
+    // The new round trip's window over the squares already held.
+    voice.roundTrip = pitch.roundTrip;
+    voice.squaresSum = 0.0;
+    for (int k = 1; k <= voice.roundTrip; ++k)
+        voice.squaresSum += voice.squares[static_cast<std::size_t>((voice.squaresIndex - k) & (delayCapacity - 1))];
+    voice.energy = voice.squaresSum / voice.roundTrip;
     voice.normal.apply(pitch.planes[0]);
     voice.parallel.apply(pitch.planes[1]);
     voice.dampingDirty = true;
@@ -1887,6 +1905,12 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             for (float& sample : loop->pending)
                 sample *= 0.3f;
         }
+    if (voice.keyDown || voice.sustained || voice.energy > silentEnergy)
+    {
+        const float kept = controls.technique == Technique::Plectrum ? 0.09f : 0.0f;
+        for (float& square : voice.squares)
+            square *= kept;
+    }
     // The other hand sets the lever before the pluck.
     if (voice.raised != raise)
         applyPitch(index, raise);
@@ -1934,6 +1958,27 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     voice.ownerNote = midiNote;
     updateDamping(index);
 
+    // The loop's period as the string is released: the tension glide its
+    // stretch sets at once (what a re-pluck kept, plus the released
+    // triangle's mean squared wave velocity, (c/2)^2 A^2 (1/x + 1/(L - x)) / L
+    // in each plane) and the bend. The wave is laid over that period, so its
+    // first round trip meets its own return.
+    double releasedEnergy = 0.0;
+    for (int k = 1; k <= voice.roundTrip; ++k)
+        releasedEnergy += voice.squares[static_cast<std::size_t>((voice.squaresIndex - k) & (delayCapacity - 1))];
+    releasedEnergy /= voice.roundTrip;
+    for (int plane = 0; plane < 2; ++plane)
+    {
+        const double length = plane == 0 ? voice.length : voice.parallelLength;
+        const double frequency = plane == 0 ? voice.frequency : voice.parallelFrequency;
+        const double pluckPoint = position * length;
+        const double amplitude = force * pluckPoint * (length - pluckPoint) / (voice.tension * length)
+                               * std::sqrt(plane == 0 ? normalShare : 1.0 - normalShare);
+        releasedEnergy += length * length * frequency * frequency * amplitude * amplitude
+                        * (1.0 / pluckPoint + 1.0 / (length - pluckPoint)) / length;
+    }
+    const double releasedRatio = (tensionModulation_ ? 1.0 + voice.glidePerEnergy * releasedEnergy : 1.0) * s.bend;
+
     std::array<double, 3> preload {};
     for (int plane = 0; plane < 2; ++plane)
     {
@@ -1961,7 +2006,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         // (c/2) y0'(c t), then the half that went to the yoke,
         // (c/2) y0'(2L - c t). Each sample holds its cell's mean slope, which
         // band-limits the release; the last cell ends at the round trip.
-        const double period = loop.loopDelay;
+        const double period = loop.loopDelay / releasedRatio;
         const int count = static_cast<int>(std::ceil(period));
         const double cellLength = 2.0 * length / period;
         std::array<double, delayCapacity>& wave = s.pluckWave;
@@ -2005,6 +2050,12 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             const double value = wave[static_cast<std::size_t>(k)] - mean;
             const auto slot = static_cast<std::size_t>((loop.write + k) & (delayCapacity - 1));
             loop.pending[slot] += static_cast<float>(value);
+            if (k < voice.roundTrip)
+            {
+                float& square = voice.squares[static_cast<std::size_t>((voice.squaresIndex - voice.roundTrip + k)
+                                                                       & (delayCapacity - 1))];
+                square += static_cast<float>(value * value);
+            }
         }
         // The held force stood on the bridge before the release: the body
         // starts deflected under it, so only what the release changes
@@ -2021,6 +2072,10 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             preload[2] += heldForce;
         }
     }
+    voice.squaresSum = 0.0;
+    for (int k = 1; k <= voice.roundTrip; ++k)
+        voice.squaresSum += voice.squares[static_cast<std::size_t>((voice.squaresIndex - k) & (delayCapacity - 1))];
+    voice.energy = voice.squaresSum / voice.roundTrip;
     ModeBank& bank = s.bank;
     for (int k = 0; k < bank.count; ++k)
     {
@@ -2072,6 +2127,8 @@ void AculyreEngine::sleep() noexcept
         auto& voice = s.strings[static_cast<std::size_t>(index)];
         voice.normal.silence();
         voice.parallel.silence();
+        voice.squares.fill(0.0f);
+        voice.squaresSum = 0.0;
         voice.energy = 0.0;
         if (voice.plucked)
         {
@@ -2138,6 +2195,22 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                     ? 1.0 + voice.glidePerEnergy * voice.energy : 1.0) * s.bend;
                 for (Loop* loop : { &voice.normal, &voice.parallel })
                     loop->setLineDelay(loop->lineDelayAt(ratio));
+                // The mean follows the period the bend and the glide set.
+                const int roundTrip = std::clamp(static_cast<int>(std::lround(sampleRate_ / (voice.frequency * ratio))),
+                                                 1, delayCapacity - 1);
+                while (voice.roundTrip < roundTrip)
+                {
+                    ++voice.roundTrip;
+                    voice.squaresSum += voice.squares[static_cast<std::size_t>((voice.squaresIndex - voice.roundTrip)
+                                                                               & (delayCapacity - 1))];
+                }
+                while (voice.roundTrip > roundTrip)
+                {
+                    voice.squaresSum = std::max(0.0, voice.squaresSum
+                        - voice.squares[static_cast<std::size_t>((voice.squaresIndex - voice.roundTrip)
+                                                                 & (delayCapacity - 1))]);
+                    --voice.roundTrip;
+                }
             }
         }
 
@@ -2155,8 +2228,14 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             drive[2] += twiceZ * vp;
             // The loop's mean squared velocity over a round trip; both
             // directions' slopes count, hence the factor in glidePerEnergy.
-            voice.energy = voice.energySmoothing * voice.energy
-                         + (1.0 - voice.energySmoothing) * (vn * vn + vp * vp);
+            const float square = static_cast<float>(vn * vn + vp * vp);
+            float& slot = voice.squares[static_cast<std::size_t>(voice.squaresIndex)];
+            const float leaving = voice.squares[static_cast<std::size_t>((voice.squaresIndex - voice.roundTrip)
+                                                                         & (delayCapacity - 1))];
+            voice.squaresSum = std::max(0.0, voice.squaresSum + static_cast<double>(square) - leaving);
+            slot = square;
+            voice.squaresIndex = (voice.squaresIndex + 1) & (delayCapacity - 1);
+            voice.energy = voice.squaresSum / voice.roundTrip;
         }
 
         ModeBank& bank = s.bank;

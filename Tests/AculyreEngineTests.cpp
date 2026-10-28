@@ -124,6 +124,33 @@ int main()
         }
     }
 
+    // The tension glide raises the pitch and leaves the decay alone: a
+    // hard-plucked steel G3 keeps, within a decibel, the energy it would
+    // without the glide (which moves its partials against the body's modes).
+    // The glide's energy once rippled at twice the pitch, modulated the line
+    // at 2 f0 and pumped the string: 81 times the energy after 4 s.
+    {
+        const auto energyAfter = [] (bool glide)
+        {
+            auto engine = std::make_unique<aculyre::AculyreEngine>();
+            engine->prepare(48000.0);
+            engine->setInstrument(aculyre::lyreHarpSteel);
+            engine->setTensionModulation(glide);
+            aculyre::PlayingControls controls = engine->controls();
+            controls.room = 0.0;
+            controls.sympathy = 0.0;
+            engine->setControls(controls);
+            engine->noteOn(55, 1.0f);
+            std::vector<float> left(64), right(64);
+            for (int position = 0; position < 4 * 48000; position += 64)
+                engine->process(left.data(), right.data(), 64);
+            return engine->stringEnergy(engine->stringForNote(55));
+        };
+        const double ratio = energyAfter(true) / energyAfter(false);
+        std::printf("steel G3 after 4 s: energy with the glide %+.2f dB from without\n", 10.0 * std::log10(ratio));
+        check(std::abs(10.0 * std::log10(ratio)) < 1.0, "the tension glide leaves the decay alone");
+    }
+
     // The bass steel string's partials follow the stiff-string law,
     // f_n = n f0 sqrt((1 + B n^2) / (1 + B)), through the 12th that the
     // dispersion is fitted to (6 cents by design, plus the two polarisations

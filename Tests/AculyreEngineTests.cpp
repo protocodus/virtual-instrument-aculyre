@@ -188,6 +188,35 @@ int main()
         check(worst < 10.0, "the bass string's partials follow the stiff-string law");
     }
 
+    // The treble string's partials follow the law too, past the dispersion
+    // fit's 5 kHz, at 48 kHz: with the line's fractional delay resting 4 to 5
+    // samples deep the steel A5's partials above 6 kHz ran up to 49 cents
+    // sharp, where 4x oversampling kept them within 7.
+    {
+        aculyre::InstrumentSpec spec = aculyre::lyreHarpSteel;
+        spec.pluckPosition = 0.13;
+        spec.body.bridgeMass = 1.0;
+        aculyre::AculyreEngine engine;
+        engine.prepare(48000.0);
+        engine.setInstrument(spec);
+        const auto report = engine.stringReport(spec.stringCount - 1);
+        const auto audio = renderNote(spec, report.midiNote, 0.6, 64, false, false);
+        const double fundamental = peakNear(audio, 2400, 24000, report.frequency).frequency;
+        double worst = 0.0;
+        int last = 1;
+        for (int n = 2;; ++n)
+        {
+            const double law = n * fundamental
+                * std::sqrt((1.0 + report.inharmonicity * n * n) / (1.0 + report.inharmonicity));
+            if (law >= 12000.0)
+                break;
+            last = n;
+            worst = std::max(worst, std::abs(1200.0 * std::log2(peakNear(audio, 2400, 24000, law).frequency / law)));
+        }
+        std::printf("steel A5 partials 2-%d: worst %.1f cents from the stiff-string law\n", last, worst);
+        check(worst < 10.0, "the treble string's partials follow the stiff-string law to 12 kHz");
+    }
+
     // Each instrument's strings are tuned by hand: a few cents off their
     // notes, about the instrument's own pitch, and the same each time it is
     // set up.

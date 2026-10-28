@@ -785,7 +785,7 @@ struct Loop
     std::array<float, delayCapacity> pending {};
     int write { 0 };
     int whole { 64 };
-    double fraction { 4.0 };
+    double fraction { 2.0 };
     double thiranA1 { 0.0 }, thiranA2 { 0.0 };
     double tx1 { 0.0 }, tx2 { 0.0 }, ty1 { 0.0 }, ty2 { 0.0 };
     // The wave that last arrived at the bridge.
@@ -832,15 +832,24 @@ struct Loop
         setLineDelay(restLineDelay);
     }
 
-    // Keeps the Thiran fraction in [1.1, 5.1): a tension glide shortens the
-    // delay by a few samples from a rest fraction in [4, 5) before the tap has
-    // to move.
+    // Keeps the Thiran fraction in [1.1, 5.1), and once it leaves moves the
+    // tap to bring it back into [2, 3): the section is a pure delay at 2 and
+    // falls short at high frequencies the further it is from it (at 11 kHz
+    // and 48 kHz by 0.27 samples at 3, 1.2 at 4.5, which had left the steel
+    // A5's partials above 6 kHz up to 50 cents sharp). A treble string's
+    // tension glide is under 0.4 samples at 48 kHz and moves no tap; a hard
+    // pluck's glide moves a bass string's a few times. The section's past
+    // inputs move with the tap, so the wave passes it unbroken.
     void setLineDelay(double samples) noexcept
     {
         const double current = samples - whole;
         // Truncation is floor here: every line is longer than 6 samples.
         if (current < 1.1 || current >= 5.1)
-            whole = std::clamp(static_cast<int>(samples - 4.0), 1, delayCapacity - 8);
+        {
+            whole = std::clamp(static_cast<int>(samples - 2.0), 1, delayCapacity - 8);
+            tx1 = line[static_cast<std::size_t>((write - 1 - whole) & (delayCapacity - 1))];
+            tx2 = line[static_cast<std::size_t>((write - 2 - whole) & (delayCapacity - 1))];
+        }
         fraction = samples - whole;
         thiranCoefficients(fraction, thiranA1, thiranA2);
     }
@@ -1941,7 +1950,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             };
             const auto lagAt = [&] (double omega, double lineDelay)
             {
-                const int whole = static_cast<int>(std::floor(lineDelay - 4.0));
+                const int whole = static_cast<int>(std::floor(lineDelay - 2.0));
                 const double fraction = lineDelay - whole;
                 double t1 = 0.0, t2 = 0.0;
                 thiranCoefficients(fraction, t1, t2);
@@ -1969,8 +1978,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 loop.lagCycles[k] = (lagAt(omega, loop.restLineDelay) - omega * loop.restLineDelay) / (2.0 * pi);
             }
         }
-        voice.normal.whole = static_cast<int>(voice.pitch[0].planes[0].restLineDelay - 4.0);
-        voice.parallel.whole = static_cast<int>(voice.pitch[0].planes[1].restLineDelay - 4.0);
+        voice.normal.whole = static_cast<int>(voice.pitch[0].planes[0].restLineDelay - 2.0);
+        voice.parallel.whole = static_cast<int>(voice.pitch[0].planes[1].restLineDelay - 2.0);
         applyPitch(index, false);
     }
 

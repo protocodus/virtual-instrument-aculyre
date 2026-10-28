@@ -30,7 +30,9 @@ reference recording below.
   slightly left. A hard pluck on a steel bass string decays as a soft one
   does: the tension glide's energy no longer pumps the string, which held
   it ringing and sharp for seconds. The bass strings' upper partials follow
-  the stiff-string law to 5 kHz, where they had fallen up to 95 cents flat.
+  the stiff-string law to 5 kHz, where they had fallen up to 95 cents flat,
+  and the treble strings' to 12 kHz at 1x, where they had run up to 49
+  cents sharp and only 4x had kept them in tune.
   A finger re-plucking a ringing string stops it without a click. Pitch
   bends stay in tune over their full twelve semitones, where an octave had
   fallen up to 59 cents flat. The room's early reflections keep their timing

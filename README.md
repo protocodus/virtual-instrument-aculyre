@@ -252,11 +252,11 @@ Replaying a lyre harp phrase note for note (Freesound 649925, CC BY), the
 model's 1/3-octave long-term spectrum fell short of the recording's by
 7.6 dB on average from 1.25 to 5 kHz in 0.3.0 (10.0 dB in 0.2.0), and by
 8.0 dB over eight seeds of 0.4.0's scattered plucks (7.1-8.9). In 0.6.0 it
-falls 1.0 dB short over the same seeds (0.6 to 1.5 short), both
+falls 1.0 dB short over the same seeds (0.3 to 1.7 short), both
 microphones summed. The wound G3 cost 0.4 dB of that when it came in: the
 plain string, ringing in sympathy, had filled the 1.25 kHz band 2.3 dB
-more. Band by band it still runs from 8 dB under at 5 kHz to 5 dB over at
-2 kHz, and 0.5 to 1.4 dB under from 6.3 to 10 kHz. Over a CC0
+more. Band by band it still runs from 8 dB under at 5 kHz to 6 dB over at
+4 kHz, and within 1.2 dB from 6.3 to 10 kHz. Over a CC0
 Iron Age lyre recording (Freesound 191883, another instrument and tuning),
 0.3.0's gut lyre decayed at a similar rate (median 18-22 against 18 dB/s
 over 80-550 ms) and was a little darker (centroid 448-496 Hz against

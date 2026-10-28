@@ -298,7 +298,14 @@ nothing until the next pluck.
 
 - No body is measured: every soundbox is a plate-and-air model with assumed
   dimensions, so where its modes fall against the strings is a guess, and that
-  sets which notes are loud, which are dead and how fast they decay.
+  sets which notes are loud, which are dead and how fast they decay. The
+  lyre harps' A5 sits on a top mode at 879 Hz that the bending bar reaches
+  at its treble end: plucked alone at velocity 0.7, the steel A5's
+  fundamental falls 27 dB from 0.12 to 0.7 s where its neighbours fall 7 to
+  11 (10 with 0.5.0's rigid bar). Other draws of the top's irregularities
+  leave it falling 17 to 30 dB, a 2.2 cm bar moves the dead note to A4, and
+  a 1.5 cm bar or a less damped one leaves it as it is, so it stays until
+  a lyre harp is measured.
 - Nylon and gut damping follow one published fit to measured harp strings,
   not strings from these instruments; gut varied most from string to string
   in that study.

@@ -198,9 +198,10 @@ untouched, typical chords read 0.1-1.4 dB lower, mostly from their attacks,
 and the hardest chords read -1 VU or less. The look-ahead delays the output
 by 2 ms rounded down to 4 samples (88 at 44.1 kHz, 96 at 48 kHz).
 
-**Cost.** The steel lyre harp (32 waveguides, 234 modes and the room) renders
-about 20 times faster than real time on one core of a cloud container at 1x,
-4 times at 4x. The modes run in one pass a compiler can vectorize. Once
+**Cost.** The steel lyre harp (32 waveguides, 234 modes and the room),
+plucked every half second, renders about 14 times faster than real time on
+one core of a cloud container at 1x (92 us per 64-sample block at 48 kHz,
+GCC -O3) and 3 times at 4x. The modes run in one pass a compiler can vectorize. Once
 everything has died away below -170 dBFS for half a second the engine
 sleeps, and a sleeping instance costs next to nothing until the next pluck.
 

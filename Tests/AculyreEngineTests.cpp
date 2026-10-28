@@ -582,7 +582,11 @@ int main()
             check(std::abs(mics + 9.0) < 0.5, "typical playing reads -9 VU on the microphones");
             check(std::abs(pickup - mics) <= 1.0, "the piezo reads within 1 dB of the microphones");
             check(redVu < 0.0, "the hardest chords stay under 0 VU");
-            check(redPeak <= -1.5 + 1e-6, "no sample passes -1.5 dBFS");
+            // The stage's own contract (the portfolio's ToyOutputStage):
+            // its gain, window mean and product each round, so a peak can
+            // land a float ulp or two over the ceiling, past -1.5 + 1e-6 dB.
+            check(redPeak <= 20.0 * std::log10(protocodus::OutputStage<2>::kCeiling * (1.0 + 1.0e-6)),
+                  "no sample passes -1.5 dBFS");
 
             // Fresh Performers, so both draw the same plucks.
             const auto pickupAlone = [&] (double room)

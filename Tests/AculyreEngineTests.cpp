@@ -685,6 +685,53 @@ int main()
         }
     }
 
+    // At 1x the microphones' top octave stays near the 4x sound: each mode's
+    // sound is its own bilinear acceleration. A first difference of the
+    // modes' velocity left 10 to 16 kHz 3.1 to 3.6 dB below 4x on the three
+    // instruments (now 1.5 to 1.7).
+    for (int index = 0; index < aculyre::Performer::instrumentCount; ++index)
+    {
+        const auto play = [index] (int oversampling)
+        {
+            auto performer = std::make_unique<aculyre::Performer>();
+            performer->prepare(48000.0, oversampling);
+            performer->setInstrument(index);
+            aculyre::PlayingControls controls = aculyre::Performer::defaultControls(index);
+            controls.room = 0.0;
+            performer->setControls(controls);
+            const aculyre::InstrumentSpec& spec = *aculyre::presets[static_cast<std::size_t>(index)];
+            const int latency = performer->latency(), total = 96000 + latency;
+            std::vector<float> l(static_cast<std::size_t>(total)), r(static_cast<std::size_t>(total));
+            for (int position = 0, string = 0; position < total; position += 64)
+            {
+                if (position % 4800 == 0 && string < spec.stringCount)
+                    performer->noteOn(spec.strings[static_cast<std::size_t>(string++)].midiNote, 0.8f);
+                performer->process(l.data() + position, r.data() + position, std::min(64, total - position));
+            }
+            return std::vector<float>(l.begin() + latency, l.end());
+        };
+        // Energy from 10 to 16 kHz, every 10 Hz.
+        const auto top = [] (const std::vector<float>& x)
+        {
+            double energy = 0.0;
+            for (double f = 10000.0; f < 16000.0; f += 10.0)
+            {
+                const std::complex<double> step = std::polar(1.0, -2.0 * 3.14159265358979 * f / 48000.0);
+                std::complex<double> phase = 1.0, sum = 0.0;
+                for (float sample : x)
+                {
+                    sum += static_cast<double>(sample) * phase;
+                    phase *= step;
+                }
+                energy += std::norm(sum);
+            }
+            return energy;
+        };
+        const double db = 10.0 * std::log10(top(play(1)) / top(play(4)));
+        std::printf("%-16s 10-16 kHz at 1x: %+.2f dB from 4x\n", aculyre::presets[static_cast<std::size_t>(index)]->name, db);
+        check(std::abs(db) < 2.5, "at 1x the top octave stays within 2.5 dB of 4x");
+    }
+
     // The room's first reflection follows the sound by 7.3 ms at every engine
     // rate. At 176.4 and 192 kHz (4x on a 44.1 or 48 kHz host) its taps once
     // wrapped around too short a line and arrived after 0.6 to 2.5 ms.

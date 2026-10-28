@@ -42,7 +42,9 @@ reference recording below.
   the stiff-string law to 5 kHz, where they had fallen up to 95 cents flat,
   and the treble strings' to 12 kHz at 1x, held bends included, where they
   had run up to 49 cents sharp and only 4x had kept them in tune.
-  A finger re-plucking a ringing string stops it without a click. Pitch
+  At 1x the top octave keeps more of its air: from 10 to 16 kHz each
+  instrument sits 1.5 to 1.7 dB below its 4x sound, where it fell 3.1 to
+  3.6 dB below. A finger re-plucking a ringing string stops it without a click. Pitch
   bends stay in tune over their full twelve semitones, where an octave had
   fallen up to 59 cents flat. The room's early reflections keep their timing
   whenever the strings run above 96 kHz (4x on a 44.1 or 48 kHz host), where
@@ -178,7 +180,9 @@ junction is solved implicitly every sample, so it is passive and every string, p
 monopole, plus an equivalent volume for its edge and corner radiation, from a
 radiation efficiency, with a seeded sign and weight at each of the two
 microphones; the far-field pressure at 0.5 m is rho/(4 pi r) times the
-volume acceleration. A small feedback-delay room follows: six early reflections, then an
+volume acceleration, each mode's taken as its bilinear design takes s times
+its velocity, k (1 - z^-1)/(1 + z^-1), so the tails the transform
+compresses toward Nyquist keep their acceleration. A small feedback-delay room follows: six early reflections, then an
 eight-line network fed through Dattorro's four input diffusers, so its tail
 is dense from about 70 ms, as a room's is, rather than a train of separate
 echoes for its first 300 ms.
@@ -230,10 +234,10 @@ Replaying a lyre harp phrase note for note (Freesound 649925, CC BY), the
 model's 1/3-octave long-term spectrum fell short of the recording's by
 7.6 dB on average from 1.25 to 5 kHz in 0.3.0 (10.0 dB in 0.2.0), and by
 8.0 dB over eight seeds of 0.4.0's scattered plucks (7.1-8.9). In 0.6.0 it
-falls 0.9 dB short over the same seeds (0.6 to 1.4 short), both
-microphones summed: 0.5 with a plain G3, whose ringing in sympathy filled
+falls 0.8 dB short over the same seeds (0.5 to 1.3 short), both
+microphones summed: 0.4 with a plain G3, whose ringing in sympathy filled
 the 1.25 kHz band 2.3 dB more than the wound string's. Band by band it still runs from 8 dB under at 5 kHz to
-6 dB over at 2 kHz, and 1.4 to 3.6 dB under from 6.3 to 10 kHz. Over a CC0
+6 dB over at 2 kHz, and 0.2 to 3.0 dB under from 6.3 to 10 kHz. Over a CC0
 Iron Age lyre recording (Freesound 191883, another instrument and tuning),
 0.3.0's gut lyre decayed at a similar rate (median 18-22 against 18 dB/s
 over 80-550 ms) and was a little darker (centroid 448-496 Hz against

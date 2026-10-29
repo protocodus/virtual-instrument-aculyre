@@ -285,7 +285,16 @@ notes. The gut lyre's notes decay at 19 against the recording's 22 dB/s
 (27 plucked at 0.22, as before), and centre at 526 Hz at the left
 microphone and 761 Hz at the right, where the recording's channels read 582
 and 611 Hz: the body's drawn radiation signs part its two microphones
-further than the recording's channels. These are
+further than the recording's channels.
+A sampled lyre harp (DeadRobot's free DR Plucked Lyre Harp: 16 strings G3 to
+G#5, each plucked alone three times) is measured note by note against the
+steel lyre harp strung the same way
+([benchmark](Docs/validation/dr-lyre-harp-benchmark-2026-10-29.md)). Its
+player plucks at 0.25 to 0.32 of the string (median 0.27). Partials 2 to 6
+decay alike (rms log2 of model over recording 0.57) and the fundamentals do
+not (1.22). Each note at equal power, the model's third-octave shape over
+its first 0.3 s sits 7.6 dB rms from the recording's at 0.47 and 6.2 dB at
+0.27. These are
 order-of-magnitude checks, not a calibration.
 
 **Playing.** `PlayingControls` holds what a player and the room change while
@@ -377,10 +386,23 @@ nothing until the next pluck.
   partials to 6 kHz, its D4, E4 and G4 read 1.5e-4 to 3.0e-4 where the
   model's read 2.3e-4 to 4.0e-4, and its A4 and B4 3.6e-4 to 4.0e-4 where
   the model's read 1.6e-4 to 1.9e-4, a jump at A4 that no smooth run of
-  gauges makes. The body and the string gauges are both assumed. Only G3
+  gauges makes. The sampled DR lyre harp, another harp and player, jumps at
+  its A4 string too (1.6e-4 on G4, 4.3e-4 on the A4 string), and from there
+  up its strings are 1.9 to 3.8 times the model's. The body and the string
+  gauges are both assumed. Only G3
   is wound: the string set it follows is for a harp tuned up from D3 and
   winds its four lowest strings, and no set for a G3-A5 harp lists its
-  gauges.
+  gauges. The DR harp's G3 reads as plain wire (5.3e-4 against the model's
+  1.9e-4).
+- Against the DR lyre harp, note by note, the model drains different
+  fundamentals: the recording's C5 to G5 fall 23 to 60 dB/s from 0.08 to
+  0.6 s where the model's fall 6 to 35, and the model's G4 falls 34 against
+  8. With each note at equal power it carries up to 9 dB more from 200 to
+  500 Hz and 4 to 11 dB less from 0.8 to 1.3 kHz, where the recording
+  peaks. Where the assumed body's modes fall sets both; a thicker top moves
+  them and fits the spectrum better but the partials' decays worse, and no
+  lyre harp top is published to choose one
+  ([benchmark](Docs/validation/dr-lyre-harp-benchmark-2026-10-29.md)).
 - The parallel polarisation reaches the body by a stand-in path: it tips
   the bar toward the yoke, which is what the string's pull along its own
   length does. A sideways pull at the bar's top is a moment about the
@@ -447,7 +469,10 @@ nothing until the next pluck.
   strings lose their treble no faster than the recording's. A nail raises
   it about 1 dB, and an instant release would still leave 2.3 dB from 1.25
   to 5 kHz, so the rest lies in the assumed body, the microphones or the
-  recording, which one unmeasured recording cannot separate.
+  recording, which one unmeasured recording cannot separate. The DR lyre
+  harp's single notes, another player and microphones, show the same
+  shortfall: 6 to 18 dB from 5 to 10 kHz with each note at equal power, in
+  the partials from the first 10 ms on, at any of the pluck points tried.
 - The top's mode frequencies are a clamped plate's (Warburton), but its
   mode shapes and the volumes they move are a simply supported plate's.
   Clamped beam shapes were tried and left the dead notes deader without
@@ -477,6 +502,11 @@ the pluck point's missing harmonic, stability, determinism, block-size
 invariance and sympathetic coupling; `Aculyre.DemoMidiSources` checks that the
 committed phrases are what `Tools/write_preset_midi.py` writes.
 
+`RenderAculyreNotes` plucks every string of a preset alone, one WAV per note,
+and `Tools/compare_lyre_harp_samples.py` (NumPy and SciPy) measures those
+against the DR Plucked Lyre Harp's samples, fetched separately; its head
+gives the commands and the protocol.
+
 ## Licensing
 
 Aculyre's source is available under the [PolyForm Noncommercial License
@@ -485,4 +515,6 @@ Acustra, under the same licence and owner. The body's mode Q statistics are
 summarised from Acustra's measured bridge, adapted from Robert Mores' archive
 for the acoustical documentation of guitars (CC BY 4.0). The comparison
 recordings, Freesound 722897 ("Lyre harp single note", Biggertigger2006) and
-191883 ("Lyre.flac", Hedmarking), are CC0 1.0 and are not stored here.
+191883 ("Lyre.flac", Hedmarking), are CC0 1.0 and are not stored here, and
+neither are DeadRobot's DR Plucked Lyre Harp samples (deadrobotmusic.com) or
+anything rendered from them.

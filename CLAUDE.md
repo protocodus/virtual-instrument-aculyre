@@ -214,5 +214,6 @@ the soundbox's modes.
   so wherever a result depends on them.
 - Steel strings carry Acustra's fitted losses; the nylon and gut losses are
   estimates. Do not present either the soundbox or those losses as measured.
-- The comparison recordings (Freesound 722897 and 191883, CC0) are fetched
-  for analysis and never committed.
+- The comparison recordings (Freesound 722897 and 191883, CC0) and the DR
+  Plucked Lyre Harp samples (DeadRobot) are fetched for analysis and never
+  committed.

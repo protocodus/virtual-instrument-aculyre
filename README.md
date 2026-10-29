@@ -176,9 +176,9 @@ way, and the touch blends geometrically between the two as PIEZO does.
 
 **Bridge and body.** All strings end on one bar: heave and rock carry the
 strings' motion normal to the top, sway the motion parallel to it, through
-the bar's height, and the bar bends as a free maple beam (from 790 Hz to
-19.6 kHz in seven bends on the lyre harps' 24 cm bar, 6.8 and 18.6 kHz on
-the gut lyre's 9 cm one). On a top this light the top under the bar bends
+the bar's height (a stand-in path, see Known gaps), and the bar bends as
+a free maple beam (from 790 Hz to 19.6 kHz in seven bends on the lyre
+harps' 24 cm bar, 6.8 and 18.6 kHz on the gut lyre's 9 cm one). On a top this light the top under the bar bends
 with it, so each string drives the modes beneath its own place instead of
 an average along the bar. The bar stands on a modal
 soundbox: an orthotropic plate (Warburton's clamped-plate frequencies,
@@ -361,9 +361,30 @@ nothing until the next pluck.
   is wound: the string set it follows is for a harp tuned up from D3 and
   winds its four lowest strings, and no set for a G3-A5 harp lists its
   gauges.
-- The sway coupling of the parallel polarisation through the bar's height is
-  simple geometry; with the 6 g bar it moves some partials by up to about
-  11 cents.
+- The parallel polarisation reaches the body by a stand-in path: it tips
+  the bar toward the yoke, which is what the string's pull along its own
+  length does. A sideways pull at the bar's top is a moment about the
+  string's axis, which rocks and bends the bar instead, as Acustra derives
+  it for a guitar saddle. That path was built and measured on the replayed
+  phrase over eight seeds. It couples the plane so weakly at its
+  fundamental that the G4's fundamental decays at about 1 dB/s against the
+  recording's 17 (the stand-in's 10), and the D4's and E4's at 4 and 6
+  against 7 and 8 (the stand-in's 8). Near the bar's ends the bends' slopes
+  couple the treble strings strongly instead: A5's partials land 10 cents
+  off the stiff-string law and the top strings 3.6 dB off the even touch.
+  The recordings point to a loss the model lacks rather than to that path,
+  so the stand-in stays. With the 6 g bar it moves some partials by up to
+  about 11 cents.
+- No axial force. A plucked string's stretch pulls on its end at twice each
+  partial's frequency, growing as the square of the pluck. A harp's strings
+  meet its soundboard at 35 degrees, and there the octave this adds matches
+  the fundamental's height even for gentle plucks (Woodhouse, J. Sound Vib.
+  523 (2021), Sec. 4.2). Here the strings run along the top to a tie bar
+  1 cm high, where that pull only tips the bar. Estimated from the
+  published formulas, it reaches the top's lower modes about 27 dB under
+  the fundamental's drive on G5 plucked at full strength, and some 40 dB
+  under on A4 at its touch. The strings' lengthwise stiffness, which raises
+  a strung harp's soundboard modes, is left out too.
 - The dispersion fit stops at 5 kHz, and above it the bass strings'
   partials fall flat of the law: at 48 kHz the design leaves them up to 33
   cents flat by 8 kHz on the wound steel G3, 69 on the steel A3 and 104 on

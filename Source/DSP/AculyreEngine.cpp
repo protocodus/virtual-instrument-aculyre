@@ -2146,6 +2146,11 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         for (std::size_t i = 0; i < barCoordinates; ++i)
             for (std::size_t j = 0; j < barCoordinates; ++j)
                 zg.m[i][j] += voice.impedance * port[i] * port[j];
+        // The parallel plane drives the sway, a stand-in: a sideways pull at
+        // the bar's top is a moment about the string's axis, which rocks and
+        // bends the bar. That port was tried (2026-10-29) and left the G4's
+        // fundamental decaying at 1 dB/s against a recording's 17 (README,
+        // Known gaps).
         zg.m[2][2] += voice.impedance;
     }
     s.stringImpedance = zg;

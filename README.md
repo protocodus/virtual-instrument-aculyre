@@ -5,8 +5,8 @@ code history) from [Acustra](https://github.com/protocodus/virtual-instrument-ac
 a row of open strings, each a pair of stiff-string waveguides, all ending on
 one bridge bar that stands on a modal soundbox, so idle strings ring in
 sympathy. It plays three instruments: a modern 16-string steel lyre harp, the
-same harp strung in nylon, and a six-string gut lyre after the Anglo-Saxon
-reconstructions. It is a feasibility prototype: there is no plug-in and no
+same harp strung in nylon, and a gut lyre after the Anglo-Saxon
+reconstructions, extended from their six strings to sixteen. It is a feasibility prototype: there is no plug-in and no
 release. A Reason Rack Extension adapter plays it from the private
 `protocodus/reason-rack-extensions` repository (source only, not yet built
 against the SDK).
@@ -22,6 +22,19 @@ reference recording below.
 
 ## Version history
 
+- **0.6.1** (prototype, not released): the techniques sound apart. A nail
+  or a plectrum lets go of the string at once, and a plectrum meets it at
+  0.40 of the finger's distance from the bridge, as Acustra's fitted
+  plectrum does: at velocity 90 the pick's 3rd to 6th partials stand 11 dB
+  higher on the fundamental than the finger's and its top octaves 11 dB,
+  the nail's top octaves 2.7 dB (in 0.6.0 all within 1.2 dB). The gut lyre
+  has sixteen strings, D3 to E5 in G major, so with the sharping levers
+  every note from D3 to F5 plays. The six it had keep their pitch and
+  length; the touch, evened again over all sixteen, gives the full force to
+  the weakest string, D5, so the six are plucked at 0.4 to 0.6 of their
+  0.6.0 force (their hard plucks glide less in pitch) and the output gain
+  rises 3.4 dB to keep typical playing at -9 VU. A new `piezoInverted`
+  control wires the piezo the other way round.
 - **0.6.0** (prototype, not released): the piezo strip flexes under the
   bridge bar, so the piezo rings up near 9 kHz (6.5 kHz on the gut lyre) and
   rolls off above, as an under-saddle pickup does. The bridge bar bends
@@ -147,9 +160,12 @@ six strings of a lyre harp phrase are (Freesound 649925).
 point: a harpist's finger touches at most 2 cm of string, too little to
 filter it (Chadefaux et al., JASA 131 (2012) 844, who take the pluck as a
 point), and the string leaves the fingertip's edge wrapped round it only
-over its kink angle, a few hundredths of a radian. A nail or a plectrum
-rounds the apex over its edge, an authored width of about a millimetre.
-The held force unloads exponentially over the release time as the string slides off, as Acustra's slip does. A harpist's
+over its kink angle, a few hundredths of a radian. A nail's or a plectrum's
+hard edge has no flesh for the string to slip along, so it lets go at once,
+the ideal pluck, and a plectrum meets the string nearer the bridge than the
+hand's place: at 0.40 of the finger's distance, Acustra's plectrum fitted on
+picked archtop recordings. A finger's held force unloads exponentially over
+the release time as the string slides off, as Acustra's slip does. A harpist's
 string slips 0.04 mm along the fingertip and leaves at about 1.5 m/s
 (Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444), a release time of
 0.053 ms. A harder pluck slips off faster: the release velocity rises with
@@ -172,7 +188,7 @@ of a step. Tension modulation raises the pitch of a hard pluck
 for its first moments. The touch is even, a voicing rather than a
 measurement: as a player evens out a scale by ear, each string is plucked
 with the share of the full force (1 on the quietest string, down to 0.15
-on the nylon A4 and 0.24 on the gut E3, which the strongest body modes
+on the nylon A4 and 0.13 on the gut E3, which the strongest body modes
 favour) that puts its first 300 ms on the
 straight line through every string's level, so the register keeps its
 slope (about -0.3 dB per semitone on the lyre harps) and no string stands
@@ -228,16 +244,22 @@ up to 9 dB there and falling 11 dB short at 20 kHz; on the gut lyre's shorter
 bar, 6.5 kHz, 5 dB up and 13 dB down at 20 kHz. `PlayingControls::piezo` blends from the microphones to the piezo
 alone. The element is wired so that a blend adds in the low mids instead of
 cancelling there; half and half is about 2 dB quieter than either alone on
-the steel lyre harp phrase. Against the microphones, the piezo carries more of
-the strings' fundamentals and of the top two octaves.
+the steel lyre harp phrase. `PlayingControls::piezoInverted` wires it the
+other way round: alone it sounds the same, with its sign changed, and in a
+blend it cancels the microphones where it otherwise adds to them. Against the
+microphones, the piezo carries more of the strings' fundamentals and of the
+top two octaves.
 
 **Presets.** The steel lyre harp has 16 strings G3-A5 in C major, 0.44-0.22 m,
 plain gauges 0.020-0.010 inch over a nickel-wound 0.024 inch G3, 54-63 N,
 over a 20 x 30 cm spruce top on a 5 cm box
 with a 6 cm soundhole: its air mode is 212 Hz and its first top mode 467 Hz.
 The nylon harp uses the same frame with 1.30-0.47 mm monofilament at 29-44 N.
-The gut lyre has six 50 cm strings D3 E3 G3 A3 B3 D4 at about 37 N over a
-closed maple box whose first mode is 343 Hz. Dimensions are typical of each
+The gut lyre has sixteen strings, D3 to E5 in G major, over a closed maple
+box whose first mode is 343 Hz: the reconstructions' six 50 cm strings D3 E3
+G3 A3 B3 D4 at about 37 N, with F#3 and C4 between them alike, and from E4 up
+a slanted yoke shortens each string to hold D4's stress (114 MPa), 22 cm and
+30 N at E5. All sixteen share the six's 9 cm bridge bar, 6 mm apart. Dimensions are typical of each
 kind of instrument, not measurements of one.
 
 **Measured against recordings.** On the A4 of a CC0 lyre harp note
@@ -453,8 +475,8 @@ nothing until the next pluck.
   bilinear with its skirts drawn in toward Nyquist, which is not yet
   measured apart. Near the pluck's comb notches single partials also land
   up to 16 dB apart between rates (the steel A5's 13th and 14th).
-- No plucking-hand model beyond a release time and a nail's or plectrum's
-  edge width, no buzzing, no string-to-string contact, no hand damping
+- No plucking-hand model beyond a release time and a plectrum's reach, no
+  buzzing, no string-to-string contact, no hand damping
   gestures beyond note-off. The release is a stand-in for the slip
   Chadefaux, Le Carrou and Fabre model (JASA 133 (2013) 2444): its 0.053 ms
   is one harpist's plucks near the fingertip in their lab, while ten
@@ -472,9 +494,9 @@ nothing until the next pluck.
   notes, matches the recording's to 4 kHz (band medians within 3.4 dB,
   either way) and falls short above it: 7 to 9 dB from 4 to 6 kHz and 15 to
   21 dB from 6 to 9 kHz, alike from 45 to 300 ms after the pluck, so the
-  strings lose their treble no faster than the recording's. A nail raises
-  it about 1 dB, and an instant release would still leave 2.3 dB from 1.25
-  to 5 kHz, so the rest lies in the assumed body, the microphones or the
+  strings lose their treble no faster than the recording's. 0.6.0's nail,
+  its apex rounded over a millimetre, raised it about 1 dB, and an instant
+  release, as a nail's now is, would still leave 2.3 dB from 1.25 to 5 kHz, so the rest lies in the assumed body, the microphones or the
   recording, which one unmeasured recording cannot separate. The DR lyre
   harp's single notes, another player and microphones, show the same
   shortfall: 6 to 18 dB from 5 to 10 kHz with each note at equal power, in
@@ -483,6 +505,13 @@ nothing until the next pluck.
   mode shapes and the volumes they move are a simply supported plate's.
   Clamped beam shapes were tried and left the dead notes deader without
   adding treble.
+- The nail and the plectrum are authored: no nail or plectrum pluck on a
+  lyre is measured, and the plectrum's reach is fitted on an archtop
+  guitar. Against the finger at velocity 90 the nail is only a little
+  brighter, because the fingertip already lets go in 0.03 ms.
+- The gut lyre's ten added strings are no reconstruction's: their gauges,
+  the slanted yoke and the 6 mm spacing are assumed, and the box and bridge
+  bar are still the six-string lyre's.
 - The piezo's element stiffness is Acustra's, scaled to the bar's length,
   and its preamp is taken as linear, with no overload at settings past the
   factory patches. The pickup system is a guitar's; no lyre pickup is

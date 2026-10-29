@@ -427,6 +427,57 @@ int main()
         }
     }
 
+    // The techniques sound apart (owner feedback, 2026-10-29: they did not).
+    // A nail's or a plectrum's edge lets go at once, so its top octaves (the
+    // second difference over the first 50 ms) are up on a fingertip's at
+    // velocity 90; a plectrum meets the string at 0.40 of the finger's
+    // distance from the bridge, its 3rd to 6th partials up on the
+    // fundamental. Each technique takes the same random draws.
+    {
+        std::vector<float> left(24000), right(24000);
+        struct Sound
+        {
+            double top, partials;
+        };
+        const auto sound = [&] (aculyre::Technique technique)
+        {
+            aculyre::AculyreEngine engine;
+            engine.prepare(48000.0);
+            engine.setInstrument(aculyre::lyreHarpSteel);
+            aculyre::PlayingControls controls = engine.controls();
+            controls.room = 0.0;
+            controls.sympathy = 0.0;
+            controls.technique = technique;
+            engine.setControls(controls);
+            engine.noteOn(69, 90.0f / 127.0f);
+            engine.process(left.data(), right.data(), 24000);
+            double edge = 0.0, power = 0.0;
+            for (std::size_t i = 2; i < 2400; ++i)
+            {
+                const double d2 = static_cast<double>(left[i]) - 2.0 * left[i - 1] + left[i - 2];
+                edge += d2 * d2;
+                power += static_cast<double>(left[i]) * left[i];
+            }
+            double upper = 0.0;
+            for (int n = 3; n <= 6; ++n)
+                upper += std::pow(peakNear(left, 960, 12000, 440.0 * n).magnitude, 2.0);
+            return Sound { 10.0 * std::log10(edge / power),
+                           10.0 * std::log10(upper / std::pow(peakNear(left, 960, 12000, 440.0).magnitude, 2.0)) };
+        };
+        const Sound finger = sound(aculyre::Technique::Finger), nail = sound(aculyre::Technique::Nail),
+                    pick = sound(aculyre::Technique::Plectrum);
+        std::printf("A4 at velocity 90 re the finger: top octaves nail %+.1f dB, pick %+.1f dB; "
+                    "partials 3-6 re the fundamental nail %+.1f dB, pick %+.1f dB\n",
+                    nail.top - finger.top, pick.top - finger.top, nail.partials - finger.partials,
+                    pick.partials - finger.partials);
+        // With the 0.035 and 0.025 ms releases and 1.2 and 0.8 mm edges they
+        // had (0.6.0), the nail's top octaves read +0.5 dB and the pick's
+        // +1.2, its partials +0.4; now +2.7, +10.8 and +10.9 dB.
+        check(nail.top - finger.top > 1.5, "a nail lets go brighter than a finger");
+        check(pick.top - finger.top > 1.5, "a plectrum lets go brighter than a finger");
+        check(pick.partials - finger.partials > 6.0, "a plectrum plucks nearer the bridge than a finger");
+    }
+
     // Sympathy: plucking C4 rings the idle C5 (an octave) well above the idle
     // D5 (a ninth, few shared partials).
     {
@@ -904,20 +955,37 @@ int main()
                   "no sample passes -1.5 dBFS");
 
             // Fresh Performers, so both draw the same plucks.
-            const auto pickupAlone = [&] (double room)
+            const auto pickupPlayed = [&] (double blend, double room, bool inverted)
             {
                 auto fresh = std::make_unique<aculyre::Performer>();
                 fresh->prepare(48000.0);
                 fresh->setInstrument(index);
                 aculyre::PlayingControls controls = aculyre::Performer::defaultControls(index);
-                controls.piezo = 1.0;
+                controls.piezo = blend;
                 controls.room = room;
+                controls.piezoInverted = inverted;
                 fresh->setControls(controls);
                 return play(*fresh, { strings[0], strings[count / 2] }, 100, 0.5);
             };
-            const Reading dry = pickupAlone(0.0);
+            const Reading dry = pickupPlayed(1.0, 0.0, false);
             check(dry.left == dry.right, "the piezo is mono");
-            check(pickupAlone(1.0).left == dry.left, "the piezo hears no room");
+            check(pickupPlayed(1.0, 1.0, false).left == dry.left, "the piezo hears no room");
+            // Wired the other way round, the piezo alone only changes sign
+            // (the output stage is symmetric); in a blend it changes the
+            // sound, not just the level.
+            const Reading inverted = pickupPlayed(1.0, 0.0, true);
+            bool negated = inverted.left.size() == dry.left.size();
+            for (std::size_t i = 0; negated && i < dry.left.size(); ++i)
+                negated = inverted.left[i] == -dry.left[i];
+            check(negated, "an inverted piezo alone is the piezo negated");
+            const Reading blend = pickupPlayed(0.5, 0.0, false), crossed = pickupPlayed(0.5, 0.0, true);
+            double sum = 0.0, difference = 0.0;
+            for (std::size_t i = 0; i < blend.left.size(); ++i)
+            {
+                sum += std::pow(static_cast<double>(blend.left[i]) + crossed.left[i], 2.0);
+                difference += std::pow(static_cast<double>(blend.left[i]) - crossed.left[i], 2.0);
+            }
+            check(difference > 0.01 * sum, "inverting the piezo changes a blend");
         }
     }
 

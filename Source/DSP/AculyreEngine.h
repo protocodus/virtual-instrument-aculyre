@@ -140,6 +140,10 @@ struct PlayingControls
     // The pickup: 0, the microphones; 1, the piezo under the bridge bar
     // alone; between, a blend of the two. The piezo hears no room.
     double piezo { 0.0 };
+    // The piezo element wired the other way round: its signal changes sign,
+    // so in a blend it cancels the microphones in the low mids where it
+    // otherwise adds to them. Alone it sounds the same.
+    bool piezoInverted { false };
     double volume { 1.0 };      // gain on the instrument's outputGain
     double pitchBend { 0.0 };   // semitones, on every string
     // Sharping levers at the yoke follow the notes played: a note a semitone

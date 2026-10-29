@@ -1213,9 +1213,6 @@ struct Random
     }
 };
 
-double normalCdf(double u) noexcept { return 0.5 * std::erfc(-u / std::sqrt(2.0)); }
-double normalPdf(double u) noexcept { return std::exp(-0.5 * u * u) / std::sqrt(2.0 * pi); }
-
 // A small room around the microphones: early reflections and an eight-line
 // feedback delay network (Householder feedback, one-pole loss per line set
 // for a 1.1 s low and 0.45 s high reverberation time). Authored, like any
@@ -1609,9 +1606,9 @@ struct AculyreEngine::State
     double muteRate { 0.0 };
     double bendTarget { 1.0 };
     double bend { 1.0 };
-    // Room send, direct and crossed gain, volume, piezo blend.
-    std::array<double, 5> outputTarget {};
-    std::array<double, 5> output {};
+    // Room send, direct and crossed gain, volume, piezo blend, piezo sign.
+    std::array<double, 6> outputTarget {};
+    std::array<double, 6> output {};
     double outputSmoothing { 0.0 };
     double bendSmoothing { 0.0 };
 };
@@ -2494,7 +2491,8 @@ void AculyreEngine::setControls(const PlayingControls& controls) noexcept
     if (c.pitchBend != previous.pitchBend)
         s.bendTarget = std::pow(2.0, c.pitchBend / 12.0);
     // Mid/side: width 1 is the two microphones as they are.
-    s.outputTarget = { 0.5 * c.room, 0.5 * (1.0 + c.width), 0.5 * (1.0 - c.width), c.volume, c.piezo };
+    s.outputTarget = { 0.5 * c.room, 0.5 * (1.0 + c.width), 0.5 * (1.0 - c.width), c.volume, c.piezo,
+                       c.piezoInverted ? -1.0 : 1.0 };
     if (!c.levers && previous.levers)
         for (int index = 0; index < stringCount_; ++index)
             if (s.strings[static_cast<std::size_t>(index)].raised)
@@ -2574,9 +2572,18 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // plane (on a lyre, the top's), by about 4 degrees (Table VI, median 95%
     // interval 5 degrees over five plucks), around the angle the normal
     // share sets: the share is the angle's sine squared.
+    // A plectrum meets the string nearer the bridge than the hand's place:
+    // 0.40 of the finger's distance, Acustra's plectrum fitted on picked
+    // archtop recordings (FittedPhysicalData.h, 2026-09-25). It is what
+    // most sets a picked note apart: on the steel A4 at velocity 90 and the
+    // default 27 %, its 3rd to 6th partials stand 11 dB higher against the
+    // fundamental than the finger's (AculyreEngineTests). The clamp lets it
+    // reach 2 % from the bridge, where POSITION's 6 % sends it.
+    const double reach = controls.technique == Technique::Plectrum ? 0.40 : 1.0;
     const double positionSpread = std::clamp(0.012 + 0.010 * (voice.length - 0.176) / (0.975 - 0.176),
                                              0.012, 0.022);
-    const double position = std::clamp(controls.pluckPosition + positionSpread * s.random.gaussian(), 0.05, 0.7);
+    const double position = std::clamp(reach * controls.pluckPosition + positionSpread * s.random.gaussian(),
+                                       0.02, 0.7);
     // The player evens the scale by what is heard: the microphones, the
     // piezo, or between the two as the blend sets.
     const StringSpec& string = instrument.strings[static_cast<std::size_t>(index)];
@@ -2586,8 +2593,8 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
                        + 4.0 * pi / 180.0 * s.random.gaussian();
     const double normalShare = std::clamp(std::sin(angle) * std::sin(angle), 0.01, 0.9);
 
-    // Contact width and release time of the technique: a fingertip, a
-    // nail's or a plectrum's edge. A harpist's finger touches at most 2 cm
+    // How the technique lets go: a fingertip, a nail's or a plectrum's
+    // edge, each a point. A harpist's finger touches at most 2 cm
     // of string, which Chadefaux et al. find too little to filter the
     // string and so take the pluck as a point (JASA 131 (2012) 844,
     // Sec. IV.A.5, Table V); the string leaves the fingertip's edge wrapped
@@ -2597,16 +2604,14 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // (Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444); accelerating
     // evenly, that takes 0.053 ms, the finger's release time constant.
     // Chosen by ear over the pad's 0.2 mm (0.27 ms) and an authored 0.10 ms
-    // (Docs/decisions.md, 2026-10-28). The nail's and the plectrum's are
-    // authored, of the order of Acustra's (a 0.2 mm edge over a metre or two
-    // per second).
-    double contact = 0.0, release = 0.053e-3;
-    switch (controls.technique)
-    {
-        case Technique::Finger: contact = 0.0; release = 0.053e-3; break;
-        case Technique::Nail: contact = 0.0012; release = 0.035e-3; break;
-        case Technique::Plectrum: contact = 0.0008; release = 0.025e-3; break;
-    }
+    // (Docs/decisions.md, 2026-10-28). A nail's or a plectrum's hard edge
+    // has no flesh for the string to slip along, so both release at once,
+    // the ideal pluck: authored, as their 0.035 and 0.025 ms were, which
+    // with a 1.2 and 0.8 mm rounding had left them within 2 dB of the finger
+    // at every band. At velocity 90 the instant release is 2 to 4 dB
+    // brighter from 3 to 10 kHz, and more for softer plucks, whose finger
+    // slips off slower (below).
+    double release = controls.technique == Technique::Finger ? 0.053e-3 : 0.0;
     // A harder stroke slips off faster, so it leaves brighter. Harpists'
     // release velocity rises with the string's displacement, about as D^1.2
     // from 0.5 mm at 0.2 m/s to 7 mm at 5 m/s around an average of 4 mm at
@@ -2660,14 +2665,10 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         const double amplitude = force * pluckPoint * (length - pluckPoint) / (voice.tension * length)
                                * std::sqrt(plane == 0 ? normalShare : 1.0 - normalShare);
         const double kink = amplitude * (1.0 / pluckPoint + 1.0 / (length - pluckPoint));
-        // The released shape, a triangle rounded by a Gaussian of the
-        // contact's width.
+        // The released shape, a triangle.
         const auto shape = [&] (double x)
         {
-            if (contact == 0.0)
-                return amplitude * x / pluckPoint - kink * std::max(0.0, x - pluckPoint);
-            const double u = (x - pluckPoint) / contact;
-            return amplitude * x / pluckPoint - kink * contact * (u * normalCdf(u) + normalPdf(u));
+            return amplitude * x / pluckPoint - kink * std::max(0.0, x - pluckPoint);
         };
         // The wave reaching the bridge over the next round trip, one period
         // of the loop: first the half that travels straight there,
@@ -2698,7 +2699,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         // 1.25 to 5 kHz, the exponential 7.6 dB). Each kink reaching the
         // bridge arrives smoothed by that one-pole; over the loop's period it
         // runs circularly, starting from its steady state at the period's end.
-        const double pole = std::exp(-1.0 / (release * sampleRate_));
+        const double pole = release > 0.0 ? std::exp(-1.0 / (release * sampleRate_)) : 0.0;
         double weighted = 0.0, weight = 1.0;
         for (int k = count - 1; k >= 0; --k)
         {
@@ -3016,8 +3017,10 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         const double micRight = s.outputGain * (s.output[1] * outRight + s.output[2] * outLeft);
         // Which way the element is wired is a choice: this way round, a
         // blend with the microphones adds in the low mids instead of
-        // cancelling there.
-        const double pickup = -s.piezoGain * piezo;
+        // cancelling there. The sign glides through zero over the outputs'
+        // 10 ms when the player flips it, so a flip under a ringing note
+        // does not click.
+        const double pickup = -s.output[5] * s.piezoGain * piezo;
         const double blend = s.output[4];
         const double volume = s.output[3];
         // Unlimited: the Performer's output stage keeps it under full scale.

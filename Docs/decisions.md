@@ -3,6 +3,46 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-29: owner feedback on 0.6.0, adopted unheard
+
+**What was asked.** The owner heard the Rack build and reported that the
+picking styles had no audible impact, that the piezo had no polarity
+choice, and asked for the gut lyre's range to be extended artificially to
+a complete one, and for Room 100 % and Piezo 50 % by default.
+
+**Techniques.** At velocity 90, 0.6.0's nail and plectrum (releases of
+0.035 and 0.025 ms, apexes rounded over 1.2 and 0.8 mm, all authored) sat
+within 2 dB of the finger in every third-octave band. A nail's or a
+plectrum's hard edge has no flesh to slip along, so both now let go at
+once, and the plectrum meets the string at 0.40 of the finger's distance
+from the bridge, the reach Acustra fitted on picked archtop recordings
+(its FittedPhysicalData.h, 2026-09-25). The finger, chosen by ear, is
+unchanged. This was not heard as an A-B: it ships under the owner's
+standing rule to take the candidate over the baseline. The engine tests
+now hold the pick's 3rd to 6th partials 6 dB or more up on the finger's
+against the fundamental (10.9 dB) and both edges' top octaves 1.5 dB or
+more up (nail 2.7, pick 10.8). The nail stays near the finger: no
+physical difference between them is left to draw on but the release,
+and a fingertip already lets go in 0.03 ms at that velocity.
+
+**Gut lyre.** An owner request, not a reconstruction: sixteen strings, D3
+to E5 in G major, so with the levers every note from D3 to F5 plays. The
+six strings keep their pitch, length and gauge; F#3 and C4 take the same
+50 cm and 37 N, and from E4 up the lengths shorten to hold D4's stress.
+The touch is evened again on both pickups and the gains re-levelled to
+-9 VU.
+
+**Piezo polarity and defaults.** `PlayingControls::piezoInverted` flips the
+piezo's sign; the engine's default stays as wired. Room 100 % and Piezo
+50 % are the Rack device's defaults, product configuration in the
+adapter; the engine's own controls and its -9 VU calibration are
+unchanged.
+
+**What it licenses.** The instant release for both hard edges and the
+plectrum's reach as shipping behaviour, until a listening test or a
+measured lyre pluck says otherwise. It does not license reading the nail
+or the plectrum as measured.
+
 ## 2026-10-29: the finger plucks at 0.27, chosen by ear
 
 **What was decided.** Where the finger plucks by default. Two recorded

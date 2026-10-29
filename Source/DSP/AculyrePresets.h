@@ -110,14 +110,25 @@ constexpr BodySpec lyreHarpBody {
     0.30, 0.10, 0.90, 0.010, 0.006, hardMaple
 };
 
-// A six-string gut lyre after the Anglo-Saxon instruments (the Sutton Hoo
-// and Trossingen reconstructions): strings about 50 cm, tuned here
-// D3 E3 G3 A3 B3 D4 at about 40 N, over a hollowed maple soundbox with a
+// A gut lyre after the Anglo-Saxon instruments (the Sutton Hoo and
+// Trossingen reconstructions): six strings about 50 cm, tuned here
+// D3 E3 G3 A3 B3 D4 at about 37 N, over a hollowed maple soundbox with a
 // 4 mm top, no soundhole and a 4 g maple bridge. Dimensions are typical of
-// reconstructions, not measured.
+// reconstructions, not measured. It is extended past any reconstruction
+// (owner request, 2026-10-29) to the whole G major scale from D3 to E5,
+// sixteen strings, so with the sharping levers every note from D3 to F5
+// plays: F#3 and C4 fill the six strings' gaps at 50 cm and 37 N, and from
+// E4 up a slanted yoke shortens each string to hold D4's stress (114 MPa,
+// rho (2 L f)^2, about a third of gut's strength), its tension falling to
+// 30 N at E5 as a harp's treble does. Sixteen strings share the six's 9 cm
+// bridge bar, 6 mm apart.
 constexpr std::array<StringSpec, maxStrings> gutLyreStrings {{
-    { 50, 0.50, 1.29e-3, 0.81, 0.98 }, { 52, 0.50, 1.15e-3, 0.26, 0.98 }, { 55, 0.50, 0.96e-3, 0.90, 1.00 },
-    { 57, 0.50, 0.86e-3, 1.00, 0.93 }, { 59, 0.50, 0.76e-3, 0.34, 1.00 }, { 62, 0.50, 0.64e-3, 0.58, 0.99 }
+    { 50, 0.500, 1.29e-3, 0.34, 0.89 }, { 52, 0.500, 1.15e-3, 0.13, 0.88 }, { 54, 0.500, 1.02e-3, 0.22, 0.90 },
+    { 55, 0.500, 0.96e-3, 0.36, 0.89 }, { 57, 0.500, 0.86e-3, 0.46, 0.79 }, { 59, 0.500, 0.76e-3, 0.21, 0.87 },
+    { 60, 0.500, 0.72e-3, 0.22, 0.84 }, { 62, 0.500, 0.64e-3, 0.27, 0.79 }, { 64, 0.445, 0.64e-3, 0.14, 0.73 },
+    { 66, 0.397, 0.63e-3, 0.26, 0.78 }, { 67, 0.375, 0.62e-3, 0.23, 0.71 }, { 69, 0.334, 0.61e-3, 0.27, 0.75 },
+    { 71, 0.297, 0.60e-3, 0.23, 0.92 }, { 72, 0.281, 0.60e-3, 0.26, 0.94 }, { 74, 0.250, 0.59e-3, 1.00, 1.00 },
+    { 76, 0.223, 0.58e-3, 0.54, 0.90 }
 }};
 constexpr BodySpec gutLyreBody {
     0.36, 0.18, 0.004, hardMaple,
@@ -152,8 +163,8 @@ inline constexpr InstrumentSpec lyreHarpNylon {
 };
 
 inline constexpr InstrumentSpec gutLyre {
-    "Gut Lyre", naturalGut, 6, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.27, 0.3, 2.5, 0.35, 2.128, 0.245
+    "Gut Lyre", naturalGut, 16, detail::gutLyreStrings, detail::gutLyreBody,
+    Technique::Finger, 0.27, 0.3, 2.5, 0.35, 3.148, 0.263
 };
 
 inline constexpr std::array<const InstrumentSpec*, 3> presets {{

@@ -1050,11 +1050,8 @@ struct Loop
 constexpr int maxBends = 7;
 constexpr std::size_t barCoordinates = 3 + maxBends;
 using BarVector = std::array<double, barCoordinates>;
-// The coordinates even about the bar's middle (heave, sway, the even bends)
-// and odd (rock, the odd bends).
-using EvenCoordinates = std::index_sequence<0, 2, 3, 5, 7, 9>;
-using OddCoordinates = std::index_sequence<1, 4, 6, 8>;
-static_assert(maxBends == 7, "EvenCoordinates and OddCoordinates list every bend");
+// The coordinates even about the bar's middle (heave, sway, the even bends);
+// the rest (rock, the odd bends) are odd.
 constexpr bool evenCoordinate(std::size_t c) noexcept { return c != 1 && (c < 3 || (c - 3) % 2 == 0); }
 
 // A free-free beam's bend at u, from -1 at one end to 1 at the other:
@@ -1091,36 +1088,67 @@ struct Mode
 // times b0, `pull` the participation alone. The modes that meet only the
 // even coordinates come first, up to evenEnd, then those that meet only the
 // odd ones, up to oddEnd, then the rest, each part padded, so that process()
-// runs each part with only its own coordinates.
+// runs each part with only its own coordinates: those of its parity that
+// some mode meets (a bar whose higher bends are left out meets none of
+// them), listed in `coordinates`.
 struct ModeBank
 {
     static constexpr int lanes = 8;
     static constexpr int capacity = maxModes + 3 * lanes;
     int evenEnd { 0 }, oddEnd { 0 }, count { 0 };
+    std::array<std::array<std::size_t, barCoordinates>, 3> coordinates {};
+    std::array<int, 3> coordinateCount {};
     std::array<std::array<double, capacity>, barCoordinates> drive {}, pull {};
     std::array<double, capacity> a1 {}, a2 {}, left {}, right {}, s1 {}, s2 {};
+    // Each mode's generalized force this sample (runModes()).
+    std::array<double, capacity> excitation {};
 };
 
-// Runs the bank's modes [from, to) one sample on over the coordinates C,
-// adding what they radiate to each microphone and their pull on the bar's
-// next velocity, each lane in its own sum so that a group runs as one vector.
-template <std::size_t... C>
-void runModes(ModeBank& bank, int from, int to, const BarVector& force, double (&left)[ModeBank::lanes],
-              double (&right)[ModeBank::lanes], double (&past)[barCoordinates][ModeBank::lanes],
-              std::index_sequence<C...>) noexcept
+// Runs the bank's modes one sample on, adding what they radiate to each
+// microphone and their pull on the bar's next velocity, each lane in its own
+// sum. Each step is its own pass over the bank, every pass a plain loop over
+// whole groups that the compiler vectorizes; done mode by mode, the sums of
+// a group (two outputs and up to ten coordinates, eight lanes each) needed
+// far more vector registers than SSE2 or NEON have, and lived on the stack.
+// Every mode adds its terms in the same order either way.
+void runModes(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::lanes],
+              double (&right)[ModeBank::lanes], double (&past)[barCoordinates][ModeBank::lanes]) noexcept
 {
-    for (int group = from; group < to; group += ModeBank::lanes)
-        for (int lane = 0; lane < ModeBank::lanes; ++lane)
+    constexpr int lanes = ModeBank::lanes;
+    const int bounds[4] { 0, bank.evenEnd, bank.oddEnd, bank.count };
+    double* const x = bank.excitation.data();
+    for (int k = 0; k < bank.count; ++k)
+        x[k] = 0.0;
+    for (std::size_t part = 0; part < 3; ++part)
+        for (int n = 0; n < bank.coordinateCount[part]; ++n)
+        {
+            const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
+            const double* const drive = bank.drive[c].data();
+            const double f = force[c];
+            for (int k = bounds[part]; k < bounds[part + 1]; ++k)
+                x[k] += drive[k] * f;
+        }
+    for (int group = 0; group < bank.count; group += lanes)
+        for (int lane = 0; lane < lanes; ++lane)
         {
             const auto k = static_cast<std::size_t>(group + lane);
-            const double x = (0.0 + ... + (bank.drive[C][k] * force[C]));
-            const double y = x + bank.s1[k];
+            const double y = x[k] + bank.s1[k];
             const double s1 = bank.s2[k] - bank.a1[k] * y;
-            bank.s2[k] = -x - bank.a2[k] * y;
+            bank.s2[k] = -x[k] - bank.a2[k] * y;
             bank.s1[k] = s1;
             left[lane] += bank.left[k] * y;
             right[lane] += bank.right[k] * y;
-            ((past[C][lane] += bank.pull[C][k] * s1), ...);
+        }
+    for (std::size_t part = 0; part < 3; ++part)
+        for (int n = 0; n < bank.coordinateCount[part]; ++n)
+        {
+            const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
+            const double* const pull = bank.pull[c].data();
+            const double* const s1 = bank.s1.data();
+            double (&sum)[lanes] = past[c];
+            for (int group = bounds[part]; group < bounds[part + 1]; group += lanes)
+                for (int lane = 0; lane < lanes; ++lane)
+                    sum[lane] += pull[group + lane] * s1[group + lane];
         }
 }
 
@@ -2137,6 +2165,17 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         bank.count = (bank.count + ModeBank::lanes - 1) / ModeBank::lanes * ModeBank::lanes;
         (part == 0 ? bank.evenEnd : bank.oddEnd) = bank.count;
     }
+    for (std::size_t c = 0; c < barCoordinates; ++c)
+    {
+        bool met = false;
+        for (int index = 0; index < s.modeCount; ++index)
+            met = met || s.modes[static_cast<std::size_t>(index)].participation[c] != 0.0;
+        if (!met)
+            continue;
+        for (std::size_t part = 0; part < 3; ++part)
+            if (part == 2 || evenCoordinate(c) == (part == 0))
+                bank.coordinates[part][static_cast<std::size_t>(bank.coordinateCount[part]++)] = c;
+    }
     BarMatrix zg {};
     for (int index = 0; index < stringCount_; ++index)
     {
@@ -2968,10 +3007,7 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
 
         constexpr int lanes = ModeBank::lanes;
         double laneLeft[lanes] {}, laneRight[lanes] {}, lanePast[barCoordinates][lanes] {};
-        runModes(bank, 0, bank.evenEnd, plateForce, laneLeft, laneRight, lanePast, EvenCoordinates {});
-        runModes(bank, bank.evenEnd, bank.oddEnd, plateForce, laneLeft, laneRight, lanePast, OddCoordinates {});
-        runModes(bank, bank.oddEnd, bank.count, plateForce, laneLeft, laneRight, lanePast,
-                 std::make_index_sequence<barCoordinates> {});
+        runModes(bank, plateForce, laneLeft, laneRight, lanePast);
         double radiatedLeft = 0.0, radiatedRight = 0.0;
         s.modalPast = {};
         for (int lane = 0; lane < lanes; ++lane)

@@ -3,6 +3,48 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-29: the finger plucks near the middle of the string
+
+**What was decided.** The default pluck point (the POSITION control) was a
+quarter of the way from the bridge (0.22 on the gut lyre), taken from one
+CC0 lyre harp A4 (Freesound 722897) that lacks its 4th and 8th partials.
+Two other measurements put players further along: nine concert harpists
+pluck at 0.33 to 0.385 of the string (Chadefaux et al., JASA 131 (2012)
+844, Fig. 7), and the player of the lyre harp phrase the model is checked
+against (Freesound 649925) plucks four of its eight notes at 0.46 to 0.50.
+The pluck point is now 0.47 on all three instruments, the phrase's player's;
+the touch is re-evened on both pickups and the gains re-levelled to -9 VU.
+
+**What the measurements say** (eight seeds, both microphones summed):
+
+| | quarter (0.25) | 0.47 |
+| --- | --- | --- |
+| phrase's long-term spectrum, 200 Hz-10 kHz, rms from the recording's shape | 7.2 dB (6.8-7.5) | 5.3 dB (5.2-5.5) |
+| its 630 Hz band (the D4's and E4's second partials), over the recording's | 22 dB | 10 dB |
+| 1.25-5 kHz against the recording | 0.8 dB short | 3.9 dB short |
+| partials 2-10 on the phrase's five cleanest notes, mean from the recording's | 10.9 dB | 8.7 dB |
+| 10-16 kHz at 1x from 4x, steel / nylon / gut | -1.85 / -1.49 / -1.02 dB | -2.25 / -1.42 / -0.60 dB |
+
+At 0.47 the even partials a quarter kept, and the recorded player's plucks
+leave out, come down: the shape matches better on every seed, and the
+partials on the cleanest notes. The quarter's closer 1.25-5 kHz level had
+come from those partials, so 0.47 leaves the rest of the model 3.9 dB short
+there, the shortfall Known gaps puts in the assumed body, the microphones
+or the recording. Before the bar's bends were matched in z (same day), 0.47
+left the steel lyre harp's 10-16 kHz 4.9 dB under 4x at 1x, past the 2.5 dB
+the engine tests allow; it now passes every test unchanged.
+
+**Not yet by ear.** Three readings were defensible (question 9 on the
+listening page: A the quarter, B 0.35, C 0.47). C went to main under the
+owner's standing instruction to accept candidates, as the recommended
+option once it passed the tests; the owner's pick is still open, and
+choosing A or B replaces it. The gut lyre has no recording of its own
+pluck point: it is assumed to be played as the lyre harps are.
+
+**What it licenses.** A mid-string default for the finger. It does not
+license moving the Rack device's nail and plectrum patches, which keep
+their own points, or treating 0.47 as measured on a gut lyre.
+
 ## 2026-10-28: the finger plucks at a point
 
 **What was decided.** The finger's pluck had been rounded by a Gaussian 5 mm

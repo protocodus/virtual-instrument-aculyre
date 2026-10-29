@@ -75,27 +75,27 @@ constexpr double inch = 0.0254;
 // pickup and reports the touch each would need after a change to the strings
 // or the body.
 constexpr std::array<StringSpec, maxStrings> lyreHarpSteel {{
-    { 55, 0.440, 0.024 * inch, 0.89, 0.63, 0.00010857 * 17.857967, 0.38e-3 }, { 57, 0.425, 0.020 * inch, 0.44, 0.73 },
-    { 59, 0.411, 0.019 * inch, 0.41, 0.63 }, { 60, 0.396, 0.018 * inch, 0.45, 0.60 },
-    { 62, 0.381, 0.017 * inch, 0.57, 0.52 }, { 64, 0.367, 0.016 * inch, 0.54, 0.47 },
-    { 65, 0.352, 0.015 * inch, 0.50, 0.48 }, { 67, 0.337, 0.014 * inch, 0.35, 0.45 },
-    { 69, 0.323, 0.014 * inch, 0.22, 0.47 }, { 71, 0.308, 0.013 * inch, 0.26, 0.63 },
-    { 72, 0.293, 0.012 * inch, 0.34, 1.00 }, { 74, 0.279, 0.012 * inch, 0.49, 0.72 },
-    { 76, 0.264, 0.011 * inch, 0.47, 0.57 }, { 77, 0.249, 0.011 * inch, 0.53, 0.57 },
-    { 79, 0.235, 0.010 * inch, 1.00, 0.53 }, { 81, 0.220, 0.010 * inch, 0.52, 0.59 }
+    { 55, 0.440, 0.024 * inch, 0.61, 0.81, 0.00010857 * 17.857967, 0.38e-3 }, { 57, 0.425, 0.020 * inch, 0.28, 0.91 },
+    { 59, 0.411, 0.019 * inch, 0.41, 0.75 }, { 60, 0.396, 0.018 * inch, 0.43, 0.73 },
+    { 62, 0.381, 0.017 * inch, 0.39, 0.67 }, { 64, 0.367, 0.016 * inch, 0.31, 0.60 },
+    { 65, 0.352, 0.015 * inch, 0.27, 0.59 }, { 67, 0.337, 0.014 * inch, 0.18, 0.54 },
+    { 69, 0.323, 0.014 * inch, 0.11, 0.47 }, { 71, 0.308, 0.013 * inch, 0.15, 0.87 },
+    { 72, 0.293, 0.012 * inch, 0.20, 1.00 }, { 74, 0.279, 0.012 * inch, 0.29, 0.87 },
+    { 76, 0.264, 0.011 * inch, 0.32, 0.70 }, { 77, 0.249, 0.011 * inch, 0.39, 0.71 },
+    { 79, 0.235, 0.010 * inch, 1.00, 0.70 }, { 81, 0.220, 0.010 * inch, 0.41, 0.85 }
 }};
 
 // The same frame strung with nylon at 45 N in the bass falling to 30 N in
 // the treble (diameters from T = mu (2 L f)^2 at those tensions).
 constexpr std::array<StringSpec, maxStrings> lyreHarpNylon {{
-    { 55, 0.440, 1.30e-3, 0.89, 0.79 }, { 57, 0.425, 1.18e-3, 0.37, 0.86 },
-    { 59, 0.411, 1.08e-3, 0.37, 0.82 }, { 60, 0.396, 1.05e-3, 0.45, 0.78 },
-    { 62, 0.381, 0.96e-3, 0.57, 0.70 }, { 64, 0.367, 0.87e-3, 0.54, 0.64 },
-    { 65, 0.352, 0.85e-3, 0.50, 0.63 }, { 67, 0.337, 0.78e-3, 0.32, 0.55 },
-    { 69, 0.323, 0.72e-3, 0.15, 0.49 }, { 71, 0.308, 0.66e-3, 0.20, 0.76 },
-    { 72, 0.293, 0.64e-3, 0.28, 1.00 }, { 74, 0.279, 0.60e-3, 0.46, 0.93 },
-    { 76, 0.264, 0.55e-3, 0.52, 0.83 }, { 77, 0.249, 0.54e-3, 0.54, 0.75 },
-    { 79, 0.235, 0.51e-3, 1.00, 0.70 }, { 81, 0.220, 0.47e-3, 0.46, 0.70 }
+    { 55, 0.440, 1.30e-3, 0.55, 0.91 }, { 57, 0.425, 1.18e-3, 0.26, 1.00 },
+    { 59, 0.411, 1.08e-3, 0.39, 0.86 }, { 60, 0.396, 1.05e-3, 0.43, 0.84 },
+    { 62, 0.381, 0.96e-3, 0.38, 0.77 }, { 64, 0.367, 0.87e-3, 0.29, 0.69 },
+    { 65, 0.352, 0.85e-3, 0.26, 0.67 }, { 67, 0.337, 0.78e-3, 0.16, 0.52 },
+    { 69, 0.323, 0.72e-3, 0.08, 0.38 }, { 71, 0.308, 0.66e-3, 0.11, 0.66 },
+    { 72, 0.293, 0.64e-3, 0.17, 0.89 }, { 74, 0.279, 0.60e-3, 0.27, 0.92 },
+    { 76, 0.264, 0.55e-3, 0.33, 0.92 }, { 77, 0.249, 0.54e-3, 0.38, 0.87 },
+    { 79, 0.235, 0.51e-3, 1.00, 0.85 }, { 81, 0.220, 0.47e-3, 0.34, 0.86 }
 }};
 
 // The lyre harp's soundbox: a 20 x 30 cm top of 3 mm spruce on a box 5 cm
@@ -116,8 +116,8 @@ constexpr BodySpec lyreHarpBody {
 // 4 mm top, no soundhole and a 4 g maple bridge. Dimensions are typical of
 // reconstructions, not measured.
 constexpr std::array<StringSpec, maxStrings> gutLyreStrings {{
-    { 50, 0.50, 1.29e-3, 0.73, 0.98 }, { 52, 0.50, 1.15e-3, 0.24, 1.00 }, { 55, 0.50, 0.96e-3, 0.69, 0.99 },
-    { 57, 0.50, 0.86e-3, 1.00, 0.94 }, { 59, 0.50, 0.76e-3, 0.34, 1.00 }, { 62, 0.50, 0.64e-3, 0.49, 1.00 }
+    { 50, 0.50, 1.29e-3, 1.00, 0.98 }, { 52, 0.50, 1.15e-3, 0.36, 1.00 }, { 55, 0.50, 0.96e-3, 0.79, 0.99 },
+    { 57, 0.50, 0.86e-3, 0.98, 0.94 }, { 59, 0.50, 0.76e-3, 0.82, 1.00 }, { 62, 0.50, 0.64e-3, 0.55, 1.00 }
 }};
 constexpr BodySpec gutLyreBody {
     0.36, 0.18, 0.004, hardMaple,
@@ -126,25 +126,35 @@ constexpr BodySpec gutLyreBody {
 };
 } // namespace detail
 
-// pluckPosition: the CC0 lyre harp reference (Freesound 722897, A4) lacks its
-// 4th and 8th harmonics, a pluck a quarter of the way from the bridge; the
-// gut lyre's is assumed. outputGain and piezoGain are the free gains, not
-// loudness claims: outputGain puts the preset's typical playing at a median
-// of -9 on Reason's VU meter at its own controls, and piezoGain puts the
-// piezo alone within 1 dB of that (AculyreEngineTests, README Level).
+// pluckPosition: near the middle of the string, where the player of the lyre
+// harp phrase (Freesound 649925, CC BY) plucks half its notes. Fitted to each
+// note's first ten partials, its eight plucks fall at 0.13-0.50 of the length
+// from the bridge, four of them at 0.46-0.50. At 0.47 the model's partials
+// 2-10 sit 8.7 dB from the phrase's on its five cleanest notes, where a
+// quarter leaves 10.9. The phrase's long-term spectrum sits 5.3 dB rms from
+// the recording's shape over the third-octaves from 200 Hz to 10 kHz, where a
+// quarter leaves 7.2, most of it the D4's and E4's second partials, 22 dB
+// over the recording's at a quarter (10 at 0.47); it is 3.9 dB darker from
+// 1.25 to 5 kHz, where a quarter is 0.8 (eight seeds, both microphones
+// summed). The CC0 A4 (Freesound 722897) was plucked at a quarter, which
+// POSITION still reaches. The nylon harp and the gut lyre are assumed to be
+// played alike. outputGain and piezoGain are the free gains, not loudness
+// claims: outputGain puts the preset's typical playing at a median of -9 on
+// Reason's VU meter at its own controls, and piezoGain puts the piezo alone
+// within 1 dB of that (AculyreEngineTests, README Level).
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 16, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.25, 0.25, 2.0, 0.35, 1.306, 0.525
+    Technique::Finger, 0.47, 0.25, 2.0, 0.35, 1.845, 0.368
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {
     "Nylon Lyre Harp", nylonMonofilament, 16, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.25, 0.25, 2.0, 0.35, 1.598, 0.475
+    Technique::Finger, 0.47, 0.25, 2.0, 0.35, 2.320, 0.361
 };
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 6, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.22, 0.3, 2.5, 0.35, 2.415, 0.265
+    Technique::Finger, 0.47, 0.3, 2.5, 0.35, 2.360, 0.211
 };
 
 inline constexpr std::array<const InstrumentSpec*, 3> presets {{

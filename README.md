@@ -22,6 +22,18 @@ reference recording below.
 
 ## Version history
 
+- **0.6.2** (prototype, not released): velocity moves the tone as well as
+  the level, and each pluck sounds a little different. A softer pluck
+  slips further along the finger before it lets go, from the lab
+  fingertip's 0.04 mm at the hardest towards 0.2 mm, the shortest slip of
+  harpists playing music, so medium plucks are softer in their attack and
+  the hardest keep their snap: from velocity 64 to 127 a steel E4's 6th and
+  10th partials gain 6 dB against the fundamental, where they gained 2.5.
+  Each pluck's slip follows its own drawn force and scatters twice as widely
+  as before, so a note played again changes brightness by 1.9 dB from pluck
+  to pluck, where a sampled lyre harp's takes change by 1.0. Velocity's
+  loudness holds within 0.3 dB from velocity 64 up; softer plucks read up
+  to 2.3 dB quieter, as a slower release leaves less of the fundamental.
 - **0.6.1** (prototype, not released): the techniques sound apart. A nail
   or a plectrum lets go of the string at once, and a plectrum meets it at
   0.40 of the finger's distance from the bridge, as Acustra's fitted
@@ -171,14 +183,21 @@ string slips 0.04 mm along the fingertip and leaves at about 1.5 m/s
 0.053 ms. A harder pluck slips off faster: the release velocity rises with
 the string's displacement, about as its 1.2th power, from 0.2 m/s at
 0.5 mm to 5 m/s at 7 mm (Chadefaux et al. 2012), so the release time runs
-as the velocity to the -1.68 about the middle of its range. The wave that
+as the velocity to the -1.68 about the middle of its range. A softer pluck
+also slips further, from the lab's 0.04 mm at the hardest to 0.2 mm, the
+shortest of ten harpists' slips in chords and arpeggios (the same paper,
+Table V), geometrically with velocity: an authored law between two measured
+slips, at the owner's request that the tone follow velocity more. The wave that
 reaches the bridge over the first round trip is loaded as one full period of
 the loop (cell-averaged slopes, so the release is band-limited). The soundbox starts deflected under the held
 force, so only the release reaches it and the top springs back. Plucks
 scatter as harpists' do (Chadefaux et al.): the pluck point by 0.012 of the
 length on a short string to 0.022 on a long one, the force by 14%, the
-angle the string leaves at by 4 degrees and the release time, so the
-brightness, by 20%, each a normal spread about the control. A finger meeting a sounding string
+angle the string leaves at by 4 degrees, each a normal spread about the
+control. The release follows each pluck's own displacement through the
+1.2th-power law, and scatters by 40% on its own besides, twice what the
+harpist's spread leaves once the displacement is taken out (25% against
+14%), at the owner's request that each pluck sound different. A finger meeting a sounding string
 stops it first, as a harpist's finger holds the string 56 to 431 ms before
 letting go (Chadefaux et al., Table II); a plectrum glances off and stops most
 of it. A finger's contact silences a string in about 10 ms (Laurson et al.,
@@ -482,7 +501,8 @@ nothing until the next pluck.
   is one harpist's plucks near the fingertip in their lab, while ten
   harpists playing chords and arpeggios slipped 0.2 to 1.5 mm, mostly 0.5
   to 1.2 (their Table V), which as a release time would leave the strings
-  far darker than any recording.
+  far darker than any recording. How the slip lengthens with a softer
+  pluck, and the slip's 40% scatter, are authored, not measured.
 - Replaying the lyre harp phrase (Freesound 649925) with each note at the
   pluck point fitted to it, the steel lyre harp falls 3.6 dB short of the
   recording from 1.25 to 5 kHz and 4.6 dB from 6 to 10 kHz, where a

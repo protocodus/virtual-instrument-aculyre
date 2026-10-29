@@ -4,6 +4,8 @@
     build/RenderAculyreNotes 0 <renders> --rate 44100 --flatten 57,59,62,69,71,74,81
     python3 Tools/compare_lyre_harp_samples.py <Samples> <renders>
     python3 Tools/compare_lyre_harp_samples.py <Samples> --positions
+    build/RenderAculyreNotes 0 <renders> --rate 44100 --flatten 57,59,62,69,71,74,81 --takes 3
+    python3 Tools/compare_lyre_harp_samples.py <Samples> <renders> --takes
 
 <Samples> is the Samples folder of DeadRobot's free DR Plucked Lyre Harp v1
 (Decent Sampler; deadrobotmusic.com): "Lyre <note> RR<1-3>.wav", 16 strings
@@ -36,6 +38,20 @@ Protocol, the same on the recording and on the model:
 
 Microphones, room and pluck force are unknown, so levels and spectra compare
 shapes; partial frequencies and decay rates do not depend on them.
+
+--takes compares each note's three plucks with each other instead, on the
+recording and on renders of <note>-1..3.wav, so the capture, the same for
+every take of a note, drops out (the protocol of Aculele's
+compare_sample_packs.py --takes). Over 30-330 ms after the onset each take
+gives its level (RMS), its brightness (power above 2.5 kHz against all of
+it) and partials 1-12 at the frequencies the note's long span found, each
+dropped 50 dB under the note's strongest. Printed: the level and brightness
+SDs within a note, the median over notes, and their correlation over every
+take's departure from its note's mean; each take's partials against its
+note's mean, fitted with a + b log2(n): the SD of the tilt b over every take
+(a sharper or duller release), and the median RMS of what the line leaves,
+the comb scatter (a pluck point that moves). The same over 0-30 ms gives the
+attack's own scatter.
 """
 
 import argparse
@@ -184,11 +200,51 @@ def attack(m):
     return out
 
 
+def take(m, t0, t1):
+    x, rate, start = m["signal"], m["rate"], m["start"]
+    s = x[start + int(t0 * rate):start + int(t1 * rate)]
+    w = np.hanning(len(s))
+    y = np.abs(np.fft.rfft(s * w, 1 << 18)) * 2 / w.sum()
+    f = np.fft.rfftfreq(1 << 18, 1 / rate)
+    reach = max(2, int(0.25 * m["f0"] / (rate / (1 << 18))))
+    partials = np.full(12, np.nan)
+    for n, fn in m["freqs"].items():
+        if n <= 12:
+            k = int(fn / (rate / (1 << 18)))
+            partials[n - 1] = db(y[k - reach:k + reach].max())
+    power = y ** 2
+    return dict(level=10 * np.log10(np.mean(s ** 2)),
+                brightness=10 * np.log10(power[f > 2500].sum() / power.sum()), partials=partials)
+
+
+def report_takes(label, notes, t0, t1):
+    spreads, departures, tilts, scatter = [], [], [], []
+    order = np.log2(np.arange(1, 13))
+    for ms in notes:
+        takes = [take(m, t0, t1) for m in ms]
+        spreads.append([np.std([t[k] for t in takes], ddof=1) for k in ("level", "brightness")])
+        pairs = np.array([[t["level"], t["brightness"]] for t in takes])
+        departures.extend(pairs - pairs.mean(axis=0))
+        levels = np.array([t["partials"] for t in takes])
+        levels[levels < np.nanmax(levels) - 50] = np.nan
+        for deviation in levels - np.nanmean(levels, axis=0):
+            use = np.isfinite(deviation)
+            if use.sum() >= 6:
+                slope, offset = np.polyfit(order[use], deviation[use], 1)
+                tilts.append(slope)
+                scatter.append(np.sqrt(np.mean((deviation[use] - offset - slope * order[use]) ** 2)))
+    level, brightness = np.median(spreads, axis=0)
+    together = np.corrcoef(np.array(departures).T)[0, 1]
+    print(f"{label:10s} {t0 * 1000:3.0f}-{t1 * 1000:3.0f} ms | {level:8.2f} {brightness:9.2f} {together:+9.2f}"
+          f" | {np.std(tilts):7.2f} {np.median(scatter):12.2f}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("samples")
     parser.add_argument("renders", nargs="?")
     parser.add_argument("--positions", action="store_true", help="print the recording's pluck points and stop")
+    parser.add_argument("--takes", action="store_true", help="compare each note's takes with each other")
     args = parser.parse_args()
 
     rec = {n: [measure(os.path.join(args.samples, f"Lyre {n} RR{k}.wav"), n) for k in (1, 2, 3)] for n in NOTES}
@@ -198,6 +254,13 @@ def main():
         return 0
     if not args.renders:
         parser.error("renders is required unless --positions")
+    if args.takes:
+        mods = [[measure(os.path.join(args.renders, f"{midi(n)}-{k}.wav"), n) for k in (1, 2, 3)] for n in NOTES]
+        print("           window     | level SD bright SD  together | tilt SD comb scatter (dB)")
+        for t0, t1 in ((0.03, 0.33), (0.0, 0.03)):
+            report_takes("recording", [rec[n] for n in NOTES], t0, t1)
+            report_takes("model", mods, t0, t1)
+        return 0
     mod = {n: measure(os.path.join(args.renders, f"{midi(n)}.wav"), n) for n in NOTES}
 
     def median(values):

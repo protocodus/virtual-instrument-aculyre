@@ -2588,7 +2588,8 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // piezo, or between the two as the blend sets.
     const StringSpec& string = instrument.strings[static_cast<std::size_t>(index)];
     const double touch = std::pow(string.touch, 1.0 - controls.piezo) * std::pow(string.piezoTouch, controls.piezo);
-    const double force = instrument.pluckForce * touch * std::pow(v, 1.4) * std::exp(0.14 * s.random.gaussian());
+    const double forceDraw = s.random.gaussian();
+    const double force = instrument.pluckForce * touch * std::pow(v, 1.4) * std::exp(0.14 * forceDraw);
     const double angle = std::asin(std::sqrt(std::clamp(controls.normalShare, 0.0, 1.0)))
                        + 4.0 * pi / 180.0 * s.random.gaussian();
     const double normalShare = std::clamp(std::sin(angle) * std::sin(angle), 0.01, 0.9);
@@ -2619,12 +2620,27 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // displacement follows the force, v^1.4 here: the release time goes as
     // v^-1.68 about v = 0.5, within the 0.2-5 m/s the harpists reached.
     // Chosen by ear over a gentler authored law (Docs/decisions.md,
-    // 2026-10-28). The slip's speed also scatters more than the displacement
-    // does: one harpist's release velocity by about 25%, the displacement by
-    // 14% (Fig. 8), so the release time takes the rest, about 20%, and each
-    // pluck's brightness with it.
-    release *= std::clamp(std::pow(v / 0.5, -1.4 * 1.2), 0.4, 10.0)
-             * std::exp(0.2 * s.random.gaussian());
+    // 2026-10-28).
+    // A softer pluck also slips further along the finger, so the tone
+    // follows velocity at the top of its range too, where the law above has
+    // reached the harpists' fastest release (owner request, 2026-10-29). The
+    // slip runs from 0.2 mm at the softest, the shortest of ten harpists'
+    // in chords and arpeggios (Chadefaux, Le Carrou and Fabre, JASA 133
+    // (2013) 2444, Table V: 0.2 to 1.5 mm), to the lab's 0.04 mm at the
+    // hardest, geometrically with velocity: authored, between two measured
+    // slips. From velocity 64 to 127 a steel E4's 6th and 10th partials now
+    // gain 6 dB against the fundamental, where they gained 2.5, and at 90 it
+    // lets go in 0.05 ms instead of 0.03 (medians). Velocity 127 is unchanged.
+    // Each pluck's slip follows its own displacement, the force's 14% draw
+    // through the D^1.2 law, as one harpist's release velocity scattered by
+    // 25% and the displacement by 14% (Fig. 8). The slip scatters by 40% on
+    // its own besides, twice the 20% that the rest of the harpist's spread
+    // leaves (owner request, 2026-10-29: each pluck sounds different): a
+    // note's takes vary 1.9 dB in brightness over 2.5 kHz, where the DR
+    // lyre harp's three takes vary 1.0 and two sampled ukuleles' 3.6 to 4.0
+    // (Tools/compare_lyre_harp_samples.py --takes; Aculele's benchmark).
+    release *= std::clamp(std::pow(v / 0.5, -1.4 * 1.2) * std::pow(5.0, 1.0 - v), 0.4, 10.0)
+             * std::exp(0.4 * s.random.gaussian() - 1.2 * 0.14 * forceDraw);
     s.lastPluck = { position, force, normalShare, release };
 
     voice.keyDown = true;

@@ -5,12 +5,17 @@
 //   RenderAculyreNotes <preset 0-2> <output-directory>
 //       [--rate hz] [--velocity 0-1] [--seconds s] [--position p]
 //       [--positions note:p,note:p,...] [--flatten note,note,...]
+//       [--piezo 0-1] [--takes n]
 //
 // Each note starts from a reset engine 10 ms into its file, at the preset's
 // own controls with the room off. --flatten tunes the named strings a
 // semitone down, the same strings slackened, as a sample set strung for C
 // major but tuned to another scale has them; --positions sets the pluck
-// point note by note, by the note the string sounds. This is the engine
+// point note by note, by the note the string sounds; --piezo blends in the
+// piezo as PlayingControls::piezo does. --takes plucks each note n times
+// in a row, one file's length apart, so the takes draw their own scatter
+// (<note>-<k>.wav, k from 1); without it every note takes the first draws,
+// from a reset engine. This is the engine
 // alone, without the Performer's output stage or oversampling: what is
 // measured is the strings and the body, not the level guard.
 
@@ -81,13 +86,15 @@ int main(int argc, char** argv)
         if (argc < 3)
         {
             std::cerr << "usage: RenderAculyreNotes <preset 0-2> <output-directory> [--rate hz] [--velocity 0-1] "
-                         "[--seconds s] [--position p] [--positions note:p,...] [--flatten note,...]\n";
+                         "[--seconds s] [--position p] [--positions note:p,...] [--flatten note,...] "
+                         "[--piezo 0-1] [--takes n]\n";
             return 2;
         }
         const int preset = std::clamp(std::atoi(argv[1]), 0, 2);
         const std::string output = argv[2];
         int rate = 48000;
-        double velocity = 0.7, seconds = 8.0, position = -1.0;
+        double velocity = 0.7, seconds = 8.0, position = -1.0, piezo = 0.0;
+        int takes = 0;
         std::map<int, double> positions;
         std::vector<int> flatten;
         for (int i = 3; i < argc; ++i)
@@ -108,6 +115,8 @@ int main(int argc, char** argv)
                         throw std::runtime_error("--positions takes note:position pairs");
                     positions[std::atoi(item.substr(0, colon).c_str())] = std::atof(item.substr(colon + 1).c_str());
                 }
+            else if (option == "--piezo") piezo = std::atof(value.c_str());
+            else if (option == "--takes") takes = std::max(1, std::atoi(value.c_str()));
             else if (option == "--flatten")
                 for (const std::string& item : split(value))
                     flatten.push_back(std::atoi(item.c_str()));
@@ -127,6 +136,7 @@ int main(int argc, char** argv)
         engine->setInstrument(spec);
         aculyre::PlayingControls controls = aculyre::Performer::defaultControls(preset);
         controls.room = 0.0;
+        controls.piezo = piezo;
         if (position > 0.0)
             controls.pluckPosition = position;
 
@@ -140,13 +150,19 @@ int main(int argc, char** argv)
                 own.pluckPosition = found->second;
             engine->reset();
             engine->setControls(own);
-            std::vector<float> left(frames), right(frames);
-            engine->process(left.data(), right.data(), static_cast<int>(start));
-            engine->noteOn(note, static_cast<float>(velocity));
-            for (std::size_t p = start; p < frames; p += 64)
-                engine->process(left.data() + p, right.data() + p, static_cast<int>(std::min<std::size_t>(64, frames - p)));
-            const std::string path = output + "/" + std::to_string(note) + ".wav";
-            writeFloatWav(path, left, right, rate);
+            for (int take = 0; take < std::max(1, takes); ++take)
+            {
+                std::vector<float> left(frames), right(frames);
+                engine->process(left.data(), right.data(), static_cast<int>(start));
+                engine->noteOn(note, static_cast<float>(velocity));
+                for (std::size_t p = start; p < frames; p += 64)
+                    engine->process(left.data() + p, right.data() + p,
+                                    static_cast<int>(std::min<std::size_t>(64, frames - p)));
+                const std::string name = takes ? std::to_string(note) + "-" + std::to_string(take + 1)
+                                               : std::to_string(note);
+                writeFloatWav(output + "/" + name + ".wav", left, right, rate);
+            }
+            const std::string path = output + "/" + std::to_string(note) + (takes ? "-*" : "") + ".wav";
             const auto report = engine->stringReport(index);
             std::printf("%s: f0 %.2f Hz, T %.1f N, B %.2e, pluck at %.3f\n", path.c_str(), report.frequency,
                         report.tension, report.inharmonicity, engine->lastPluck().position);

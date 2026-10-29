@@ -362,7 +362,11 @@ int main()
             controls.sympathy = 0.0;
             controls.pluckPosition = control;
             engine.setControls(controls);
-            engine.noteOn(69, 0.7f);
+            // Velocity 0.85, where the finger lets go in 0.028 ms as it did
+            // at 0.7 before a softer pluck's slip lengthened (2026-10-29):
+            // the 5th harmonic it is held against follows the release, and
+            // at 0.7 it now stands 14.6 dB over the 4th, not 15.5.
+            engine.noteOn(69, 0.85f);
             engine.process(audio.data(), right.data(), 24000);
             return engine.lastPluck().position;
         };
@@ -387,7 +391,10 @@ int main()
     // a 97.5 cm one (Fig. 7), the force by 14% and the release time by 20%
     // (Fig. 8), the angle from the top by 4 degrees (Table VI), each about
     // the control. A finger's release at velocity 0.7 is 0.053 ms x
-    // (0.7 / 0.5)^-1.68.
+    // (0.7 / 0.5)^-1.68 x 5^0.3, the slip lengthening for a softer pluck;
+    // it scatters by 40% on its own and by 1.2 times the force's 14%
+    // through the displacement (owner request, 2026-10-29), so by
+    // sqrt(0.4^2 + 0.168^2) in all.
     for (int note : { 55, 81 })
     {
         aculyre::AculyreEngine engine;
@@ -406,7 +413,8 @@ int main()
             const double deviation[4] = { pluck.position - controls.pluckPosition,
                                           std::log(pluck.force / (aculyre::lyreHarpSteel.pluckForce * string.touch * std::pow(0.7, 1.4))),
                                           std::asin(std::sqrt(pluck.normalShare)) - angle,
-                                          std::log(pluck.release / (0.053e-3 * std::pow(0.7 / 0.5, -1.68))) };
+                                          std::log(pluck.release / (0.053e-3 * std::pow(0.7 / 0.5, -1.68)
+                                                                    * std::pow(5.0, 0.3))) };
             for (int i = 0; i < 4; ++i)
             {
                 sum[i] += deviation[i];
@@ -414,7 +422,7 @@ int main()
             }
         }
         const double spread[4] = { 0.012 + (0.022 - 0.012) * (length - 0.176) / (0.975 - 0.176), 0.14,
-                                   4.0 * 3.14159265358979 / 180.0, 0.2 };
+                                   4.0 * 3.14159265358979 / 180.0, std::hypot(0.4, 1.2 * 0.14) };
         const char* names[4] = { "position", "log force", "angle", "log release" };
         for (int i = 0; i < 4; ++i)
         {
@@ -425,6 +433,39 @@ int main()
             check(std::abs(mean) < 0.1 * spread[i], "plucks scatter about the control");
             check(std::abs(deviation / spread[i] - 1.0) < 0.08, "plucks scatter by the measured spread");
         }
+    }
+
+    // Velocity moves the tone, not only the level (owner feedback,
+    // 2026-10-29): from velocity 64 to 127, with the same draws, the steel
+    // E4's 6th and 10th partials gain 6.3 and 5.9 dB against the
+    // fundamental, where the slip that did not lengthen for softer plucks
+    // left them 2.5 and 2.4.
+    {
+        const auto partials = [] (int velocity)
+        {
+            aculyre::AculyreEngine engine;
+            engine.prepare(48000.0);
+            engine.setInstrument(aculyre::lyreHarpSteel);
+            aculyre::PlayingControls controls = engine.controls();
+            controls.room = 0.0;
+            controls.sympathy = 0.0;
+            engine.setControls(controls);
+            std::vector<float> left(14400), right(14400);
+            engine.noteOn(64, static_cast<float>(velocity) / 127.0f);
+            engine.process(left.data(), right.data(), 14400);
+            const aculyre::AculyreEngine::StringReport report = engine.stringReport(engine.stringForNote(64));
+            const auto level = [&] (int n)
+            {
+                const double f = n * report.frequency * std::sqrt(1.0 + report.inharmonicity * n * n);
+                return 20.0 * std::log10(peakNear(left, 480, 4800, f).magnitude);
+            };
+            const double fundamental = level(1);
+            return std::array<double, 2> { level(6) - fundamental, level(10) - fundamental };
+        };
+        const auto soft = partials(64), hard = partials(127);
+        std::printf("steel E4, velocity 64 to 127: H6 %+.1f dB, H10 %+.1f dB against the fundamental\n",
+                    hard[0] - soft[0], hard[1] - soft[1]);
+        check(hard[0] - soft[0] > 4.0 && hard[1] - soft[1] > 4.0, "a harder pluck is brighter, not only louder");
     }
 
     // The techniques sound apart (owner feedback, 2026-10-29: they did not).

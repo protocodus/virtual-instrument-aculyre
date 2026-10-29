@@ -3,6 +3,55 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-29: velocity and pluck variety (0.6.2), adopted unheard
+
+**What was asked.** Keep velocity's loudness but make the model react to
+it more, and make the initial pluck softer and different on every hit.
+
+**What the measurements said.** From velocity 64 to 127 the steel E4's 6th
+and 10th partials gained only 2.5 dB against the fundamental: the measured
+release law reaches the harpists' fastest slip near velocity 110, and at
+medium strength the fingertip already lets go in 0.03 ms. On the
+microphones the attack is not harder than the DR lyre harp's: over the
+first 10 ms its partials sit 3 to 11 dB further under each note's 0-300 ms
+energy than the recording's. With the Rack's new 50 % piezo the 8-16 kHz
+partials of the first 10 ms stand 1.4 dB over the recording's (piezo
+alone, 4.6). A note's three takes varied about as the DR harp's do: level
+0.73 against 0.99 dB, brightness over 2.5 kHz 0.91 against 1.04, the comb
+the pluck point leaves 3.2 against 1.5 (`compare_lyre_harp_samples.py
+--takes`), so the measurement does not call for more variety; the owner
+did.
+
+**What ships.** Three changes, the last two at the owner's request:
+
+- The release follows each pluck's drawn force through the D^1.2 law. The
+  code's own reasoning (one harpist's release velocity scatters 25%, the
+  displacement 14%) had left that share out.
+- A softer pluck slips further, from the lab's 0.04 mm at velocity 127 to
+  0.2 mm at velocity 0, the shortest of ten harpists' slips in music
+  (Chadefaux, Le Carrou and Fabre 2013, Table V), geometrically with
+  velocity: authored between two measured slips. Velocity 64 to 127 now
+  moves those partials 6.3 and 5.9 dB; velocity 127 is unchanged.
+- The slip's own scatter doubles to 40%: a note's takes now vary 1.9 dB in
+  brightness, between the DR harp's 1.0 and two sampled ukuleles' 3.6 to
+  4.0.
+
+The piezo's attack is left as it is: the strip's resonance was chosen by
+ear (2026-10-28) and the blend is the owner's default. Touch and gains were
+re-evened and re-levelled to -9 VU. Not heard before shipping: it ships
+under the owner's standing rule to take the candidate, with a listening set
+(A 0.6.1, B this, C a softest slip of 0.5 mm, D this with the 20% scatter)
+for the owner to hear: the steel lyre harp at the Rack's defaults (room
+100 %, piezo 50 %), six A4s at velocity 90, a D4 ladder from 30 to 127 and
+an arpeggio, trimmed to A's whole-file RMS by +0.02, +0.07 and +0.02 dB.
+Through the room and the piezo the variety is smaller than on the engine
+alone: the six A4s' first 50 ms vary 0.75 dB in brightness over 2.5 kHz
+in B against 0.63 in A.
+
+**What it licenses.** The lengthening slip and the 40% scatter as shipping
+behaviour until the owner hears the set; neither is measured, and neither
+licenses moving the release outside the harpists' measured slips.
+
 ## 2026-10-29: owner feedback on 0.6.0, adopted unheard
 
 **What was asked.** The owner heard the Rack build and reported that the

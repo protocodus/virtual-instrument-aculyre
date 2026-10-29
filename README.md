@@ -430,13 +430,19 @@ nothing until the next pluck.
   to 1.2 (their Table V), which as a release time would leave the strings
   far darker than any recording.
 - Replaying the lyre harp phrase (Freesound 649925) with each note at the
-  pluck point fitted to it, the steel lyre harp falls about 3 dB short of
-  the recording from 1.25 to 5 kHz and 4 dB from 6 to 10 kHz, where a
-  quarter-length pluck leaves 1 dB and the shipping 0.47 about 4. An
-  instant release would still leave
-  2.3 dB from 1.25 to 5 kHz, so most of the rest lies in the assumed body,
-  the microphones or the recording, which one unmeasured recording cannot
-  separate.
+  pluck point fitted to it, the steel lyre harp falls 3.6 dB short of the
+  recording from 1.25 to 5 kHz and 4.6 dB from 6 to 10 kHz, where a
+  quarter-length pluck leaves 1 dB and the shipping 0.47 about 4. That
+  long-term spectrum also weighs each note's loudness, which the recording
+  does not give (every note is replayed at velocity 0.7). Note by note,
+  each partial's level under its fundamental, on the phrase's five cleanest
+  notes, matches the recording's to 4 kHz (band medians within 3.4 dB,
+  either way) and falls short above it: 7 to 9 dB from 4 to 6 kHz and 15 to
+  21 dB from 6 to 9 kHz, alike from 45 to 300 ms after the pluck, so the
+  strings lose their treble no faster than the recording's. A nail raises
+  it about 1 dB, and an instant release would still leave 2.3 dB from 1.25
+  to 5 kHz, so the rest lies in the assumed body, the microphones or the
+  recording, which one unmeasured recording cannot separate.
 - The top's mode frequencies are a clamped plate's (Warburton), but its
   mode shapes and the volumes they move are a simply supported plate's.
   Clamped beam shapes were tried and left the dead notes deader without

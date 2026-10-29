@@ -126,17 +126,22 @@ constexpr BodySpec gutLyreBody {
 };
 } // namespace detail
 
-// pluckPosition: near the middle of the string, where the player of the
-// lyre harp phrase (Freesound 649925, CC BY) plucks half its notes. Fitted
-// to each note's first ten partials, its eight plucks fall at 0.13-0.50 of
-// the length from the bridge, four of them at 0.46-0.50; at 0.47 the
-// model's partials sit 8.8 dB from the phrase's on its five cleanest notes,
-// where a quarter left 11.8. The CC0 A4 (Freesound 722897) was plucked at a
-// quarter, which POSITION still reaches. The nylon harp and the gut lyre are
-// assumed to be played alike. outputGain and piezoGain are the free gains, not
-// loudness claims: outputGain puts the preset's typical playing at a median
-// of -9 on Reason's VU meter at its own controls, and piezoGain puts the
-// piezo alone within 1 dB of that (AculyreEngineTests, README Level).
+// pluckPosition: near the middle of the string, where the player of the lyre
+// harp phrase (Freesound 649925, CC BY) plucks half its notes. Fitted to each
+// note's first ten partials, its eight plucks fall at 0.13-0.50 of the length
+// from the bridge, four of them at 0.46-0.50. At 0.47 the model's partials
+// 2-10 sit 8.7 dB from the phrase's on its five cleanest notes, where a
+// quarter leaves 10.9. The phrase's long-term spectrum sits 5.3 dB rms from
+// the recording's shape over the third-octaves from 200 Hz to 10 kHz, where a
+// quarter leaves 7.2, most of it the D4's and E4's second partials, 22 dB
+// over the recording's at a quarter (10 at 0.47); it is 3.9 dB darker from
+// 1.25 to 5 kHz, where a quarter is 0.8 (eight seeds, both microphones
+// summed). The CC0 A4 (Freesound 722897) was plucked at a quarter, which
+// POSITION still reaches. The nylon harp and the gut lyre are assumed to be
+// played alike. outputGain and piezoGain are the free gains, not loudness
+// claims: outputGain puts the preset's typical playing at a median of -9 on
+// Reason's VU meter at its own controls, and piezoGain puts the piezo alone
+// within 1 dB of that (AculyreEngineTests, README Level).
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 16, detail::lyreHarpSteel, detail::lyreHarpBody,
     Technique::Finger, 0.47, 0.25, 2.0, 0.35, 1.845, 0.368

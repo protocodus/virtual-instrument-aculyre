@@ -2160,15 +2160,19 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     // m/3 (its top as it tips about its foot). Bilinear, Z = m 2 fs. Each
     // bend is a mass m on its spring, k = m w^2, with the wood's loss
     // (woodQ). Its poles stay the bilinear mass's and spring's, at Nyquist
-    // and DC, and its zeros, the bend's resonance, are matched (z = e^sT):
-    // Z = 2 m fs (1 - 2 rho cos(phi) z^-1 + rho^2 z^-2) / (1 - z^-2). Its
-    // resistance m fs (1 - rho^2) is the wood's m w / Q to first order at
-    // every frequency, so it stays passive, and it resonates where the beam
-    // does at every rate. At 48 kHz each bend so keeps nearer the beam's
-    // impedance from 0.5 to 16 kHz than a bilinear one prewarped to its
-    // frequency (1.0 to 6.0 dB rms off it, against 1.1 to 8.7), though the
-    // highest now err soft: the lyre harps' 19.6 kHz bend by 3.7 to 6.3 dB,
-    // where the bilinear one stood 8.4 to 10.7 dB too stiff.
+    // and DC, and its zeros, the bend's resonance, are matched (z = e^sT).
+    // Its gain g holds the spring's stiffness k / s at DC, which is what a
+    // bend shows the strings below its resonance:
+    // Z = 2 g m fs (1 - 2 rho cos(phi) z^-1 + rho^2 z^-2) / (1 - z^-2),
+    // g = (w T)^2 / (1 - 2 rho cos(phi) + rho^2), which goes to 1 as w T
+    // does. Its resistance g m fs (1 - rho^2) is g times the wood's m w / Q
+    // to first order at every frequency, so it stays passive, keeps the
+    // wood's Q and resonates where the beam does at every rate. At 48 kHz
+    // each bend so keeps within 0.6 to 1.1 dB rms of the beam's impedance
+    // from 0.5 to 16 kHz. With g = 1, the bilinear mass's gain, the highest
+    // erred soft below their resonance, the lyre harps' 14.7 and 19.6 kHz
+    // bends by 3.4 and 6.0 dB rms, and a bilinear bend prewarped to its
+    // frequency stood up to 8.7 dB rms too stiff.
     s.massImpedance = {};
     s.bendTap1 = {};
     s.bendTap2 = {};
@@ -2181,7 +2185,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         const double q = woodQ(s.bendFrequency[static_cast<std::size_t>(bend)]);
         const double rho = std::exp(-omega / (2.0 * q * fs));
         const double phase = omega / fs * std::sqrt(1.0 - 1.0 / (4.0 * q * q));
-        s.massImpedance[c] = 2.0 * body.bridgeMass * fs;
+        const double stiffnessGain = omega * omega / (fs * fs) / (1.0 - 2.0 * rho * std::cos(phase) + rho * rho);
+        s.massImpedance[c] = 2.0 * stiffnessGain * body.bridgeMass * fs;
         s.bendTap1[c] = -2.0 * rho * std::cos(phase) * s.massImpedance[c];
         s.bendTap2[c] = rho * rho * s.massImpedance[c];
     }

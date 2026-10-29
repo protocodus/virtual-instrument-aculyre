@@ -44,7 +44,7 @@ reference recording below.
   and the treble strings' to 12 kHz at 1x, held bends included, where they
   had run up to 49 cents sharp and only 4x had kept them in tune.
   At 1x the top octave keeps more of its air: from 10 to 16 kHz each
-  instrument sits 1.7 to 2.0 dB below its 4x sound, where it fell 3.1 to
+  instrument sits 1.0 to 1.9 dB below its 4x sound, where it fell 3.1 to
   3.6 dB below. The soundbox radiates its upper modes by a published plate
   formula instead of an authored curve: up to 3 dB more air around 6 kHz
   (5 kHz on the gut lyre), where the old curve dipped before a step, and
@@ -176,9 +176,9 @@ way, and the touch blends geometrically between the two as PIEZO does.
 
 **Bridge and body.** All strings end on one bar: heave and rock carry the
 strings' motion normal to the top, sway the motion parallel to it, through
-the bar's height, and the bar bends as a free maple beam (from 790 Hz to
-19.6 kHz in seven bends on the lyre harps' 24 cm bar, 6.8 and 18.6 kHz on
-the gut lyre's 9 cm one). On a top this light the top under the bar bends
+the bar's height (a stand-in path, see Known gaps), and the bar bends as
+a free maple beam (from 790 Hz to 19.6 kHz in seven bends on the lyre
+harps' 24 cm bar, 6.8 and 18.6 kHz on the gut lyre's 9 cm one). On a top this light the top under the bar bends
 with it, so each string drives the modes beneath its own place instead of
 an average along the bar. The bar stands on a modal
 soundbox: an orthotropic plate (Warburton's clamped-plate frequencies,
@@ -252,11 +252,11 @@ Replaying a lyre harp phrase note for note (Freesound 649925, CC BY), the
 model's 1/3-octave long-term spectrum fell short of the recording's by
 7.6 dB on average from 1.25 to 5 kHz in 0.3.0 (10.0 dB in 0.2.0), and by
 8.0 dB over eight seeds of 0.4.0's scattered plucks (7.1-8.9). In 0.6.0 it
-falls 1.0 dB short over the same seeds (0.6 to 1.5 short), both
+falls 1.0 dB short over the same seeds (0.3 to 1.7 short), both
 microphones summed. The wound G3 cost 0.4 dB of that when it came in: the
 plain string, ringing in sympathy, had filled the 1.25 kHz band 2.3 dB
-more. Band by band it still runs from 8 dB under at 5 kHz to 5 dB over at
-2 kHz, and 0.5 to 1.4 dB under from 6.3 to 10 kHz. Over a CC0
+more. Band by band it still runs from 8 dB under at 5 kHz to 6 dB over at
+4 kHz, and within 1.2 dB from 6.3 to 10 kHz. Over a CC0
 Iron Age lyre recording (Freesound 191883, another instrument and tuning),
 0.3.0's gut lyre decayed at a similar rate (median 18-22 against 18 dB/s
 over 80-550 ms) and was a little darker (centroid 448-496 Hz against
@@ -333,7 +333,16 @@ nothing until the next pluck.
   11 (10 with 0.5.0's rigid bar). Other draws of the top's irregularities
   leave it falling 17 to 30 dB, a 2.2 cm bar moves the dead note to A4, and
   a 1.5 cm bar or a less damped one leaves it as it is, so it stays until
-  a lyre harp is measured.
+  a lyre harp is measured. Published small soundboxes only bound it. A
+  12-string kokle on a 3 mm spruce top (G3 to D5) rings at Q 18 to 29 from
+  290 to 700 Hz (Peekna and Rossing, Forum Acusticum 2005, Fig. 3), where
+  the model's modes below 1 kHz sit at Q 20 to 23. A lever harp's bridge
+  admittance, scaled by its string's impedance, peaks near -46 dB and
+  mostly runs -50 to -70 dB (Woodhouse, J. Sound Vib. 523 (2021), Fig. 4);
+  the steel lyre harp's, scaled by its A4's, runs a median -46 to -54 dB
+  by band and peaks at -25 dB at 454 Hz, the strong coupling that drains
+  its A4. A small, light top couples more than a harp's long board, but
+  by how much no lyre harp measurement says.
 - Nylon and gut damping follow one published fit to measured harp strings,
   not strings from these instruments; gut varied most from string to string
   in that study.
@@ -352,9 +361,30 @@ nothing until the next pluck.
   is wound: the string set it follows is for a harp tuned up from D3 and
   winds its four lowest strings, and no set for a G3-A5 harp lists its
   gauges.
-- The sway coupling of the parallel polarisation through the bar's height is
-  simple geometry; with the 6 g bar it moves some partials by up to about
-  11 cents.
+- The parallel polarisation reaches the body by a stand-in path: it tips
+  the bar toward the yoke, which is what the string's pull along its own
+  length does. A sideways pull at the bar's top is a moment about the
+  string's axis, which rocks and bends the bar instead, as Acustra derives
+  it for a guitar saddle. That path was built and measured on the replayed
+  phrase over eight seeds. It couples the plane so weakly at its
+  fundamental that the G4's fundamental decays at about 1 dB/s against the
+  recording's 17 (the stand-in's 10), and the D4's and E4's at 4 and 6
+  against 7 and 8 (the stand-in's 8). Near the bar's ends the bends' slopes
+  couple the treble strings strongly instead: A5's partials land 10 cents
+  off the stiff-string law and the top strings 3.6 dB off the even touch.
+  The recordings point to a loss the model lacks rather than to that path,
+  so the stand-in stays. With the 6 g bar it moves some partials by up to
+  about 11 cents.
+- No axial force. A plucked string's stretch pulls on its end at twice each
+  partial's frequency, growing as the square of the pluck. A harp's strings
+  meet its soundboard at 35 degrees, and there the octave this adds matches
+  the fundamental's height even for gentle plucks (Woodhouse, J. Sound Vib.
+  523 (2021), Sec. 4.2). Here the strings run along the top to a tie bar
+  1 cm high, where that pull only tips the bar. Estimated from the
+  published formulas, it reaches the top's lower modes about 27 dB under
+  the fundamental's drive on G5 plucked at full strength, and some 40 dB
+  under on A4 at its touch. The strings' lengthwise stiffness, which raises
+  a strung harp's soundboard modes, is left out too.
 - The dispersion fit stops at 5 kHz, and above it the bass strings'
   partials fall flat of the law: at 48 kHz the design leaves them up to 33
   cents flat by 8 kHz on the wound steel G3, 69 on the steel A3 and 104 on
@@ -364,9 +394,17 @@ nothing until the next pluck.
   0.1 s at velocity 0.7 (64 to 80 on the wound G3, 87 to 100 on the gut
   D3).
 - At 1x, the back panel's default, the top octave from 10 to 16 kHz still
-  sits 1.7 to 2.0 dB below the 4x sound: the junction integrates the
-  bridge bar's mass by the trapezoidal rule, which overstates it toward
-  Nyquist: a bar a tenth as heavy nearly halves the gap.
+  sits 1.0 to 1.9 dB below the 4x sound, the steel lyre harp's the most.
+  The bar's highest bends carry part of it: no second-order section holds
+  a mass on its spring near Nyquist. Their resonances are matched, which
+  leaves the highest too soft below them (the lyre harps' 19.6 kHz bend by
+  up to 6 dB); the prewarped bilinear sections they replaced stood up to
+  11 dB too stiff and left 1.2 to 1.9 dB. Plucking every string in turn,
+  dry, the steel lyre harp's 16 kHz third-octave falls 3.2 dB short of
+  4x (1.7 before) as its 10 kHz comes up, and the nylon lyre harp's 5 to
+  10 kHz runs up to 1.3 dB above it. The rigid bar's trapezoidal mass is
+  not the cause: integrating it to fourth order (two thirds trapezoidal,
+  one third backward Euler) moved the gap by 0.02 dB.
 - No plucking-hand model beyond a release time and a nail's or plectrum's
   edge width, no buzzing, no string-to-string contact, no hand damping
   gestures beyond note-off. The release is a stand-in for the slip

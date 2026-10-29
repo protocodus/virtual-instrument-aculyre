@@ -333,7 +333,16 @@ nothing until the next pluck.
   11 (10 with 0.5.0's rigid bar). Other draws of the top's irregularities
   leave it falling 17 to 30 dB, a 2.2 cm bar moves the dead note to A4, and
   a 1.5 cm bar or a less damped one leaves it as it is, so it stays until
-  a lyre harp is measured.
+  a lyre harp is measured. Published small soundboxes only bound it. A
+  12-string kokle on a 3 mm spruce top (G3 to D5) rings at Q 18 to 29 from
+  290 to 700 Hz (Peekna and Rossing, Forum Acusticum 2005, Fig. 3), where
+  the model's modes below 1 kHz sit at Q 20 to 23. A lever harp's bridge
+  admittance, scaled by its string's impedance, peaks near -46 dB and
+  mostly runs -50 to -70 dB (Woodhouse, J. Sound Vib. 523 (2021), Fig. 4);
+  the steel lyre harp's, scaled by its A4's, runs a median -46 to -54 dB
+  by band and peaks at -25 dB at 454 Hz, the strong coupling that drains
+  its A4. A small, light top couples more than a harp's long board, but
+  by how much no lyre harp measurement says.
 - Nylon and gut damping follow one published fit to measured harp strings,
   not strings from these instruments; gut varied most from string to string
   in that study.

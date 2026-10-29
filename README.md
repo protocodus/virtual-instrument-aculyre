@@ -394,9 +394,14 @@ nothing until the next pluck.
   0.1 s at velocity 0.7 (64 to 80 on the wound G3, 87 to 100 on the gut
   D3).
 - At 1x, the back panel's default, the top octave from 10 to 16 kHz still
-  sits 1.7 to 2.0 dB below the 4x sound: the junction integrates the
-  bridge bar's mass by the trapezoidal rule, which overstates it toward
-  Nyquist: a bar a tenth as heavy nearly halves the gap.
+  sits 1.7 to 2.0 dB below the 4x sound. The bar's bends carry much of
+  it: each is bilinear, prewarped to stand at its own frequency, which
+  leaves the upper bends too stiff between their resonances toward
+  Nyquist. Bends a tenth as heavy close a third of the steel lyre harp's
+  gap (2.1 to 1.4 dB), and a whole bar a tenth as heavy about half. The
+  rigid bar's trapezoidal mass is not the cause: integrating it to fourth
+  order (two thirds trapezoidal, one third backward Euler) moved the gap
+  by 0.02 dB.
 - No plucking-hand model beyond a release time and a nail's or plectrum's
   edge width, no buzzing, no string-to-string contact, no hand damping
   gestures beyond note-off. The release is a stand-in for the slip

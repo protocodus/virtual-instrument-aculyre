@@ -3,6 +3,47 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-29: the finger plucks at 0.27, chosen by ear
+
+**What was decided.** Where the finger plucks by default. Two recorded
+players disagree. The lyre harp phrase's player (Freesound 649925) plucks
+four of its eight notes at 0.46 to 0.50 of the string from the bridge,
+which set 0.47 (the entry below). DeadRobot's DR Plucked Lyre Harp plucks
+each of its 16 strings three times at 0.25 to 0.32, median 0.27 over the 48
+plucks ([benchmark](validation/dr-lyre-harp-benchmark-2026-10-29.md)).
+Each point is defensible, so the steel lyre harp was heard at both: seven
+single notes, G3 to G5 at velocity 90, then the lyre harp demo phrase, A
+the shipping 0.47 and B 0.27 with the touch re-evened and the gains
+re-levelled, B trimmed -0.49 dB to A's whole-file RMS, with the DR harp
+playing the same seven notes beside them.
+
+**Chosen by ear: B.** The owner judged B better. All three instruments now
+pluck at 0.27, each with its touch re-evened on both pickups and its gains
+re-levelled to -9 VU.
+
+**What the measurements say.** On the DR harp's notes, each at equal power,
+0.27 keeps the steel lyre harp's third-octave shape nearer the
+recording's: 6.2 against 7.6 dB rms over the first 0.3 s, and 7.0 against
+8.2 after it, with the partials' decays about the same (rms log2 of model
+over recording 0.54 against 0.57). On the phrase, 0.47 had kept nearer
+(5.3 dB rms against a quarter's 7.2). The measurements split, so the ear
+chose. As shipped, with the bar's bends corrected (below), 0.27 sits 6.3
+and 7.0 dB rms from the DR harp's shape and its partials 0.51.
+
+**What it took.** At 0.27 the steel lyre harp's 10-16 kHz at 1x fell
+2.62 dB under 4x, past the 2.5 dB the engine tests allow. The bar's bends
+now hold their stiffness at every rate (`AculyreEngine::setInstrument`),
+where the highest had erred soft below their resonance; that leaves it
+2.20 dB under, and the limit is unchanged.
+
+**What it licenses.** 0.27 as the finger's default. The nylon harp and the
+gut lyre were not heard at it: they follow by the standing assumption that
+they are played as the steel harp is, which a listening test of their own
+could overturn. This replaces the open pick of question 9 below (a quarter,
+0.35 or 0.47); 0.27 lies next to its quarter. It does not license treating
+0.27 as one player's measured habit on a nylon harp or a gut lyre, or
+moving the Rack device's nail and plectrum patches.
+
 ## 2026-10-29: the finger plucks near the middle of the string
 
 **What was decided.** The default pluck point (the POSITION control) was a

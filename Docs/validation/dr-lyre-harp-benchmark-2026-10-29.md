@@ -249,7 +249,9 @@ and 1.22 / 0.56.
   re-levelled at B), recorded in [decisions](../decisions.md) once heard. At
   0.27 the steel lyre harp's top octave at 1x falls 2.62 dB under 4x, past
   the 2.5 dB the engine tests allow, so shipping B first needs that gap
-  closed, not the limit moved.
+  closed, not the limit moved. The owner chose B by ear the same day; the
+  bar's bends were corrected to close the gap, and all three instruments
+  now pluck at 0.27 ([decisions](../decisions.md)).
 - **The treble shortfall is now seen in two recordings** of two players: 6
   to 18 dB from 5 to 10 kHz here, in the partials from the first 10 ms, and
   4.6 dB from 6 to 10 kHz over the phrase. Neither recording separates the

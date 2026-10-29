@@ -32,13 +32,13 @@ reference recording below.
   darker and hard playing brighter. Plucked a quarter of the way along, as
   0.5.0 was, the two with the rest of 0.6.0 bring the lyre harp's treble
   from 1.25 to 5 kHz to about 1 dB of a recording's on average, where 0.5.0
-  fell 8.0 dB short. The finger now plucks near the middle of the string,
-  0.47 of its length from the bridge, where the player of that recording
-  plucks half its notes (it plucked at a quarter, 0.22 on the gut lyre):
-  rounder, with the second partials that a quarter kept and the player's
-  plucks leave out. The phrase's long-term spectrum keeps nearer the
-  recording's shape (5.3 dB rms over its third-octaves from 200 Hz to
-  10 kHz, against 7.2), though it is 3.9 dB darker from 1.25 to 5 kHz.
+  fell 8.0 dB short. The finger now plucks 0.27 of the string's length
+  from the bridge (0.5.0 plucked at a quarter, 0.22 on the gut lyre), where
+  the player of a sampled lyre harp plucks, chosen by ear over 0.47, where
+  the lyre harp phrase's player plucks half its notes. On the sampled harp's
+  notes the steel lyre harp keeps nearer the recording's shape (6.3 dB
+  rms over the third-octaves from 200 Hz to 10 kHz in the first 0.3 s,
+  against 7.6 at 0.47).
   The steel lyre
   harp's lowest string, G3, is nickel-wound, as string sets for these harps
   wind it: far less inharmonic than the plain wire it replaces, darker, and
@@ -52,7 +52,7 @@ reference recording below.
   and the treble strings' to 12 kHz at 1x, held bends included, where they
   had run up to 49 cents sharp and only 4x had kept them in tune.
   At 1x the top octave keeps more of its air: from 10 to 16 kHz each
-  instrument sits 0.6 to 2.3 dB below its 4x sound, where 0.5.0's fell 3.1
+  instrument sits 1.1 to 2.2 dB below its 4x sound, where 0.5.0's fell 3.1
   to 3.6 dB below. The soundbox radiates its upper modes by a published plate
   formula instead of an authored curve: up to 3 dB more air around 6 kHz
   (5 kHz on the gut lyre), where the old curve dipped before a step, and
@@ -263,13 +263,15 @@ model's 1/3-octave long-term spectrum fell short of the recording's by
 plucked at a quarter as before, it falls 0.8 dB short over the same seeds
 (0.2 to 1.6 short), both microphones summed. The wound G3 cost 0.4 dB of
 that when it came in: the plain string, ringing in sympathy, had filled the
-1.25 kHz band 2.3 dB more. At 0.6.0's own pluck point, 0.47, it falls
+1.25 kHz band 2.3 dB more. Plucked at 0.47, it falls
 3.9 dB short (3.0 to 4.7), but its shape over the third-octaves from 200 Hz
 to 10 kHz sits 5.3 dB rms from the recording's on every seed (5.2 to 5.5),
 where a quarter's sits 7.2 (6.8 to 7.5): the quarter's 630 Hz band, the
 D4's and E4's second partials, stood 22 dB over the recording's, and at
 0.47 stands 10 over. With the mean over those bands removed, the rest runs
-from 7 dB under at 5 kHz to 11 dB over at 1 kHz. Its partials decay alike
+from 7 dB under at 5 kHz to 11 dB over at 1 kHz. 0.6.0 now plucks at 0.27,
+chosen by ear on the sampled lyre harp below, a point nearer the quarter
+than 0.47 at which the phrase has not been measured. Its partials decay alike
 to the 4th: from 0.12 s to the next note, medians over the eight notes of
 13, 11, 21 and 15 dB/s against the recording's 13, 12, 17 and 18. The 5th
 and 6th decay at 25 and 27 against 37 and 48, but on most notes strings
@@ -281,8 +283,8 @@ over 80-550 ms) and was a little darker (centroid 448-496 Hz against
 557 Hz). In 0.6.0 the shared phrase and the recording are measured alike:
 onsets from the spectral flux, each note's centroid over its first 250 ms
 and its decay from 80 to 550 ms or to the next note, medians over the
-notes. The gut lyre's notes decay at 19 against the recording's 22 dB/s
-(27 plucked at 0.22, as before), and centre at 526 Hz at the left
+notes. Plucked at 0.47, the gut lyre's notes decay at 19 against the
+recording's 22 dB/s (27 plucked at 0.22), and centre at 526 Hz at the left
 microphone and 761 Hz at the right, where the recording's channels read 582
 and 611 Hz: the body's drawn radiation signs part its two microphones
 further than the recording's channels.
@@ -290,11 +292,12 @@ A sampled lyre harp (DeadRobot's free DR Plucked Lyre Harp: 16 strings G3 to
 G#5, each plucked alone three times) is measured note by note against the
 steel lyre harp strung the same way
 ([benchmark](Docs/validation/dr-lyre-harp-benchmark-2026-10-29.md)). Its
-player plucks at 0.25 to 0.32 of the string (median 0.27). Partials 2 to 6
-decay alike (rms log2 of model over recording 0.57) and the fundamentals do
-not (1.22). Each note at equal power, the model's third-octave shape over
-its first 0.3 s sits 7.6 dB rms from the recording's at 0.47 and 6.2 dB at
-0.27. These are
+player plucks at 0.25 to 0.32 of the string (median 0.27), where the model
+now plucks. Partials 2 to 6 decay alike (rms log2 of model over recording
+0.51) and the fundamentals do not (1.23). Each note at equal power, the
+model's third-octave shape over its first 0.3 s sits 6.3 dB rms from the
+recording's, and 7.0 from 0.3 to 1.5 s, where plucked at 0.47, before the
+bar's bends were corrected, it sat 7.6 and 8.2. These are
 order-of-magnitude checks, not a calibration.
 
 **Playing.** `PlayingControls` holds what a player and the room change while
@@ -393,13 +396,13 @@ nothing until the next pluck.
   is wound: the string set it follows is for a harp tuned up from D3 and
   winds its four lowest strings, and no set for a G3-A5 harp lists its
   gauges. The DR harp's G3 reads as plain wire (5.3e-4 against the model's
-  1.9e-4).
+  1.7e-4).
 - Against the DR lyre harp, note by note, the model drains different
   fundamentals: the recording's C5 to G5 fall 23 to 60 dB/s from 0.08 to
-  0.6 s where the model's fall 6 to 35, and the model's G4 falls 34 against
-  8. With each note at equal power it carries up to 9 dB more from 200 to
-  500 Hz and 4 to 11 dB less from 0.8 to 1.3 kHz, where the recording
-  peaks. Where the assumed body's modes fall sets both; a thicker top moves
+  0.6 s where the model's fall 6 to 34, and the model's G4 falls 33 against
+  8. With each note at equal power it carries up to 8 dB more from 200 to
+  500 Hz over the first 0.3 s and 6 to 10 dB less from 0.8 to 1.3 kHz,
+  where the recording peaks. Where the assumed body's modes fall sets both; a thicker top moves
   them and fits the spectrum better but the partials' decays worse, and no
   lyre harp top is published to choose one
   ([benchmark](Docs/validation/dr-lyre-harp-benchmark-2026-10-29.md)).
@@ -436,18 +439,20 @@ nothing until the next pluck.
   0.1 s at velocity 0.7 (64 to 80 on the wound G3, 87 to 100 on the gut
   D3).
 - At 1x, the back panel's default, the top octave from 10 to 16 kHz still
-  sits 0.6 to 2.3 dB below the 4x sound, the steel lyre harp's the most.
-  The bar's highest bends carry part of it: no second-order section holds
-  a mass on its spring near Nyquist. Their resonances are matched, which
-  leaves the highest too soft below them (the lyre harps' 19.6 kHz bend by
-  up to 6 dB); the prewarped bilinear sections they replaced stood up to
-  11 dB too stiff and left 1.4 to 4.9 dB. Plucking every string in turn,
-  dry, the steel lyre harp's 16 kHz third-octave still falls 5.0 dB short of
-  4x (4.5 before) as its 10 and 12.5 kHz come up 2.9 and 1.5 dB, and the
-  nylon lyre harp's 5 to 8 kHz runs up to 0.9 dB above it. The rigid bar's
-  trapezoidal mass is
-  not the cause: integrating it to fourth order (two thirds trapezoidal,
-  one third backward Euler) moved the gap by 0.02 dB.
+  sits 1.1 to 2.2 dB below the 4x sound, the steel lyre harp's the most;
+  plucking every string in turn, dry, its 16 kHz third-octave falls 4.4 dB
+  short. The bar's bends no longer carry it: each holds its stiffness at
+  every rate, within 0.6 to 1.1 dB rms of the beam's impedance from 0.5 to
+  16 kHz at 48 kHz, where matched resonances alone had left the highest up
+  to 6 dB rms soft. Nor does the rigid bar's trapezoidal mass: integrating
+  it to fourth order (two thirds trapezoidal, one third backward Euler)
+  moved the gap by 0.02 dB. On the steel E4 the wave reaching the bridge
+  matches 4x from 10 to 12.5 kHz over its first 100 ms, while its partials
+  there come out up to 9 dB weaker at 1x on the microphones and the piezo
+  alike, so the rest lies where the bar meets the body's modes, each
+  bilinear with its skirts drawn in toward Nyquist, which is not yet
+  measured apart. Near the pluck's comb notches single partials also land
+  up to 16 dB apart between rates (the steel A5's 13th and 14th).
 - No plucking-hand model beyond a release time and a nail's or plectrum's
   edge width, no buzzing, no string-to-string contact, no hand damping
   gestures beyond note-off. The release is a stand-in for the slip
@@ -459,7 +464,8 @@ nothing until the next pluck.
 - Replaying the lyre harp phrase (Freesound 649925) with each note at the
   pluck point fitted to it, the steel lyre harp falls 3.6 dB short of the
   recording from 1.25 to 5 kHz and 4.6 dB from 6 to 10 kHz, where a
-  quarter-length pluck leaves 1 dB and the shipping 0.47 about 4. That
+  quarter-length pluck leaves 1 dB and 0.47 about 4 (0.6.0 plucks at
+  0.27, near the quarter). That
   long-term spectrum also weighs each note's loudness, which the recording
   does not give (every note is replayed at velocity 0.7). Note by note,
   each partial's level under its fundamental, on the phrase's five cleanest

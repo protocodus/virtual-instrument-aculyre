@@ -269,7 +269,12 @@ to 10 kHz sits 5.3 dB rms from the recording's on every seed (5.2 to 5.5),
 where a quarter's sits 7.2 (6.8 to 7.5): the quarter's 630 Hz band, the
 D4's and E4's second partials, stood 22 dB over the recording's, and at
 0.47 stands 10 over. With the mean over those bands removed, the rest runs
-from 7 dB under at 5 kHz to 11 dB over at 1 kHz. Over a CC0
+from 7 dB under at 5 kHz to 11 dB over at 1 kHz. Its partials decay alike
+to the 4th: from 0.12 s to the next note, medians over the eight notes of
+13, 11, 21 and 15 dB/s against the recording's 13, 12, 17 and 18. The 5th
+and 6th decay at 25 and 27 against 37 and 48, but on most notes strings
+still ringing share those partials, and on the one note played alone,
+the first D4, they go the other way (38 and 13 against 15 and 2). Over a CC0
 Iron Age lyre recording (Freesound 191883, another instrument and tuning),
 0.3.0's gut lyre decayed at a similar rate (median 18-22 against 18 dB/s
 over 80-550 ms) and was a little darker (centroid 448-496 Hz against

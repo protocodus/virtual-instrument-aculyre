@@ -945,29 +945,36 @@ struct Loop
         thiranCoefficients(fraction, thiranA1, thiranA2);
     }
 
-    double read() noexcept
+    // The wave arriving at the bridge is read in four steps (readLoops()):
+    // the line and its Thiran section, each dispersion stage, each pair,
+    // then the rest.
+    double readLine() noexcept
     {
         const double x = line[static_cast<std::size_t>((write - whole) & (delayCapacity - 1))];
-        double y = thiranA2 * x + thiranA1 * tx1 + tx2 - thiranA1 * ty1 - thiranA2 * ty2;
+        const double y = thiranA2 * x + thiranA1 * tx1 + tx2 - thiranA1 * ty1 - thiranA2 * ty2;
         tx2 = tx1;
         tx1 = x;
         ty2 = ty1;
         ty1 = y;
-        for (int stage = 0; stage < dispersionStages; ++stage)
-        {
-            const double out = dispersion * y + dispersionState[stage];
-            dispersionState[stage] = y - dispersion * out;
-            y = out;
-        }
-        for (int k = 0; k < dispersionPairs; ++k)
-        {
-            const double c1 = pair[static_cast<std::size_t>(k)][0], c2 = pair[static_cast<std::size_t>(k)][1];
-            auto& state = pairState[static_cast<std::size_t>(k)];
-            const double out = c2 * y + state[0];
-            state[0] = c1 * (y - out) + state[1];
-            state[1] = y - c2 * out;
-            y = out;
-        }
+        return y;
+    }
+    double disperse(std::size_t stage, double y) noexcept
+    {
+        const double out = dispersion * y + dispersionState[stage];
+        dispersionState[stage] = y - dispersion * out;
+        return out;
+    }
+    double dispersePair(std::size_t k, double y) noexcept
+    {
+        const double c1 = pair[k][0], c2 = pair[k][1];
+        auto& state = pairState[k];
+        const double out = c2 * y + state[0];
+        state[0] = c1 * (y - out) + state[1];
+        state[1] = y - c2 * out;
+        return out;
+    }
+    double finishRead(double y) noexcept
+    {
         y = constantLoss.process(y);
         y = bendingLoss.process(y);
         if (dampingStep != 0.0)
@@ -1044,6 +1051,61 @@ struct Loop
         setLineDelay(restLineDelay);
     }
 };
+
+// Reads every loop's arriving wave into `wave`. Each loop's dispersion is a
+// chain of sections, every one waiting on the last: read loop by loop, a
+// loop's chain left little else to do meanwhile, and its stage count, which
+// differs from string to string, ended it in a mispredicted branch. Read
+// stage by stage across the loops instead, the chains of different loops
+// overlap. `order` lists the loops by stage count, most first, and
+// `withStages[s]` how many have a stage s; the same for the pairs. Each loop
+// runs exactly the arithmetic it ran alone.
+struct LoopOrder
+{
+    std::array<int, 2 * maxStrings> byStages {}, byPairs {};
+    std::array<int, maxDispersionStages> withStages {};
+    std::array<int, dispersionPairs> withPairs {};
+
+    void sort(Loop* const* loops, int count) noexcept
+    {
+        int n = 0;
+        for (int stages = maxDispersionStages; stages > 0; --stages)
+        {
+            for (int i = 0; i < count; ++i)
+                if (loops[i]->dispersionStages == stages)
+                    byStages[static_cast<std::size_t>(n++)] = i;
+            withStages[static_cast<std::size_t>(stages - 1)] = n;
+        }
+        n = 0;
+        for (int pairs = dispersionPairs; pairs > 0; --pairs)
+        {
+            for (int i = 0; i < count; ++i)
+                if (loops[i]->dispersionPairs == pairs)
+                    byPairs[static_cast<std::size_t>(n++)] = i;
+            withPairs[static_cast<std::size_t>(pairs - 1)] = n;
+        }
+    }
+};
+
+void readLoops(Loop* const* loops, int count, const LoopOrder& order, double* wave) noexcept
+{
+    for (int i = 0; i < count; ++i)
+        wave[i] = loops[i]->readLine();
+    for (std::size_t stage = 0; stage < maxDispersionStages; ++stage)
+        for (int j = 0; j < order.withStages[stage]; ++j)
+        {
+            const int i = order.byStages[static_cast<std::size_t>(j)];
+            wave[i] = loops[i]->disperse(stage, wave[i]);
+        }
+    for (std::size_t k = 0; k < dispersionPairs; ++k)
+        for (int j = 0; j < order.withPairs[k]; ++j)
+        {
+            const int i = order.byPairs[static_cast<std::size_t>(j)];
+            wave[i] = loops[i]->dispersePair(k, wave[i]);
+        }
+    for (int i = 0; i < count; ++i)
+        wave[i] = loops[i]->finishRead(wave[i]);
+}
 
 // The bridge bar's generalized coordinates: the rigid bar's heave, rock and
 // sway, then its first bending modes (setInstrument()).
@@ -2895,6 +2957,17 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
     const BarMatrix& y0 = s.immediateMobility;
     const BarMatrix& zg = s.stringImpedance;
     const BarMatrix& solve = s.solve;
+    // Normal and parallel plane of each string in turn. Nothing during a
+    // block changes a loop's sections: a lever moves between blocks.
+    std::array<Loop*, 2 * maxStrings> loops {};
+    for (int index = 0; index < count; ++index)
+    {
+        loops[static_cast<std::size_t>(2 * index)] = &s.strings[static_cast<std::size_t>(index)].normal;
+        loops[static_cast<std::size_t>(2 * index + 1)] = &s.strings[static_cast<std::size_t>(index)].parallel;
+    }
+    LoopOrder order;
+    order.sort(loops.data(), 2 * count);
+    std::array<double, 2 * maxStrings> wave {};
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
@@ -2944,12 +3017,13 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             }
         }
 
+        readLoops(loops.data(), 2 * count, order, wave.data());
         BarVector drive {};
         for (int index = 0; index < count; ++index)
         {
             State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
-            const double vn = voice.normal.read();
-            const double vp = voice.parallel.read();
+            const double vn = wave[static_cast<std::size_t>(2 * index)];
+            const double vp = wave[static_cast<std::size_t>(2 * index + 1)];
             normalIn[static_cast<std::size_t>(index)] = vn;
             parallelIn[static_cast<std::size_t>(index)] = vp;
             const double twiceZ = 2.0 * voice.impedance;

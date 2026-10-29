@@ -44,7 +44,7 @@ reference recording below.
   and the treble strings' to 12 kHz at 1x, held bends included, where they
   had run up to 49 cents sharp and only 4x had kept them in tune.
   At 1x the top octave keeps more of its air: from 10 to 16 kHz each
-  instrument sits 1.7 to 2.0 dB below its 4x sound, where it fell 3.1 to
+  instrument sits 1.0 to 1.9 dB below its 4x sound, where it fell 3.1 to
   3.6 dB below. The soundbox radiates its upper modes by a published plate
   formula instead of an authored curve: up to 3 dB more air around 6 kHz
   (5 kHz on the gut lyre), where the old curve dipped before a step, and
@@ -394,14 +394,17 @@ nothing until the next pluck.
   0.1 s at velocity 0.7 (64 to 80 on the wound G3, 87 to 100 on the gut
   D3).
 - At 1x, the back panel's default, the top octave from 10 to 16 kHz still
-  sits 1.7 to 2.0 dB below the 4x sound. The bar's bends carry much of
-  it: each is bilinear, prewarped to stand at its own frequency, which
-  leaves the upper bends too stiff between their resonances toward
-  Nyquist. Bends a tenth as heavy close a third of the steel lyre harp's
-  gap (2.1 to 1.4 dB), and a whole bar a tenth as heavy about half. The
-  rigid bar's trapezoidal mass is not the cause: integrating it to fourth
-  order (two thirds trapezoidal, one third backward Euler) moved the gap
-  by 0.02 dB.
+  sits 1.0 to 1.9 dB below the 4x sound, the steel lyre harp's the most.
+  The bar's highest bends carry part of it: no second-order section holds
+  a mass on its spring near Nyquist. Their resonances are matched, which
+  leaves the highest too soft below them (the lyre harps' 19.6 kHz bend by
+  up to 6 dB); the prewarped bilinear sections they replaced stood up to
+  11 dB too stiff and left 1.2 to 1.9 dB. Plucking every string in turn,
+  dry, the steel lyre harp's 16 kHz third-octave falls 3.2 dB short of
+  4x (1.7 before) as its 10 kHz comes up, and the nylon lyre harp's 5 to
+  10 kHz runs up to 1.3 dB above it. The rigid bar's trapezoidal mass is
+  not the cause: integrating it to fourth order (two thirds trapezoidal,
+  one third backward Euler) moved the gap by 0.02 dB.
 - No plucking-hand model beyond a release time and a nail's or plectrum's
   edge width, no buzzing, no string-to-string contact, no hand damping
   gestures beyond note-off. The release is a stand-in for the slip

@@ -712,7 +712,7 @@ int main()
     // At 1x the microphones' top octave stays near the 4x sound: each mode's
     // sound is its own bilinear acceleration. A first difference of the
     // modes' velocity left 10 to 16 kHz 3.4 to 3.6 dB below 4x on the three
-    // instruments (now 1.7 to 2.0).
+    // instruments (now 1.0 to 1.9).
     for (int index = 0; index < aculyre::Performer::instrumentCount; ++index)
     {
         const auto play = [index] (int oversampling)

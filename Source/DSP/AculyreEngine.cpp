@@ -1544,14 +1544,16 @@ struct AculyreEngine::State
 
     // The bridge junction (process() derives it): the immediate generalized
     // mobility Y0 of the modes, the strings' generalized impedance Zg, the
-    // bridge bar's own bilinear impedance Zb (diagonal: its mass, and for
-    // each bend its loss and stiffness) and solve = (I + Y0 (Zg + Zb))^-1.
-    // massPast and springPast hold the mass's and the stiffness's states.
+    // bridge bar's own impedance Zb (diagonal, its present-sample term in
+    // massImpedance) and solve = (I + Y0 (Zg + Zb))^-1. massPast holds the
+    // force Zb's past adds; each bend keeps its last velocity and force and
+    // the taps of its zeros (setInstrument()).
     BarMatrix immediateMobility {};
     BarMatrix stringImpedance {};
-    BarVector massImpedance {}, lossImpedance {}, springImpedance {};
+    BarVector massImpedance {};
     BarMatrix solve {};
-    BarVector massPast {}, springPast {};
+    BarVector massPast {};
+    BarVector bendVelocityPast {}, bendForcePast {}, bendTap1 {}, bendTap2 {};
     // The bar's bends in vacuo (setInstrument()); bends past bendCount are
     // left out and their coordinates stay still.
     std::array<double, maxBends> bendFrequency {};
@@ -2155,27 +2157,37 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     }
     s.stringImpedance = zg;
     // The bar's mass: heave m, rock m/3 (r is its ends' displacement), sway
-    // m/3 (its top as it tips about its foot), each bend m. Bilinear,
-    // Z = m 2 fs. Each bend is a mass on its spring, k = m w^2, with the
-    // wood's loss (woodQ), bilinear prewarped at its frequency so that it
-    // stands where the beam does at every rate.
+    // m/3 (its top as it tips about its foot). Bilinear, Z = m 2 fs. Each
+    // bend is a mass m on its spring, k = m w^2, with the wood's loss
+    // (woodQ). Its poles stay the bilinear mass's and spring's, at Nyquist
+    // and DC, and its zeros, the bend's resonance, are matched (z = e^sT):
+    // Z = 2 m fs (1 - 2 rho cos(phi) z^-1 + rho^2 z^-2) / (1 - z^-2). Its
+    // resistance m fs (1 - rho^2) is the wood's m w / Q to first order at
+    // every frequency, so it stays passive, and it resonates where the beam
+    // does at every rate. At 48 kHz each bend so keeps nearer the beam's
+    // impedance from 0.5 to 16 kHz than a bilinear one prewarped to its
+    // frequency (1.0 to 6.0 dB rms off it, against 1.1 to 8.7), though the
+    // highest now err soft: the lyre harps' 19.6 kHz bend by 3.7 to 6.3 dB,
+    // where the bilinear one stood 8.4 to 10.7 dB too stiff.
     s.massImpedance = {};
-    s.lossImpedance = {};
-    s.springImpedance = {};
+    s.bendTap1 = {};
+    s.bendTap2 = {};
     s.massImpedance[0] = body.bridgeMass * 2.0 * fs;
     s.massImpedance[1] = s.massImpedance[2] = body.bridgeMass / 3.0 * 2.0 * fs;
     for (int bend = 0; bend < s.bendCount; ++bend)
     {
         const auto c = static_cast<std::size_t>(3 + bend);
         const double omega = 2.0 * pi * s.bendFrequency[static_cast<std::size_t>(bend)];
-        const double warp = omega / std::tan(omega / (2.0 * fs));
-        s.massImpedance[c] = body.bridgeMass * warp;
-        s.lossImpedance[c] = body.bridgeMass * omega / woodQ(s.bendFrequency[static_cast<std::size_t>(bend)]);
-        s.springImpedance[c] = body.bridgeMass * omega * omega / warp;
+        const double q = woodQ(s.bendFrequency[static_cast<std::size_t>(bend)]);
+        const double rho = std::exp(-omega / (2.0 * q * fs));
+        const double phase = omega / fs * std::sqrt(1.0 - 1.0 / (4.0 * q * q));
+        s.massImpedance[c] = 2.0 * body.bridgeMass * fs;
+        s.bendTap1[c] = -2.0 * rho * std::cos(phase) * s.massImpedance[c];
+        s.bendTap2[c] = rho * rho * s.massImpedance[c];
     }
     BarMatrix load = zg;
     for (std::size_t i = 0; i < barCoordinates; ++i)
-        load.m[i][i] += s.massImpedance[i] + s.lossImpedance[i] + s.springImpedance[i];
+        load.m[i][i] += s.massImpedance[i];
     BarMatrix junction = BarMatrix::identity();
     const BarMatrix product = y0m * load;
     for (std::size_t i = 0; i < barCoordinates; ++i)
@@ -2363,7 +2375,8 @@ void AculyreEngine::reset() noexcept
     s.bank.s2.fill(0.0);
     s.modalPastStale = true;
     s.massPast = {};
-    s.springPast = {};
+    s.bendVelocityPast = {};
+    s.bendForcePast = {};
     s.previousLeft = s.previousRight = 0.0;
     s.pressureLeft = s.pressureRight = 0.0;
     s.piezoPreviousForce = s.piezoPrevious = 0.0;
@@ -2791,7 +2804,8 @@ void AculyreEngine::sleep() noexcept
     s.bank.s2.fill(0.0);
     s.modalPastStale = true;
     s.massPast = {};
-    s.springPast = {};
+    s.bendVelocityPast = {};
+    s.bendForcePast = {};
     s.lastGeneralizedVelocity = {};
     s.previousLeft = s.previousRight = 0.0;
     s.pressureLeft = s.pressureRight = 0.0;
@@ -2907,7 +2921,7 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         const BarVector& past = s.modalPast;
         BarVector net {};
         for (std::size_t i = 0; i < barCoordinates; ++i)
-            net[i] = drive[i] - s.massPast[i] - s.springPast[i];
+            net[i] = drive[i] - s.massPast[i];
         BarVector rhs = y0.apply(net);
         for (std::size_t i = 0; i < barCoordinates; ++i)
             rhs[i] += past[i];
@@ -2917,10 +2931,17 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         for (std::size_t i = 0; i < barCoordinates; ++i)
         {
             const double massForce = s.massImpedance[i] * velocity[i] + s.massPast[i];
-            const double springForce = s.springImpedance[i] * velocity[i] + s.springPast[i];
-            plateForce[i] = drive[i] - stringLoad[i] - massForce - springForce - s.lossImpedance[i] * velocity[i];
-            s.massPast[i] = -massForce - s.massImpedance[i] * velocity[i];
-            s.springPast[i] = springForce + s.springImpedance[i] * velocity[i];
+            plateForce[i] = drive[i] - stringLoad[i] - massForce;
+            if (i < 3)
+            {
+                s.massPast[i] = -massForce - s.massImpedance[i] * velocity[i];
+            }
+            else
+            {
+                s.massPast[i] = s.bendTap1[i] * velocity[i] + s.bendTap2[i] * s.bendVelocityPast[i] + s.bendForcePast[i];
+                s.bendVelocityPast[i] = velocity[i];
+                s.bendForcePast[i] = massForce;
+            }
         }
 
         constexpr int lanes = ModeBank::lanes;
@@ -2957,8 +2978,8 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         // the velocity's zero at Nyquist. A first difference of the velocity
         // missed the acceleration of the modes' tails, which the bilinear
         // transform compresses toward Nyquist: at 48 kHz each instrument's
-        // 10 to 16 kHz fell 3.4 to 3.6 dB below its 4x sound, where it falls
-        // 1.7 to 2.0.
+        // 10 to 16 kHz fell 3.4 to 3.6 dB below its 4x sound, and the
+        // acceleration brought it to 1.7 to 2.0.
         const double pressureLeft = (radiatedLeft - s.previousLeft) * s.radiationScale - s.pressureLeft;
         const double pressureRight = (radiatedRight - s.previousRight) * s.radiationScale - s.pressureRight;
         s.previousLeft = radiatedLeft;

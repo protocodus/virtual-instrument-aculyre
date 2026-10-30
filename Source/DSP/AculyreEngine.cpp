@@ -1420,15 +1420,33 @@ struct BarMatrix
                     r.m[i][j] += m[i][k] * o.m[k][j];
         return r;
     }
-    BarVector apply(const BarVector& v) const noexcept
+    BarMatrix transposed() const noexcept
     {
-        BarVector r {};
+        BarMatrix r;
         for (std::size_t i = 0; i < barCoordinates; ++i)
             for (std::size_t j = 0; j < barCoordinates; ++j)
-                r[i] += m[i][j] * v[j];
+                r.m[j][i] = m[i][j];
         return r;
     }
 };
+
+// A matrix stored by its columns, applied to v: each column is one vector
+// step over the rows, two rows a Pair, and every row adds its terms in
+// column order, as row by row.
+BarVector applyColumns(const BarMatrix& columns, const BarVector& v) noexcept
+{
+    static_assert(barCoordinates % 2 == 0, "the rows pair up");
+    BarVector r {};
+    Pair* const rows = pairs(r.data());
+    for (std::size_t j = 0; j < barCoordinates; ++j)
+    {
+        const Pair* const column = pairs(columns.m[j].data());
+        const Pair x = splat(v[j]);
+        for (std::size_t p = 0; p < barCoordinates / 2; ++p)
+            rows[p] += column[p] * x;
+    }
+    return r;
+}
 
 // Gauss-Jordan with partial pivoting (setup only).
 template <typename T, std::size_t N>
@@ -3142,9 +3160,9 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
     const int count = stringCount_;
     std::array<double, maxStrings> normalIn {};
     std::array<double, maxStrings> parallelIn {};
-    const BarMatrix& y0 = s.immediateMobility;
-    const BarMatrix& zg = s.stringImpedance;
-    const BarMatrix& solve = s.solve;
+    const BarMatrix y0 = s.immediateMobility.transposed();
+    const BarMatrix zg = s.stringImpedance.transposed();
+    const BarMatrix solve = s.solve.transposed();
     // Normal and parallel plane of each string in turn. Nothing during a
     // block changes a loop's sections: a lever moves between blocks.
     std::array<Loop*, 2 * maxStrings> loops {};
@@ -3245,11 +3263,11 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         BarVector net {};
         for (std::size_t i = 0; i < barCoordinates; ++i)
             net[i] = drive[i] - s.massPast[i];
-        BarVector rhs = y0.apply(net);
+        BarVector rhs = applyColumns(y0, net);
         for (std::size_t i = 0; i < barCoordinates; ++i)
             rhs[i] += past[i];
-        const BarVector velocity = solve.apply(rhs);
-        const BarVector stringLoad = zg.apply(velocity);
+        const BarVector velocity = applyColumns(solve, rhs);
+        const BarVector stringLoad = applyColumns(zg, velocity);
         BarVector plateForce {};
         for (std::size_t i = 0; i < barCoordinates; ++i)
         {

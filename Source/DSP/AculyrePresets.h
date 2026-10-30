@@ -132,12 +132,12 @@ constexpr BodySpec lyreHarpBody {
 // 30 N at E5 as a harp's treble does. Sixteen strings share the six's 9 cm
 // bridge bar, 6 mm apart.
 constexpr std::array<StringSpec, maxStrings> gutLyreStrings {{
-    { 50, 0.500, 1.29e-3, 0.39, 0.76 }, { 52, 0.500, 1.15e-3, 0.15, 0.78 }, { 54, 0.500, 1.02e-3, 0.26, 0.73 },
-    { 55, 0.500, 0.96e-3, 0.43, 0.71 }, { 57, 0.500, 0.86e-3, 0.45, 0.64 }, { 59, 0.500, 0.76e-3, 0.19, 0.75 },
-    { 60, 0.500, 0.72e-3, 0.23, 0.72 }, { 62, 0.500, 0.64e-3, 0.31, 0.64 }, { 64, 0.445, 0.64e-3, 0.18, 0.62 },
-    { 66, 0.397, 0.63e-3, 0.37, 0.63 }, { 67, 0.375, 0.62e-3, 0.53, 0.66 }, { 69, 0.334, 0.61e-3, 0.40, 0.65 },
-    { 71, 0.297, 0.60e-3, 0.23, 1.00 }, { 72, 0.281, 0.60e-3, 0.27, 0.86 }, { 74, 0.250, 0.59e-3, 1.00, 0.75 },
-    { 76, 0.223, 0.58e-3, 0.50, 0.63 }
+    { 50, 0.500, 1.29e-3, 0.41, 0.84 }, { 52, 0.500, 1.15e-3, 0.23, 0.91 }, { 54, 0.500, 1.02e-3, 0.34, 0.82 },
+    { 55, 0.500, 0.96e-3, 0.45, 0.81 }, { 57, 0.500, 0.86e-3, 0.53, 0.75 }, { 59, 0.500, 0.76e-3, 0.32, 0.85 },
+    { 60, 0.500, 0.72e-3, 0.35, 0.80 }, { 62, 0.500, 0.64e-3, 0.45, 0.79 }, { 64, 0.445, 0.64e-3, 0.32, 0.73 },
+    { 66, 0.397, 0.63e-3, 0.57, 0.75 }, { 67, 0.375, 0.62e-3, 0.65, 0.78 }, { 69, 0.334, 0.61e-3, 0.47, 0.78 },
+    { 71, 0.297, 0.60e-3, 0.37, 1.00 }, { 72, 0.281, 0.60e-3, 0.40, 0.95 }, { 74, 0.250, 0.59e-3, 1.00, 0.85 },
+    { 76, 0.223, 0.58e-3, 0.57, 0.76 }
 }};
 constexpr BodySpec gutLyreBody {
     0.36, 0.18, 0.004, hardMaple,
@@ -155,8 +155,13 @@ constexpr BodySpec gutLyreBody {
 // third-octave shape from 200 Hz to 10 kHz sits 6.3 dB rms from the
 // recording's over the first 0.3 s, where 0.47 left 7.6; on the phrase, 0.47
 // kept nearer (5.3 dB rms, a quarter 7.2). The CC0 A4 (Freesound 722897) was
-// plucked at a quarter, which POSITION still reaches. The nylon harp and the
-// gut lyre are assumed to be played alike. outputGain and piezoGain are the
+// plucked at a quarter, which POSITION still reaches. The nylon harp is
+// assumed to be played alike. The gut lyre is plucked at 0.11, where the
+// player of the gut lyre recording (Freesound 191883, CC0) plucks: replayed
+// note by note (Tools/compare_gut_lyre_phrase.py), the medians of its 2nd
+// to 12th partials against the fundamental sit 3.5 dB rms from the
+// recording's, where 0.27 left 10.4 (0.09 4.7, 0.10 4.0, 0.12 4.2, 0.16
+// 7.4). outputGain and piezoGain are the
 // free gains, not loudness claims: outputGain puts the preset's typical
 // playing at a median of -9 on Reason's VU meter at its own controls, and
 // piezoGain puts the piezo alone within 1 dB of that (AculyreEngineTests,
@@ -173,7 +178,7 @@ inline constexpr InstrumentSpec lyreHarpNylon {
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 16, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.27, 0.3, 2.5, 0.35, 2.711, 0.307
+    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.938, 0.439
 };
 
 inline constexpr std::array<const InstrumentSpec*, 3> presets {{

@@ -22,6 +22,13 @@ reference recording below.
 
 ## Version history
 
+- **0.7.3** (prototype, not released): the gut lyre is plucked at 0.11 of
+  the string's length, where it was 0.27, the lyre harp's point. Its
+  recording (Freesound 191883), replayed note by note, puts its 2nd to 12th
+  partials 3.5 dB rms from the model's at 0.11 against 10.4 at 0.27: the
+  4th partial, which the old point all but cancelled, comes back by 19 dB,
+  and the gut lyre sounds brighter and more open. Its strings are re-evened
+  and the preset re-levelled to -9 VU; the lyre harps do not change.
 - **0.7.2** (prototype, not released): the lyre harps' spruce top is 6 mm
   thick, where it was 3. Over four draws of the top's irregularities, the
   DR lyre harp's notes fit it best among 3 to 8 mm: the third-octave shape
@@ -424,7 +431,13 @@ further than the recording's channels. Measured the same way on the gut
 lyre's README demo (onsets over the spectral flux's peaks), 0.6.5 decays
 at 25 dB/s and centres at 492 and 650 Hz; 0.7.2, with each mode's own
 radiation and the microphone pair, at 21 dB/s and 521 and 531 Hz, where
-the recording reads 20 dB/s and 577 and 607 Hz.
+the recording reads 20 dB/s and 577 and 607 Hz. Replaying the recording's own
+melody instead (`Tools/compare_gut_lyre_phrase.py`; the lyre is tuned 3.3
+semitones below the model's strings, so the model plays it that much
+higher, and a spectrum that follows the pitch centres 21% higher), 0.7.2
+centres at 548 and 539 Hz against the recording's 577 and 607 (698 and 734
+at the model's pitch), and 0.7.3, plucked at 0.11, at 709 and 709; its notes
+decay at 22 against 20 dB/s.
 A sampled lyre harp (DeadRobot's free DR Plucked Lyre Harp: 16 strings G3 to
 G#5, each plucked alone three times) is measured note by note against the
 steel lyre harp strung the same way

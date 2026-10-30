@@ -3,6 +3,34 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-30: the gut lyre is plucked at 0.11 (0.7.3), by measurement
+
+**What was decided.** The gut lyre's pluck point, until now assumed to be
+the DR lyre harp player's 0.27. The gut lyre recording (Freesound 191883)
+was transcribed note by note and its 20-note melody replayed on the preset
+(`Tools/compare_gut_lyre_phrase.py`, whose head states the protocol). Its
+partials against the fundamental, medians over the notes, k = 2 to 12:
+
+| pluck point | rms, model - recording (dB) |
+| --- | --- |
+| 0.09 | 4.7 |
+| 0.10 | 4.0 |
+| **0.11 (0.7.3)** | **3.5** (3.6 and 5.3 over two other draws of the body) |
+| 0.12 | 4.2 |
+| 0.16 | 7.4 |
+| 0.20 | 9.4 |
+| 0.27 (0.7.2) | 10.4 |
+
+At 0.27 the 4th partial sat near the pluck's notch, 23 dB under the
+recording's; at 0.11 the first notch moves to the 9th. A brighter release
+could not stand in: the notch belongs to the point. The point is measured, so no listening
+test chose it; an A/B pack (A 0.7.2, B 0.7.3, on the replayed melody) was
+rendered for review and not committed. The decays do not move (partial 1
+15.2 dB/s against the recording's 15.9; partials 2-6 27.5 against 37.5).
+The strings were re-evened at the new point (the worst had moved 2.5 dB)
+and the preset re-levelled: outputGain 2.711 to 2.938, piezoGain 0.307 to
+0.439.
+
 ## 2026-10-30: the lyre harps' top is 6 mm (0.7.2), adopted unheard
 
 **What was decided.** The lyre harps' top thickness, an assumed dimension

@@ -21,9 +21,10 @@ recordings the owner shared (the DR Plucked Lyre Harp pack).
   chosen on 2026-10-28. An orthotropic top's modes across the grain reach
   the air's wavenumber from 4.2 kHz on the spruce, so a band's modes
   radiate very differently: taken one by one they average 2.5 to 6 dB more
-  from 0.6 to 4.8 kHz than the band average did. Supersonic modes are not
-  capped at 1: capping them (and all) lost the 3 to 6 kHz gain and left the
-  shape after 0.3 s 0.3 dB further from the recording than 0.6.5.
+  from 0.6 to 4.8 kHz than the band average did. Only supersonic modes
+  are capped at 1; capping the doubled subsonic ones too lost the 3 to 6 kHz
+  gain and left the shape after 0.3 s 0.3 dB further from the recording than
+  0.6.5.
 - **Each mode keeps its energy at 1x.** The bilinear transform, prewarped to
   a mode's frequency, keeps its peak but narrows its band by sin(2x)/2x at
   x = w/2fs: 2 dB of a 12 kHz mode's energy at 48 kHz, 3.8 dB at 16 kHz. Each

@@ -2210,7 +2210,9 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         // corners, and that share is doubled for a top glued to its box,
         // whose edges the plate's frequencies already take as clamped:
         // Maidanik gives a clamped panel twice a simply supported one's
-        // (JSV 9 (1969) 469, p. 484). Maidanik's average over every mode in
+        // (JSV 9 (1969) 469, p. 484); only a supersonic mode is held to an
+        // efficiency of 1, as capping the doubled ones too lost the top's 3
+        // to 6 kHz (Docs/decisions.md, 2026-10-30). Maidanik's average over every mode in
         // a band (Crocker and Price's Eq. 38) had stood in for this, with
         // one coincidence for the whole top. An orthotropic top has none:
         // spruce's modes across the grain reach the air's wavenumber from

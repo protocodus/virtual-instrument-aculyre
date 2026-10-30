@@ -950,9 +950,9 @@ struct Loop
         thiranCoefficients(fraction, thiranA1, thiranA2);
     }
 
-    // The wave arriving at the bridge is read in four steps (readLoops()):
-    // the line and its Thiran section, each dispersion stage, each pair,
-    // then the rest.
+    // The wave arriving at the bridge is read in steps (LoopFilters): the
+    // line and its Thiran section, the dispersion stages, each pair, the
+    // loss sections, then the rest.
     double readLine() noexcept
     {
         const double x = line[static_cast<std::size_t>((write - whole) & (delayCapacity - 1))];
@@ -962,12 +962,6 @@ struct Loop
         ty2 = ty1;
         ty1 = y;
         return y;
-    }
-    double disperse(std::size_t stage, double y) noexcept
-    {
-        const double out = dispersion * y + dispersionState[stage];
-        dispersionState[stage] = y - dispersion * out;
-        return out;
     }
     double dispersePair(std::size_t k, double y) noexcept
     {
@@ -980,8 +974,6 @@ struct Loop
     }
     double finishRead(double y) noexcept
     {
-        y = constantLoss.process(y);
-        y = bendingLoss.process(y);
         if (dampingStep != 0.0)
         {
             damping += dampingStep;
@@ -1068,23 +1060,82 @@ struct Loop
 // loop's chain left little else to do meanwhile, and its stage count, which
 // differs from string to string, ended it in a mispredicted branch. Read
 // stage by stage across the loops instead, the chains of different loops
-// overlap. `order` lists the loops by stage count, most first, and
-// `withStages[s]` how many have a stage s; the same for the pairs. Each loop
-// runs exactly the arithmetic it ran alone.
-struct LoopOrder
+// overlap, and a stage or loss section of every loop is one vector pass.
+// For a block, gather() copies the dispersion stages (by stage count, most
+// first: `withStages[s]` loops have a stage s) and the loss sections (in
+// loop order) out of the loops, and scatter() puts their state back; the
+// pairs, rarer, stay in the loops. Each loop runs exactly the arithmetic it
+// runs alone.
+struct LoopFilters
 {
-    std::array<int, 2 * maxStrings> byStages {}, byPairs {};
+    static constexpr int capacity = 2 * maxStrings;
+    std::array<int, capacity> byStages {}, byPairs {};
     std::array<int, maxDispersionStages> withStages {};
     std::array<int, dispersionPairs> withPairs {};
+    std::array<double, capacity> dispersion {};
+    std::array<std::array<double, capacity>, maxDispersionStages> stageState {};
+    // The constant and the bending loss section, as UnitDcSection.
+    struct Losses
+    {
+        std::array<double, capacity> c0 {}, c1 {}, a1 {}, a2 {};
+        std::array<double, capacity> previousInput {}, previousDifference {}, u1 {}, u2 {};
+        std::array<bool, capacity> active {};
 
-    void sort(Loop* const* loops, int count) noexcept
+        void gather(const UnitDcSection& section, std::size_t i) noexcept
+        {
+            c0[i] = section.c0;
+            c1[i] = section.c1;
+            a1[i] = section.a1;
+            a2[i] = section.a2;
+            previousInput[i] = section.previousInput;
+            previousDifference[i] = section.previousDifference;
+            u1[i] = section.u1;
+            u2[i] = section.u2;
+            active[i] = section.active;
+        }
+        void scatter(UnitDcSection& section, std::size_t i) const noexcept
+        {
+            section.previousInput = previousInput[i];
+            section.previousDifference = previousDifference[i];
+            section.u1 = u1[i];
+            section.u2 = u2[i];
+        }
+        // UnitDcSection::process on every loop; an inactive one passes its
+        // input and keeps its state.
+        void process(double* wave, int count) noexcept
+        {
+            for (int k = 0; k < count; ++k)
+            {
+                const auto i = static_cast<std::size_t>(k);
+                const double x = wave[k];
+                const double difference = x - previousInput[i];
+                const double w = c0[i] * difference + c1[i] * previousDifference[i];
+                const double u = w - a1[i] * u1[i] - a2[i] * u2[i];
+                const bool on = active[i];
+                previousInput[i] = on ? x : previousInput[i];
+                previousDifference[i] = on ? difference : previousDifference[i];
+                u2[i] = on ? u1[i] : u2[i];
+                u1[i] = on ? u : u1[i];
+                wave[k] = on ? x - u : x;
+            }
+        }
+    };
+    Losses constantLoss {}, bendingLoss {};
+
+    void gather(Loop* const* loops, int count) noexcept
     {
         int n = 0;
         for (int stages = maxDispersionStages; stages > 0; --stages)
         {
             for (int i = 0; i < count; ++i)
                 if (loops[i]->dispersionStages == stages)
-                    byStages[static_cast<std::size_t>(n++)] = i;
+                {
+                    const auto j = static_cast<std::size_t>(n++);
+                    byStages[j] = i;
+                    dispersion[j] = loops[i]->dispersion;
+                    for (std::size_t stage = 0; stage < static_cast<std::size_t>(stages); ++stage)
+                        stageState[stage][j] = loops[i]->dispersionState[stage];
+                }
             withStages[static_cast<std::size_t>(stages - 1)] = n;
         }
         n = 0;
@@ -1095,28 +1146,60 @@ struct LoopOrder
                     byPairs[static_cast<std::size_t>(n++)] = i;
             withPairs[static_cast<std::size_t>(pairs - 1)] = n;
         }
+        for (int i = 0; i < count; ++i)
+        {
+            constantLoss.gather(loops[i]->constantLoss, static_cast<std::size_t>(i));
+            bendingLoss.gather(loops[i]->bendingLoss, static_cast<std::size_t>(i));
+        }
+    }
+
+    void scatter(Loop* const* loops, int count) const noexcept
+    {
+        for (int j = 0; j < withStages[0]; ++j)
+        {
+            Loop& loop = *loops[byStages[static_cast<std::size_t>(j)]];
+            for (std::size_t stage = 0; stage < static_cast<std::size_t>(loop.dispersionStages); ++stage)
+                loop.dispersionState[stage] = stageState[stage][static_cast<std::size_t>(j)];
+        }
+        for (int i = 0; i < count; ++i)
+        {
+            constantLoss.scatter(loops[i]->constantLoss, static_cast<std::size_t>(i));
+            bendingLoss.scatter(loops[i]->bendingLoss, static_cast<std::size_t>(i));
+        }
+    }
+
+    void read(Loop* const* loops, int count, double* wave) noexcept
+    {
+        for (int i = 0; i < count; ++i)
+            wave[i] = loops[i]->readLine();
+        double sorted[capacity];
+        for (int j = 0; j < withStages[0]; ++j)
+            sorted[j] = wave[byStages[static_cast<std::size_t>(j)]];
+        for (std::size_t stage = 0; stage < maxDispersionStages; ++stage)
+        {
+            double* const state = stageState[stage].data();
+            for (int j = 0; j < withStages[stage]; ++j)
+            {
+                const double y = sorted[j];
+                const double out = dispersion[static_cast<std::size_t>(j)] * y + state[j];
+                state[j] = y - dispersion[static_cast<std::size_t>(j)] * out;
+                sorted[j] = out;
+            }
+        }
+        for (int j = 0; j < withStages[0]; ++j)
+            wave[byStages[static_cast<std::size_t>(j)]] = sorted[j];
+        for (std::size_t k = 0; k < dispersionPairs; ++k)
+            for (int j = 0; j < withPairs[k]; ++j)
+            {
+                const int i = byPairs[static_cast<std::size_t>(j)];
+                wave[i] = loops[i]->dispersePair(k, wave[i]);
+            }
+        constantLoss.process(wave, count);
+        bendingLoss.process(wave, count);
+        for (int i = 0; i < count; ++i)
+            wave[i] = loops[i]->finishRead(wave[i]);
     }
 };
-
-void readLoops(Loop* const* loops, int count, const LoopOrder& order, double* wave) noexcept
-{
-    for (int i = 0; i < count; ++i)
-        wave[i] = loops[i]->readLine();
-    for (std::size_t stage = 0; stage < maxDispersionStages; ++stage)
-        for (int j = 0; j < order.withStages[stage]; ++j)
-        {
-            const int i = order.byStages[static_cast<std::size_t>(j)];
-            wave[i] = loops[i]->disperse(stage, wave[i]);
-        }
-    for (std::size_t k = 0; k < dispersionPairs; ++k)
-        for (int j = 0; j < order.withPairs[k]; ++j)
-        {
-            const int i = order.byPairs[static_cast<std::size_t>(j)];
-            wave[i] = loops[i]->dispersePair(k, wave[i]);
-        }
-    for (int i = 0; i < count; ++i)
-        wave[i] = loops[i]->finishRead(wave[i]);
-}
 
 // The bridge bar's generalized coordinates: the rigid bar's heave, rock and
 // sway, then its first bending modes (setInstrument()).
@@ -1693,6 +1776,7 @@ struct AculyreEngine::State
     double piezoMountZ1 { 0.0 }, piezoMountZ2 { 0.0 };
     bool sustain { false };
     Random random {};
+    LoopFilters filters {};
     PluckReport lastPluck {};
     bool idle { true };
     int quietSamples { 0 };
@@ -2978,8 +3062,8 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         loops[static_cast<std::size_t>(2 * index)] = &s.strings[static_cast<std::size_t>(index)].normal;
         loops[static_cast<std::size_t>(2 * index + 1)] = &s.strings[static_cast<std::size_t>(index)].parallel;
     }
-    LoopOrder order;
-    order.sort(loops.data(), 2 * count);
+    LoopFilters& filters = s.filters;
+    filters.gather(loops.data(), 2 * count);
     std::array<double, 2 * maxStrings> wave {};
 
     for (int sample = 0; sample < numSamples; ++sample)
@@ -3030,7 +3114,7 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             }
         }
 
-        readLoops(loops.data(), 2 * count, order, wave.data());
+        filters.read(loops.data(), 2 * count, wave.data());
         BarVector drive {};
         for (int index = 0; index < count; ++index)
         {
@@ -3168,12 +3252,14 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         right[sample] = static_cast<float>(volume * ((1.0 - blend) * micRight + blend * pickup));
         if (s.quietSamples >= static_cast<int>(0.5 * sampleRate_))
         {
+            filters.scatter(loops.data(), 2 * count);
             sleep();
             std::fill(left + sample + 1, left + numSamples, 0.0f);
             std::fill(right + sample + 1, right + numSamples, 0.0f);
             return;
         }
     }
+    filters.scatter(loops.data(), 2 * count);
 }
 
 AculyreEngine::StringReport AculyreEngine::stringReport(int string) const noexcept

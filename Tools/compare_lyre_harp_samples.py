@@ -35,6 +35,10 @@ Protocol, the same on the recording and on the model:
   minus the recording from 200 Hz to 10 kHz after removing the mean.
 - Attack: each band's energy within 40 Hz of a partial and between
   partials, over windows from the onset, each note at its 0-300 ms energy.
+- Channels: over 0-1.5 s from the onset, each octave band's real
+  correlation between left and right (the cross-spectrum's real part over
+  the geometric mean of the two powers, 2048-point Welch frames) and the
+  two sides' level difference, medians over the notes.
 
 Microphones, room and pluck force are unknown, so levels and spectra compare
 shapes; partial frequencies and decay rates do not depend on them.
@@ -64,6 +68,7 @@ from scipy.io import wavfile
 NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 NOTES = ["G3", "G#3", "A#3", "C4", "C#4", "E4", "F4", "G4", "G#4", "A#4", "C5", "C#5", "E5", "F5", "G5", "G#5"]
 BANDS = 1000.0 * 2.0 ** (np.arange(-7, 11) / 3.0)  # 198 Hz to 10 kHz
+OCTAVES = [200, 400, 800, 1600, 3200, 6400]  # lower edges, Hz
 
 
 def midi(note):
@@ -80,6 +85,27 @@ def read(path):
         data = data / float(np.iinfo(data.dtype).max)
     data = np.asarray(data, dtype=float)
     return (data if data.ndim == 1 else data.mean(axis=1)), rate
+
+
+def channels(path):
+    from scipy.signal import csd, welch
+    rate, data = wavfile.read(path)
+    if data.dtype.kind == "i":
+        data = data / float(np.iinfo(data.dtype).max)
+    data = np.asarray(data, dtype=float)
+    if data.ndim == 1:
+        return None
+    start = onset(data.mean(axis=1))
+    left, right = data[start:start + int(1.5 * rate), 0], data[start:start + int(1.5 * rate), 1]
+    f, cross = csd(left, right, fs=rate, nperseg=2048)
+    _, pl = welch(left, fs=rate, nperseg=2048)
+    _, pr = welch(right, fs=rate, nperseg=2048)
+    rows = []
+    for lo in OCTAVES:
+        m = (f >= lo) & (f < 2 * lo)
+        rows.append((np.real(cross[m]).sum() / np.sqrt(pl[m].sum() * pr[m].sum()),
+                     abs(10 * np.log10(pl[m].sum() / pr[m].sum()))))
+    return rows
 
 
 def onset(x):
@@ -315,6 +341,14 @@ def main():
     for i, (a, b) in enumerate(ATTACK_WINDOWS):
         print(f"{a * 1000:3.0f}-{b * 1000:3.0f} ms " + "".join(
             f"{ma[i, j, 0] - ra[i, j, 0]:+6.1f} /{ma[i, j, 1] - ra[i, j, 1]:+6.1f}   " for j in range(len(ATTACK_BANDS))))
+
+    print("\nchannels, median over notes: octave from (Hz), correlation recording / model, |L-R| dB recording / model")
+    rc = [c for c in (channels(os.path.join(args.samples, f"Lyre {n} RR{k}.wav")) for n in NOTES for k in (1, 2, 3)) if c]
+    mc = [c for c in (channels(os.path.join(args.renders, f"{midi(n)}.wav")) for n in NOTES) if c]
+    if rc and mc:
+        rm, mm = np.median(rc, axis=0), np.median(mc, axis=0)
+        for i, lo in enumerate(OCTAVES):
+            print(f"{lo:6d} {rm[i, 0]:5.2f} / {mm[i, 0]:5.2f}   {rm[i, 1]:4.1f} / {mm[i, 1]:4.1f}")
     return 0
 
 

@@ -551,7 +551,7 @@ nothing until the next pluck.
   less from 5 to 8 kHz throughout. The 6 mm top (0.7.2) was chosen on
   these notes among 3 to 8 mm; it put the 0.8 to 1.3 kHz peak, where the
   recording's is, within 2.3 dB, which the 3 mm top had left 1 to 8 dB short
-  ([benchmark](Docs/validation/dr-lyre-harp-benchmark-2026-10-29.md),
+  ([benchmark](Docs/validation/dr-lyre-harp-benchmark-2026-10-29.md), [2026-10-30](Docs/validation/lyre-recordings-benchmark-2026-10-30.md),
   [decisions](Docs/decisions.md)). The other lyre harp recording disagrees:
   replaying its phrase (Freesound 649925, D4 to B4), the 6 mm top leaves
   the fundamentals 8 to 15 dB short and the shape 11.2 dB rms from the

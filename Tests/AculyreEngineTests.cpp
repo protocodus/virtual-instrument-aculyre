@@ -805,7 +805,7 @@ int main()
     // sound is its own bilinear acceleration. A first difference of the
     // modes' velocity left 10 to 16 kHz 3.4 to 3.6 dB below 4x on the three
     // instruments; each mode's acceleration left 0.9 to 1.65 dB, and each
-    // mode's energy, made up for the band the transform narrows, -1.05 to
+    // mode's energy, made up for the band the transform narrows, -1.17 to
     // +0.24 dB.
     for (int index = 0; index < aculyre::Performer::instrumentCount; ++index)
     {

@@ -3,6 +3,44 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-30: the microphones are a 17 cm pair (0.7.1), adopted unheard
+
+**What was decided.** How alike a soundbox mode's signs are at the two
+microphones. They had been drawn apart, as if the microphones heard
+unrelated parts of the top at any frequency; on the DR lyre harp's notes
+the dry sides correlated 0.73 from 0.8 to 1.6 kHz, and from -0.3 to 0.7
+over three other draws of the body, where the recording reads 0.95 (a
+pair hears a top much smaller than a wavelength as one source).
+
+**What ships.** The two signs are alike with the probability a pair 17 cm
+apart (ORTF's spacing, a recording convention, not fitted) at 0.5 m gives
+from the van Cittert-Zernike transform of the top's radiating strength
+across its width, sin^2 averaged over its modes: a Hann window's
+transform, sinc(x) / (1 - (x/pi)^2), x = k w s / 2r. The draws per mode
+are the same four, so the body is unchanged.
+
+| DR lyre harp, steel, dry | recording | 0.7.0 | 0.7.1 |
+| --- | --- | --- | --- |
+| side correlation 0.8-1.6 / 1.6-3.2 / 3.2-6.4 / 6.4-12.8 kHz | 0.95 / 0.64 / 0.42 / 0.19 | 0.73 / 0.77 / 0.51 / 0.48 | 1.00 / 0.98 / 0.64 / 0.44 |
+| side difference, same bands (dB) | 0.9 / 1.7 / 1.9 / 2.0 | 3.6 / 2.3 / 2.3 / 2.2 | 0.3 / 0.5 / 2.1 / 1.6 |
+| shape rms, 0-0.3 / 0.3-1.5 s (dB) | | 5.5 / 6.4 | 5.1 / 6.6 |
+| decay rms, fundamentals / partials 2-6 | | 1.42 / 0.64 | 1.42 / 0.57 |
+
+Over four draws of the body, the pair's shape rms averages 5.6 / 6.8
+against 5.9 / 6.9 with the signs drawn apart, so the shape gain is mostly
+the draw; the correlation's is not (0.99 to 1.00 at 0.8-1.6 kHz on every
+draw). The pair runs about 0.2 too correlated from 1.6 to 6.4 kHz: a
+uniform top (sinc alone) gives negative correlation from 3.2 kHz, further
+off, and a wider pair (30, 60 cm) changes the mids little. The lyre harps'
+touch is re-evened (it had moved up to 1.4 dB) and their output gains
+raised 1.2 and 1.3 dB to -9 VU; the gut lyre's touch moved under 0.2 dB.
+
+**Listening test.** The radiation set's phrases, A 0.7.0 and B the pair,
+at the Rack's defaults and microphones alone, trimmed to A's RMS (-0.13 to
++0.07 dB): `aculyre/listening-tests/2026-10-30-microphone-pair/` in the
+project files. B ships unheard, as the owner's standing rule has the
+candidate win unless they say otherwise.
+
 ## 2026-10-30: each mode radiates by its own efficiency (0.7.0), adopted unheard
 
 **What was asked.** An eight-hour pass on sound quality, authenticity,

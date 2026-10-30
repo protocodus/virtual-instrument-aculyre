@@ -22,6 +22,18 @@ reference recording below.
 
 ## Version history
 
+- **0.7.1** (prototype, not released): the two microphones are a 17 cm
+  pair. Each soundbox mode's sign at the two had been drawn apart, so from
+  0.8 to 1.6 kHz the lyre harp's sides correlated 0.73 (and from -0.3 to
+  0.7 with other draws of the body) where the DR lyre harp's read 0.95;
+  now they are alike as often as a pair that close hears the top as one
+  source, and the sides correlate 1.00, 0.98, 0.64 and 0.44 by octave from
+  0.8 to 12.8 kHz (the recording 0.95, 0.64, 0.42 and 0.19), and differ by
+  0.3 to 2.1 dB (1.6 to 2.0; 0.9 to 3.6 before). The image is steadier and
+  narrower in the mids; WIDTH widens it. Against the DR harp the shape
+  over the first 0.3 s comes 0.4 dB rms closer (5.1) and 0.2 dB further
+  after (6.6). The lyre harps' touch is re-evened and their gains
+  re-levelled to -9 VU; the CPU is unchanged.
 - **0.7.0** (prototype, not released): each soundbox mode radiates by its
   own efficiency, worked out for its own shape, where a band average for the
   whole top had stood in. The spruce top's modes across the grain radiate
@@ -288,7 +300,13 @@ junction is solved implicitly every sample, so it is passive and every string, p
 **Radiation and room.** Each mode radiates its net volume change as a
 monopole, plus an equivalent volume for its edge and corner radiation, from
 its own radiation efficiency, with a seeded sign and weight at each of the
-two microphones. The efficiency is Wallace's integral for the mode's own
+two microphones. The microphones are a pair 17 cm apart, ORTF's spacing,
+0.5 m from the top, so a mode's two signs are alike as often as such a pair
+hears the top's width as one source: the van Cittert-Zernike transform of
+a top radiating as sin^2 across its width, 0.93 at 1.1 kHz on the lyre
+harp and 0.27 at 4.5 kHz. Until 0.7.1 the two signs were drawn apart, and
+the two sides' correlation at 1 kHz ran from -0.3 to 0.7 depending on the
+draw. The efficiency is Wallace's integral for the mode's own
 shape in a baffle (JASA 51 (1972) 946), less the net volume's share; below
 the mode's own coincidence, where its bending wavenumber exceeds the air's,
 that edge and corner share is doubled for edges glued to the box, as

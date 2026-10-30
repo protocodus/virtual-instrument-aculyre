@@ -23,6 +23,10 @@ constexpr double soundSpeed = 343.0;      // m/s
 // pressure rho/(4 pi r) dQ/dt.
 constexpr double microphoneDistance = 0.5;
 
+// The microphones are a pair 17 cm apart, ORTF's spacing, facing the top
+// from microphoneDistance.
+constexpr double microphoneSpacing = 0.17;
+
 // Loss at the yoke end (tuning pin and crossbar), per round trip. Authored:
 // no lyre measurement separates it, and it only matters where the air and
 // the material leave a string almost lossless.
@@ -1698,6 +1702,25 @@ double warburtonH(int m) noexcept
     return g * g * (1.0 - 2.0 / (g * pi));
 }
 
+// How alike a mode's signs are at the two microphones, from the correlation
+// of the pressures a pair hears from a top of width w (van Cittert-Zernike):
+// the transform of the radiating strength across the top at the pair's
+// spatial frequency k s / r. Averaged over its modes, a top edged on its box
+// radiates as sin^2 across its width, whose transform is a Hann window's,
+// sinc(x) / (1 - (x / pi)^2) at x = k w s / (2 r): 0.93 at 1.1 kHz on the
+// lyre harp's 30 cm top, 0.27 at 4.5 kHz, where the DR lyre harp's channels
+// correlate 0.95 and 0.42. Seeded signs drawn alone had the model's
+// channels from -0.3 to 0.7 at 1 kHz from one seed to the next.
+double pairSameSign(double k, double width) noexcept
+{
+    const double x = k * width * microphoneSpacing / (2.0 * microphoneDistance);
+    if (x < 1.0e-9)
+        return 1.0;
+    if (std::abs(x - pi) < 1.0e-6)
+        return 0.5;
+    return std::sin(x) / x / (1.0 - (x / pi) * (x / pi));
+}
+
 // One direction's factor in Wallace's integrand: cos(x / 2) for an odd
 // order, sin(x / 2) for an even one, over (x / m pi)^2 - 1, taken at its
 // finite limit where the denominator vanishes.
@@ -2212,13 +2235,15 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         // Maidanik gives a clamped panel twice a simply supported one's
         // (JSV 9 (1969) 469, p. 484); only a supersonic mode is held to an
         // efficiency of 1, as capping the doubled ones too lost the top's 3
-        // to 6 kHz (Docs/decisions.md, 2026-10-30). Maidanik's average over every mode in
-        // a band (Crocker and Price's Eq. 38) had stood in for this, with
-        // one coincidence for the whole top. An orthotropic top has none:
+        // to 6 kHz (Docs/decisions.md, 2026-10-30). Maidanik's average over
+        // every mode in a band (Crocker and Price's Eq. 38) had stood in for
+        // this, with one coincidence for the whole top. An orthotropic top has none:
         // spruce's modes across the grain reach the air's wavenumber from
         // 4.2 kHz, along it from 15 kHz, and its modes' own efficiencies
         // from 0.6 to 4.8 kHz average 2.5 to 6 dB over the band's. Its sign
-        // and weight at each microphone are seeded draws: a symmetric pair,
+        // and weight at each microphone are seeded draws, the two signs
+        // alike as often as the pair's spacing lets them be (pairSameSign);
+        // a symmetric pair,
         // each string placed by where it sits on the bar, was heard against
         // this and not chosen (Docs/decisions.md, 2026-10-28), and a spaced
         // pair hearing each mode by its shape's Rayleigh integral left the
@@ -2232,9 +2257,10 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         const double sigma = subsonic ? 2.0 * radiated : std::min(1.0, radiated);
         const double multipole = soundSpeed / omega
             * std::sqrt(4.0 * pi * a * b * sigma) * 0.5;
-        mode.multipoleLeft = multipole * (modeRandom.bipolar() < 0.0 ? -1.0 : 1.0)
-                           * (0.7 + 0.3 * std::abs(modeRandom.bipolar()));
-        mode.multipoleRight = multipole * (modeRandom.bipolar() < 0.0 ? -1.0 : 1.0)
+        const double signLeft = modeRandom.bipolar() < 0.0 ? -1.0 : 1.0;
+        mode.multipoleLeft = multipole * signLeft * (0.7 + 0.3 * std::abs(modeRandom.bipolar()));
+        const bool alike = 0.5 * (modeRandom.bipolar() + 1.0) < 0.5 * (1.0 + pairSameSign(k, b));
+        mode.multipoleRight = multipole * (alike ? signLeft : -signLeft)
                             * (0.7 + 0.3 * std::abs(modeRandom.bipolar()));
     }
 

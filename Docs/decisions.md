@@ -3,6 +3,55 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-30: the lyre harps' top is 6 mm (0.7.2), adopted unheard
+
+**What was decided.** The lyre harps' top thickness, an assumed dimension
+(3 mm). On 2026-10-29 fifteen tops from 2.5 to 5 mm scattered the DR
+harp's decay rms with no trend, one draw of the body each. With 0.7.0's
+per-mode radiation and 0.7.1's pair, and averaged over four draws of the
+top's irregularities (the seeded scatter of its mode frequencies and
+radiation signs), a trend shows:
+
+| top | shape rms, 0-0.3 / 0.3-1.5 s (dB) | decay rms, fundamentals / partials 2-6 |
+| --- | --- | --- |
+| 3 mm (0.7.1) | 5.6 / 6.7 | 1.41 / 0.57 |
+| 4 mm | 5.7 / 6.9 | 1.50 / 0.65 |
+| 5 mm | 5.1 / 6.1 | 0.97 / 0.65 |
+| **6 mm (0.7.2)** | **4.6 / 5.2** | **1.07 / 0.65** |
+| 7 mm | 5.1 / 4.2 | 1.02 / 0.73 |
+| 8 mm | 5.8 / 4.9 | 1.33 / 0.67 |
+
+6 mm is best over the first 0.3 s; after it 7 and 8 mm fit better, but
+they lose the attack, and 7 mm the partials. The partials 2-6 lose 0.08 against 3 mm, as
+on 2026-10-29: the bass strings' partials now ring on (11 to 16 dB/s
+against the recording's 18 to 30). The top is unbraced, so the thickness
+also stands for a real top's bracing; the bridge admittance it gives,
+scaled by the A4 string's impedance, peaks at -36 dB and runs -53 to -66
+by octave, inside a lever harp's measured range (Woodhouse 2021, Fig. 4),
+where the 3 mm top peaked at -25. The first top mode moves from 467 to
+835 Hz; the shipping draw's sides still correlate 1.00 / 0.90 / 0.34 /
+0.53 by octave from 0.8 kHz.
+
+The heavier top radiates 8.4 dB less on steel and 9.6 on nylon, made up in
+outputGain (3.519, 4.738); the piezo hears 3 and 2.2 dB more, taken out of
+piezoGain (0.363, 0.352). The lyre harps have 109 modes below the limit
+instead of 234, and the steel phrase renders in the same time or less.
+
+**A measurement fix on the way.** The even-touch test (and the tool that
+evens it) set the pickup blend and plucked at once, so for the first
+10 ms the blend still glided from the microphones: the piezo's touch was
+evened on a mix whose leak moved with the two output gains. Raising
+outputGain exposed it. The test now runs one idle block first, which
+takes the controls at once; the piezo touches are re-evened on all three
+instruments (the gut lyre's had been 3.5 dB uneven by the piezo alone),
+and the gut lyre's piezoGain rises from 0.260 to 0.307 to stay with its
+microphones.
+
+**Listening test.** A 0.7.1, B 6 mm, at the Rack's defaults and the
+microphones alone (the gut lyre at the defaults only, as only its piezo
+moved): `aculyre/listening-tests/2026-10-30-top-thickness/` in the project
+files. B ships unheard under the owner's standing rule.
+
 ## 2026-10-30: the microphones are a 17 cm pair (0.7.1), adopted unheard
 
 **What was decided.** How alike a soundbox mode's signs are at the two

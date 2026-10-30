@@ -63,15 +63,15 @@ constexpr double inch = 0.0254;
 // its first 300 ms at velocity 90 (the instrument's own controls, without the
 // room) on the straight line through every string's level, so the register
 // keeps its slope and no string stands out of it. Without it the body's
-// modes left the steel A4 5.6 dB over that line and G5 7.4 under, the nylon
-// A4 8.1 over and G5 8.2 under, and the gut lyre's E3 5.6 over and D5 7.4
-// under (0.7.1).
+// modes left the steel G5 6.8 dB over that line and D5 8.3 under, the nylon
+// G4 9.3 over and D5 9.0 under, and the gut lyre's E3 5.6 over and D5 7.4
+// under (0.7.2).
 //
 // The fifth value is the same touch by the piezo, with the piezo alone. The
 // piezo hears the force on the bridge bar rather than what the soundbox
 // radiates, so it favours other strings: the microphones' touch would leave
-// the piezo's worst string 7.6 dB off its line on steel, 7.8 on nylon and
-// 7.0 on gut. Between the two pickups the touch blends geometrically, as
+// the piezo's worst string 10.2 dB off its line on steel, 9.6 on nylon and
+// 7.2 on gut. Between the two pickups the touch blends geometrically, as
 // the PIEZO control blends what is heard. Each instrument's strongest touch
 // is 1, so no string is plucked harder than pluckForce.
 //
@@ -79,37 +79,42 @@ constexpr double inch = 0.0254;
 // pickup and reports the touch each would need after a change to the strings
 // or the body.
 constexpr std::array<StringSpec, maxStrings> lyreHarpSteel {{
-    { 55, 0.440, 0.024 * inch, 0.74, 0.66, 0.00010857 * 17.857967, 0.38e-3 }, { 57, 0.425, 0.020 * inch, 0.40, 0.76 },
-    { 59, 0.411, 0.019 * inch, 0.39, 0.67 }, { 60, 0.396, 0.018 * inch, 0.42, 0.63 },
-    { 62, 0.381, 0.017 * inch, 0.51, 0.56 }, { 64, 0.367, 0.016 * inch, 0.46, 0.51 },
-    { 65, 0.352, 0.015 * inch, 0.44, 0.51 }, { 67, 0.337, 0.014 * inch, 0.36, 0.48 },
-    { 69, 0.323, 0.014 * inch, 0.21, 0.45 }, { 71, 0.308, 0.013 * inch, 0.23, 0.68 },
-    { 72, 0.293, 0.012 * inch, 0.27, 1.00 }, { 74, 0.279, 0.012 * inch, 0.47, 0.77 },
-    { 76, 0.264, 0.011 * inch, 0.50, 0.61 }, { 77, 0.249, 0.011 * inch, 0.56, 0.60 },
-    { 79, 0.235, 0.010 * inch, 1.00, 0.58 }, { 81, 0.220, 0.010 * inch, 0.36, 0.65 }
+    { 55, 0.440, 0.024 * inch, 0.61, 0.75, 0.00010857 * 17.857967, 0.38e-3 }, { 57, 0.425, 0.020 * inch, 0.40, 0.70 },
+    { 59, 0.411, 0.019 * inch, 0.35, 0.68 }, { 60, 0.396, 0.018 * inch, 0.32, 0.69 },
+    { 62, 0.381, 0.017 * inch, 0.37, 0.69 }, { 64, 0.367, 0.016 * inch, 0.33, 0.66 },
+    { 65, 0.352, 0.015 * inch, 0.31, 0.67 }, { 67, 0.337, 0.014 * inch, 0.15, 0.70 },
+    { 69, 0.323, 0.014 * inch, 0.17, 0.74 }, { 71, 0.308, 0.013 * inch, 0.52, 0.70 },
+    { 72, 0.293, 0.012 * inch, 0.52, 0.71 }, { 74, 0.279, 0.012 * inch, 1.00, 0.66 },
+    { 76, 0.264, 0.011 * inch, 0.89, 0.66 }, { 77, 0.249, 0.011 * inch, 0.74, 0.64 },
+    { 79, 0.235, 0.010 * inch, 0.20, 0.59 }, { 81, 0.220, 0.010 * inch, 0.17, 1.00 }
 }};
 
 // The same frame strung with nylon at 45 N in the bass falling to 30 N in
 // the treble (diameters from T = mu (2 L f)^2 at those tensions).
 constexpr std::array<StringSpec, maxStrings> lyreHarpNylon {{
-    { 55, 0.440, 1.30e-3, 0.74, 0.88 }, { 57, 0.425, 1.18e-3, 0.35, 0.90 },
-    { 59, 0.411, 1.08e-3, 0.36, 0.88 }, { 60, 0.396, 1.05e-3, 0.44, 0.85 },
-    { 62, 0.381, 0.96e-3, 0.53, 0.78 }, { 64, 0.367, 0.87e-3, 0.49, 0.71 },
-    { 65, 0.352, 0.85e-3, 0.42, 0.69 }, { 67, 0.337, 0.78e-3, 0.32, 0.58 },
-    { 69, 0.323, 0.72e-3, 0.15, 0.47 }, { 71, 0.308, 0.66e-3, 0.19, 0.74 },
-    { 72, 0.293, 0.64e-3, 0.25, 1.00 }, { 74, 0.279, 0.60e-3, 0.45, 0.98 },
-    { 76, 0.264, 0.55e-3, 0.54, 0.92 }, { 77, 0.249, 0.54e-3, 0.57, 0.84 },
-    { 79, 0.235, 0.51e-3, 1.00, 0.78 }, { 81, 0.220, 0.47e-3, 0.31, 0.79 }
+    { 55, 0.440, 1.30e-3, 0.68, 0.90 }, { 57, 0.425, 1.18e-3, 0.50, 0.88 },
+    { 59, 0.411, 1.08e-3, 0.35, 0.86 }, { 60, 0.396, 1.05e-3, 0.23, 0.86 },
+    { 62, 0.381, 0.96e-3, 0.27, 0.85 }, { 64, 0.367, 0.87e-3, 0.30, 0.82 },
+    { 65, 0.352, 0.85e-3, 0.29, 0.82 }, { 67, 0.337, 0.78e-3, 0.12, 0.75 },
+    { 69, 0.323, 0.72e-3, 0.20, 0.94 }, { 71, 0.308, 0.66e-3, 0.48, 0.88 },
+    { 72, 0.293, 0.64e-3, 0.47, 0.87 }, { 74, 0.279, 0.60e-3, 1.00, 0.83 },
+    { 76, 0.264, 0.55e-3, 0.82, 0.80 }, { 77, 0.249, 0.54e-3, 0.75, 0.80 },
+    { 79, 0.235, 0.51e-3, 0.22, 0.80 }, { 81, 0.220, 0.47e-3, 0.14, 1.00 }
 }};
 
-// The lyre harp's soundbox: a 20 x 30 cm top of 3 mm spruce on a box 5 cm
+// The lyre harp's soundbox: a 20 x 30 cm top of 6 mm spruce on a box 5 cm
 // deep, one 6 cm soundhole, a 6 g maple bridge bar a centimetre high a
 // third of the way up the top. Early Music Shop's 16-string lyre has a solid
 // spruce top on a beech body; Larkin in the Morning's has a birch ply top on
 // sheesham (their listings). The dimensions are assumed, typical of the
-// instrument.
+// instrument, except the top's thickness, which the DR lyre harp's notes
+// chose among 3 to 8 mm over four draws of the top's irregularities: the
+// third-octave shape 4.6 / 5.2 dB rms (first 0.3 s / after) and the
+// fundamentals' decay 1.07 (log2 rms) at 6 mm, against 5.6 / 6.7 and 1.41
+// at 3 mm and 5.1 / 6.1 and 0.97 at 5 mm. The top is unbraced, so its
+// thickness also stands in for the bracing a real top carries.
 constexpr BodySpec lyreHarpBody {
-    0.20, 0.30, 0.003, sitkaSpruce,
+    0.20, 0.30, 0.006, sitkaSpruce,
     0.20 * 0.30 * 0.05 * 0.85, 0.03,
     0.30, 0.10, 0.90, 0.010, 0.006, hardMaple
 };
@@ -127,12 +132,12 @@ constexpr BodySpec lyreHarpBody {
 // 30 N at E5 as a harp's treble does. Sixteen strings share the six's 9 cm
 // bridge bar, 6 mm apart.
 constexpr std::array<StringSpec, maxStrings> gutLyreStrings {{
-    { 50, 0.500, 1.29e-3, 0.39, 0.88 }, { 52, 0.500, 1.15e-3, 0.15, 0.87 }, { 54, 0.500, 1.02e-3, 0.26, 0.91 },
-    { 55, 0.500, 0.96e-3, 0.43, 0.90 }, { 57, 0.500, 0.86e-3, 0.45, 0.80 }, { 59, 0.500, 0.76e-3, 0.19, 0.83 },
-    { 60, 0.500, 0.72e-3, 0.23, 0.84 }, { 62, 0.500, 0.64e-3, 0.31, 0.81 }, { 64, 0.445, 0.64e-3, 0.18, 0.75 },
-    { 66, 0.397, 0.63e-3, 0.37, 0.85 }, { 67, 0.375, 0.62e-3, 0.53, 0.84 }, { 69, 0.334, 0.61e-3, 0.40, 0.80 },
-    { 71, 0.297, 0.60e-3, 0.23, 0.79 }, { 72, 0.281, 0.60e-3, 0.27, 0.86 }, { 74, 0.250, 0.59e-3, 1.00, 1.00 },
-    { 76, 0.223, 0.58e-3, 0.50, 0.92 }
+    { 50, 0.500, 1.29e-3, 0.39, 0.76 }, { 52, 0.500, 1.15e-3, 0.15, 0.78 }, { 54, 0.500, 1.02e-3, 0.26, 0.73 },
+    { 55, 0.500, 0.96e-3, 0.43, 0.71 }, { 57, 0.500, 0.86e-3, 0.45, 0.64 }, { 59, 0.500, 0.76e-3, 0.19, 0.75 },
+    { 60, 0.500, 0.72e-3, 0.23, 0.72 }, { 62, 0.500, 0.64e-3, 0.31, 0.64 }, { 64, 0.445, 0.64e-3, 0.18, 0.62 },
+    { 66, 0.397, 0.63e-3, 0.37, 0.63 }, { 67, 0.375, 0.62e-3, 0.53, 0.66 }, { 69, 0.334, 0.61e-3, 0.40, 0.65 },
+    { 71, 0.297, 0.60e-3, 0.23, 1.00 }, { 72, 0.281, 0.60e-3, 0.27, 0.86 }, { 74, 0.250, 0.59e-3, 1.00, 0.75 },
+    { 76, 0.223, 0.58e-3, 0.50, 0.63 }
 }};
 constexpr BodySpec gutLyreBody {
     0.36, 0.18, 0.004, hardMaple,
@@ -158,17 +163,17 @@ constexpr BodySpec gutLyreBody {
 // README Level).
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 16, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 1.338, 0.513
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 3.519, 0.363
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {
     "Nylon Lyre Harp", nylonMonofilament, 16, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 1.569, 0.454
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 4.738, 0.352
 };
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 16, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.27, 0.3, 2.5, 0.35, 2.711, 0.260
+    Technique::Finger, 0.27, 0.3, 2.5, 0.35, 2.711, 0.307
 };
 
 inline constexpr std::array<const InstrumentSpec*, 3> presets {{

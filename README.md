@@ -22,6 +22,20 @@ reference recording below.
 
 ## Version history
 
+- **0.7.2** (prototype, not released): the lyre harps' spruce top is 6 mm
+  thick, where it was 3. Over four draws of the top's irregularities, the
+  DR lyre harp's notes fit it best among 3 to 8 mm: the third-octave shape
+  comes from 5.6 / 6.7 to 4.6 / 5.2 dB rms (first 0.3 s / after) and the
+  fundamentals' decays from 1.41 to 1.07 (log2 rms). The top's first mode
+  moves from 467 to 835 Hz, so the boxy 400 Hz is gone (-17 dB on a steel
+  phrase) and 0.8 to 4 kHz comes forward (+4 to +12 dB); the bridge's
+  admittance falls into a lever harp's measured range. The heavier top
+  radiates 8 to 10 dB less, made up in the lyre harps' gains, and has half
+  the modes below the limit, so the lyre harps render a little faster. The
+  piezo's even touch is re-measured with the pickup blend settled (it had
+  been measured while the blend still glided from the microphones, which
+  left the gut lyre's piezo up to 3.5 dB uneven); the gut lyre's piezo is
+  1.5 dB louder to match.
 - **0.7.1** (prototype, not released): the two microphones are a 17 cm
   pair. Each soundbox mode's sign at the two had been drawn apart, so from
   0.8 to 1.6 kHz the lyre harp's sides correlated 0.73 (and from -0.3 to
@@ -349,8 +363,8 @@ top two octaves.
 
 **Presets.** The steel lyre harp has 16 strings G3-A5 in C major, 0.44-0.22 m,
 plain gauges 0.020-0.010 inch over a nickel-wound 0.024 inch G3, 54-63 N,
-over a 20 x 30 cm spruce top on a 5 cm box
-with a 6 cm soundhole: its air mode is 212 Hz and its first top mode 467 Hz.
+over a 20 x 30 cm spruce top 6 mm thick on a 5 cm box
+with a 6 cm soundhole: its air mode is 237 Hz and its first top mode 835 Hz.
 The nylon harp uses the same frame with 1.30-0.47 mm monofilament at 29-44 N.
 The gut lyre has sixteen strings, D3 to E5 in G major, over a closed maple
 box whose first mode is 343 Hz: the reconstructions' six 50 cm strings D3 E3
@@ -485,22 +499,23 @@ nothing until the next pluck.
 - No body is measured: every soundbox is a plate-and-air model with assumed
   dimensions, so where its modes fall against the strings is a guess, and that
   sets which notes are loud, which are dead and how fast they decay. The
-  lyre harps' A5 sits on a top mode at 879 Hz that the bending bar reaches
-  at its treble end: plucked alone at velocity 0.7, the steel A5's
-  fundamental falls 27 dB from 0.12 to 0.7 s where its neighbours fall 7 to
-  11 (10 with 0.5.0's rigid bar). Other draws of the top's irregularities
-  leave it falling 17 to 30 dB, a 2.2 cm bar moves the dead note to A4, and
-  a 1.5 cm bar or a less damped one leaves it as it is, so it stays until
-  a lyre harp is measured. Published small soundboxes only bound it. A
+  lyre harps' first top mode, 835 Hz on the 6 mm top, drains the treble:
+  plucked alone at velocity 0.7, the steel A5's fundamental falls 38 dB
+  from 0.12 to 0.7 s and G5's 23, where D5 to F5 fall 8 to 15 and the
+  strings below 3 to 8. The DR lyre harp's G5 falls as fast (60 dB/s), but
+  its G#5 does not; until a lyre harp is measured, which notes its top
+  drains is a guess. Before 0.7.2 the 3 mm top's mode at 879 Hz did the
+  same to A5 (27 dB). Published small soundboxes only bound it. A
   12-string kokle on a 3 mm spruce top (G3 to D5) rings at Q 18 to 29 from
   290 to 700 Hz (Peekna and Rossing, Forum Acusticum 2005, Fig. 3), where
   the model's modes below 1 kHz sit at Q 20 to 23. A lever harp's bridge
   admittance, scaled by its string's impedance, peaks near -46 dB and
   mostly runs -50 to -70 dB (Woodhouse, J. Sound Vib. 523 (2021), Fig. 4);
-  the steel lyre harp's, scaled by its A4's, runs a median -46 to -54 dB
-  by band and peaks at -25 dB at 454 Hz, the strong coupling that drains
-  its A4. A small, light top couples more than a harp's long board, but
-  by how much no lyre harp measurement says.
+  the steel lyre harp's, scaled by its A4's, runs a median -53 to -66 dB
+  by octave from 200 Hz to 6.4 kHz and peaks at -36 dB at 811 Hz, in the
+  harp's range; the 3 mm top before 0.7.2 ran -44 to -53 and peaked at
+  -25 dB at 455 Hz. How much a lyre harp's small top couples, no
+  measurement says.
 - Nylon and gut damping follow one published fit to measured harp strings,
   not strings from these instruments; gut varied most from string to string
   in that study.
@@ -508,9 +523,9 @@ nothing until the next pluck.
   lyre's bar is measured, and the bends cost 1.4 to 1.8 times the CPU of a
   rigid bar. The body's mode damping is a point in a guitar bridge's
   measured spread, chosen by ear ([decisions](Docs/decisions.md)).
-- Against a recorded lyre harp A4, the model's fundamental decays faster
-  (42 against 32 dB/s), drained by the assumed body's 467 Hz top mode, and
-  its partials are less inharmonic (B = 2.4e-4 against 4.0e-4). The lyre
+- Against a recorded lyre harp A4, the model's fundamental decays slower
+  (9 against 32 dB/s over 80-450 ms; 42, drained by the 3 mm top's 467 Hz
+  mode, before 0.7.2), and its partials are less inharmonic (B = 2.4e-4 against 4.0e-4). The lyre
   harp phrase's other strings do not follow: fitted over each note's
   partials to 6 kHz, its D4, E4 and G4 read 1.5e-4 to 3.0e-4 where the
   model's read 2.3e-4 to 4.0e-4, and its A4 and B4 3.6e-4 to 4.0e-4 where
@@ -523,15 +538,17 @@ nothing until the next pluck.
   winds its four lowest strings, and no set for a G3-A5 harp lists its
   gauges. The DR harp's G3 reads as plain wire (5.3e-4 against the model's
   1.7e-4).
-- Against the DR lyre harp, note by note, the model drains different
-  fundamentals: the recording's C5 to G5 fall 23 to 60 dB/s from 0.08 to
-  0.6 s where the model's fall 6 to 34, and the model's G4 falls 33 against
-  8. With each note at equal power it carries up to 8 dB more from 200 to
-  500 Hz over the first 0.3 s and 1 to 8 dB less from 0.8 to 1.3 kHz,
-  where the recording peaks (6 to 10 dB less before 0.7.0). Where the assumed body's modes fall sets both; a thicker top moves
-  them and fits the spectrum better but the partials' decays worse, and no
-  lyre harp top is published to choose one
-  ([benchmark](Docs/validation/dr-lyre-harp-benchmark-2026-10-29.md)).
+- Against the DR lyre harp, note by note, the model's mid and treble
+  fundamentals ring on: the recording's G#4 to F5 fall 15 to 50 dB/s from
+  0.08 to 0.6 s where the model's fall 9 to 25 (G5 alike, 61 against 60),
+  and from G3 to F4 partials 2 to 6 fall 11 to 16 dB/s against 8 to 30
+  (most 18 to 30). With each note at equal power it carries 4 to 11 dB less from 300 to
+  500 Hz over the first 0.3 s and 6 more at 400 Hz after, and 8 to 10 dB
+  less from 5 to 8 kHz throughout. The 6 mm top (0.7.2) was chosen on
+  these notes among 3 to 8 mm; it put the 0.8 to 1.3 kHz peak, where the
+  recording's is, within 2.3 dB, which the 3 mm top had left 1 to 8 dB short
+  ([benchmark](Docs/validation/dr-lyre-harp-benchmark-2026-10-29.md),
+  [decisions](Docs/decisions.md)).
 - The parallel polarisation reaches the body by a stand-in path: it tips
   the bar toward the yoke, which is what the string's pull along its own
   length does. A sideways pull at the bar's top is a moment about the

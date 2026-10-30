@@ -305,8 +305,12 @@ int main()
             controls.room = 0.0;
             controls.piezo = piezo ? 1.0 : 0.0;
             engine->setControls(controls);
-            engine->noteOn(note, 90.0f / 127.0f);
             std::vector<float> l(14400), r(14400);
+            // An idle block takes the controls at once; without it the
+            // pickup blend glides from the microphones over the first 10 ms,
+            // and the attack's leak moved with the output gains.
+            engine->process(l.data(), r.data(), 64);
+            engine->noteOn(note, 90.0f / 127.0f);
             for (int position = 0; position < 14400; position += 64)
                 engine->process(l.data() + position, r.data() + position, 64);
             double sum = 0.0;

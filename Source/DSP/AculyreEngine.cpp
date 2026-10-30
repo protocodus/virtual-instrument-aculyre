@@ -1261,7 +1261,8 @@ struct ModeBank
 // Runs the bank's modes one sample on, adding what they radiate to each
 // microphone and their pull on the bar's next velocity, each lane in its own
 // sum. A group's generalized force and its recursion run together, while the
-// force is still in registers; the pulls follow, one coordinate at a time.
+// force is still in registers; the pulls follow, two coordinates at a time
+// so that each load of a mode's state serves both.
 // Done mode by mode with every sum at once, a group's sums (two outputs and
 // up to ten coordinates, eight lanes each) needed far more vector registers
 // than SSE2 or NEON have, and lived on the stack. Every mode adds its terms
@@ -1296,17 +1297,44 @@ void runModes(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::l
                 right[lane] += bank.right[k] * y;
             }
         }
+    const double* const s1 = bank.s1.data();
     for (std::size_t part = 0; part < 3; ++part)
-        for (int n = 0; n < bank.coordinateCount[part]; ++n)
+    {
+        int n = 0;
+        for (; n + 1 < bank.coordinateCount[part]; n += 2)
+        {
+            const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
+            const std::size_t d = bank.coordinates[part][static_cast<std::size_t>(n + 1)];
+            const double* const pullC = bank.pull[c].data();
+            const double* const pullD = bank.pull[d].data();
+            double sumC[lanes], sumD[lanes];
+            for (int lane = 0; lane < lanes; ++lane)
+            {
+                sumC[lane] = past[c][lane];
+                sumD[lane] = past[d][lane];
+            }
+            for (int group = bounds[part]; group < bounds[part + 1]; group += lanes)
+                for (int lane = 0; lane < lanes; ++lane)
+                {
+                    sumC[lane] += pullC[group + lane] * s1[group + lane];
+                    sumD[lane] += pullD[group + lane] * s1[group + lane];
+                }
+            for (int lane = 0; lane < lanes; ++lane)
+            {
+                past[c][lane] = sumC[lane];
+                past[d][lane] = sumD[lane];
+            }
+        }
+        for (; n < bank.coordinateCount[part]; ++n)
         {
             const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
             const double* const pull = bank.pull[c].data();
-            const double* const s1 = bank.s1.data();
             double (&sum)[lanes] = past[c];
             for (int group = bounds[part]; group < bounds[part + 1]; group += lanes)
                 for (int lane = 0; lane < lanes; ++lane)
                     sum[lane] += pull[group + lane] * s1[group + lane];
         }
+    }
 }
 
 struct BarMatrix

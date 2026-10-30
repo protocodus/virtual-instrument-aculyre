@@ -53,8 +53,8 @@ not leave such a band. Nothing was shipped for it.
 
 **Decays by register.** The fundamentals from G3 to A#4 decay at about half
 the recording's rate (4.3 to 11 dB/s against 7 to 27), and partials 2-6
-from G3 to F4 at 0.5 to 0.7 of it; from G4 up the partials sit within a
-quarter. Nothing shipped for it either.
+from G3 to F4 mostly at 0.5 to 0.8 of it (C4's at 1.7); from G4 up the
+partials scatter from 0.7 to 2.4 times the recording's, with no trend. Nothing shipped for it either.
 
 **Thicker treble strings, measured again.** The strings from A4 up 1.6
 times thicker at the same length and stress match the recording's

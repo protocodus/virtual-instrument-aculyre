@@ -25,13 +25,20 @@ At 0.27 the 4th partial sat near the pluck's notch, 23 dB under the
 recording's; at 0.11 the first notch moves to the 9th. A brighter release
 could not stand in: the notch belongs to the point. The point is measured, so no listening
 test chose it; an A/B pack (A 0.7.2, B 0.7.3, on the replayed melody) was
-rendered for review and not committed. The decays do not move (partial 1
+rendered for review and not committed. The owner kept the candidate
+("use candidate", 2026-10-30). The decays do not move (partial 1
 15.2 dB/s against the recording's 15.9; partials 2-6 27.5 against 37.5).
 The strings were re-evened at the new point (the worst had moved 2.5 dB)
 and the preset re-levelled: outputGain 2.711 to 2.938, piezoGain 0.307 to
 0.439.
 
 ## 2026-10-30: the lyre harps' top is 6 mm (0.7.2), adopted unheard
+
+**Verdict.** Asked to keep 6 mm (the candidate, B), go back to 3 mm or try
+5 mm, with the lyre harp phrase's disagreement and the bass decays'
+(lyre-recordings-benchmark-2026-10-30) in front of them, the owner chose
+the candidate ("use candidate", 2026-10-30). Whether they listened to the
+top-thickness A/B first is not recorded.
 
 **What was decided.** The lyre harps' top thickness, an assumed dimension
 (3 mm). On 2026-10-29 fifteen tops from 2.5 to 5 mm scattered the DR

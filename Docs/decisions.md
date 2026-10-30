@@ -3,6 +3,85 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-30: three realism steps (0.6.5), adopted unheard
+
+**What was asked.** One more pass of smart, audible realism improvements,
+about three, benchmarked against the DR lyre harp, without costing CPU.
+
+**What ships.**
+
+- **The finger's release takes its slip's band.** The 0.053 ms a fingertip
+  slip lasts (0.04 mm accelerating evenly to 1.5 m/s) had been used as the
+  exponential's time constant, which has unloaded only 63% when the slip
+  ends and passes a third of the band of a force let go over that time. A
+  linear unloading over T is 3 dB down at 0.443 / T, so the exponential
+  takes T / 2.78, 0.019 ms. The faster release moves velocity's effect up
+  the spectrum, so the softest slip moves from 0.2 mm (the shortest of ten
+  harpists' slips in music, held there because longer ones left the
+  strings darker than any recording) to 0.8 mm, the middle of the 0.5 to
+  1.2 mm most of their slips fell in (Chadefaux, Le Carrou and Fabre 2013,
+  Table V). From velocity 64 to 127 a steel E4's 6th and 10th partials gain
+  4.9 and 5.2 dB against the fundamental (0.6.4: 6.3 and 5.9).
+- **The hand stops a string at a point.** Release had stopped a let-go
+  string with a loss spread over the loop, fading every partial alike. The
+  playing hand is now a dashpot where it last plucked, damping partial n as
+  sin^2(n pi x / L), at the same rate on average over the partials; the
+  partials with a node near the touch ring on briefly. Where the hand
+  touches is authored. The palm (mute) and the resting hand (sympathy)
+  keep the spread loss.
+- **Steel's bending loss at Acustra's fitted value.** Acustra's joint refit
+  to guitar recordings found 7.8e-4 (its candidate C); Acustra ships 2.3e-3,
+  70% of the way to 0.003, chosen by ear on a guitar. Aculyre's plain steel
+  takes C. The wound G3 keeps its own loss.
+
+**What the measurements say** (DR lyre harp, every string alone at velocity
+0.7, `Tools/compare_lyre_harp_samples.py`; 0.6.4 against 0.6.5):
+
+| | 0.6.4 | release alone | release + loss (0.6.5) |
+| --- | --- | --- | --- |
+| shape rms, 0-0.3 s | 6.5 dB | 6.2 | 5.9 |
+| shape rms, 0.3-1.5 s | 7.4 dB | 6.9 | 6.2 |
+| 4-8 kHz partials, 0-10 ms, from the recording | -10.2 dB | | -8.4 |
+| 3-10 kHz, 0.3-1.5 s, from the recording | -8.0 to -14.5 dB | | -4.6 to -10.9 |
+| decay rms log2, fundamentals / partials 2-6 | 1.22 / 0.49 | | 1.23 / 0.50 |
+
+The hand leaves the DR comparison untouched (its notes are never stopped).
+On the listening phrase below, after the rolled chord is stopped, the steel
+lyre harp's 1-4 kHz stands about 9 dB over 0.6.4's for half a second: the
+partials the touch leaves. The CPU is unchanged: the three preset demos
+render in the same time within a few percent. Tests, levels (-8.8 to -8.9
+VU) and the even touch hold; the 1x top octave stays 1.0 to 1.6 dB under
+4x.
+
+**Tried and not shipped.** Both recordings show the strings from A4 up 1.9
+to 3.8 times as inharmonic as the model's. Shortening them by 15% and
+thickening them by 17% at the same tension matched the DR harp's B, but
+the stiffer strings lost 4 to 7 dB from 3 to 10 kHz after 0.3 s, the gap
+above, and B alone cannot tell length from gauge. It stays a known gap.
+
+**Listening test.** One phrase on the steel lyre harp and the gut lyre at
+the Rack's defaults (room 100 %, piezo 50 %): eight short plucks the hand
+stops, a D4 at velocity 40 to 127, and a rolled G chord rung two bars and
+stopped; 48 kHz, matched on whole-file RMS (every trim within 0.08 dB). In
+the project files (`aculyre/listening-tests/2026-10-30-realism/`).
+
+| Letter | Engine |
+| --- | --- |
+| A | 0.6.4 as shipped (5ad3d46) |
+| B | the release alone, with the 0.8 mm softest slip |
+| C | the hand at a point alone |
+| D | steel's bending loss alone (on the gut lyre identical to A) |
+| E | all three, as 0.6.5 ships |
+
+**Not heard before shipping.** E ships under the owner's standing rule to
+take the candidate; the owner's pick among A to E replaces it.
+
+**What it licenses.** The slip's band as the release's time constant, the
+0.8 mm softest slip and the touch at the pluck point as shipping behaviour
+until the owner hears the set, and Acustra's fitted bending loss for plain
+steel. It does not license refitting the bending loss to the DR harp, or
+reading the softest slip or the hand's place as measured.
+
 ## 2026-10-29: velocity and pluck variety (0.6.2), adopted unheard
 
 **What was asked.** Keep velocity's loudness but make the model react to

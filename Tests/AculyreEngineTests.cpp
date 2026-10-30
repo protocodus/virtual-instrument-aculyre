@@ -413,8 +413,8 @@ int main()
             const double deviation[4] = { pluck.position - controls.pluckPosition,
                                           std::log(pluck.force / (aculyre::lyreHarpSteel.pluckForce * string.touch * std::pow(0.7, 1.4))),
                                           std::asin(std::sqrt(pluck.normalShare)) - angle,
-                                          std::log(pluck.release / (0.053e-3 * std::pow(0.7 / 0.5, -1.68)
-                                                                    * std::pow(5.0, 0.3))) };
+                                          std::log(pluck.release / (0.053e-3 / 2.783 * std::pow(0.7 / 0.5, -1.68)
+                                                                    * std::pow(20.0, 0.3))) };
             for (int i = 0; i < 4; ++i)
             {
                 sum[i] += deviation[i];

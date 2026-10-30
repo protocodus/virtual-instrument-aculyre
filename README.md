@@ -22,6 +22,24 @@ reference recording below.
 
 ## Version history
 
+- **0.6.5** (prototype, not released): three steps towards the sampled lyre
+  harp. The finger lets go of the string as fast as its measured slip says:
+  the release had used the slip's whole length as its time constant, which
+  leaves a third of the band, so plucks are brighter in their first
+  moments, about 2 dB more from 4 to 8 kHz over the first 40 ms on the DR
+  lyre harp's notes. A soft
+  pluck slips further than before (0.8 mm at the softest, inside harpists'
+  measured slips), so velocity still moves the tone: a steel E4's 6th and
+  10th partials gain 4.9 and 5.2 dB from velocity 64 to 127. The steel
+  strings lose less to bending, at Acustra's fitted value rather than its
+  guitar's by-ear one, so their treble rings longer. With the release,
+  from 0.3 to 1.5 s, 3 to 10 kHz stands 3.4 to 4.2 dB higher on the DR
+  harp's notes, which leaves it 4.6 to 10.9 dB short of the recording. The hand stops a string by
+  touching it where it plucked, so the partials with a node there ring on
+  briefly as a real touch leaves them, instead of every partial fading
+  alike. Against the DR lyre harp the third-octave shape comes 0.6 and
+  1.2 dB rms closer over the first 0.3 s and from 0.3 to 1.5 s (5.9 and
+  6.2 against 6.5 and 7.4); the CPU is unchanged.
 - **0.6.4** (prototype, not released): the engine sleeps once its tail is
   below -140 dBFS for half a second, under a 24-bit output's last bit,
   instead of -170 dBFS: a ringing steel chord stops costing CPU about 9 s
@@ -192,14 +210,17 @@ hand's place: at 0.40 of the finger's distance, Acustra's plectrum fitted on
 picked archtop recordings. A finger's held force unloads exponentially over
 the release time as the string slides off, as Acustra's slip does. A harpist's
 string slips 0.04 mm along the fingertip and leaves at about 1.5 m/s
-(Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444), a release time of
-0.053 ms. A harder pluck slips off faster: the release velocity rises with
+(Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444), a slip lasting
+0.053 ms. The exponential takes that slip's band rather than its length:
+a force let go evenly over a time T is 3 dB down at 0.443/T, so the time
+constant is T/2.78, 0.019 ms (one as long as the slip would have unloaded
+only 63% by its end). A harder pluck slips off faster: the release velocity rises with
 the string's displacement, about as its 1.2th power, from 0.2 m/s at
 0.5 mm to 5 m/s at 7 mm (Chadefaux et al. 2012), so the release time runs
 as the velocity to the -1.68 about the middle of its range. A softer pluck
-also slips further, from the lab's 0.04 mm at the hardest to 0.2 mm, the
-shortest of ten harpists' slips in chords and arpeggios (the same paper,
-Table V), geometrically with velocity: an authored law between two measured
+also slips further, from the lab's 0.04 mm at the hardest to 0.8 mm, the
+middle of the 0.5 to 1.2 mm most of ten harpists' slips in chords and
+arpeggios fell in (the same paper, Table V), geometrically with velocity: an authored law between two measured
 slips, at the owner's request that the tone follow velocity more. The wave that
 reaches the bridge over the first round trip is loaded as one full period of
 the loop (cell-averaged slopes, so the release is band-limited). The soundbox starts deflected under the held
@@ -348,16 +369,21 @@ steel lyre harp strung the same way
 ([benchmark](Docs/validation/dr-lyre-harp-benchmark-2026-10-29.md)). Its
 player plucks at 0.25 to 0.32 of the string (median 0.27), where the model
 now plucks. Partials 2 to 6 decay alike (rms log2 of model over recording
-0.51) and the fundamentals do not (1.23). Each note at equal power, the
-model's third-octave shape over its first 0.3 s sits 6.3 dB rms from the
-recording's, and 7.0 from 0.3 to 1.5 s, where plucked at 0.47, before the
-bar's bends were corrected, it sat 7.6 and 8.2. These are
+0.50) and the fundamentals do not (1.23). Each note at equal power, the
+model's third-octave shape over its first 0.3 s sits 5.9 dB rms from the
+recording's, and 6.2 from 0.3 to 1.5 s (0.6.4: 6.5 and 7.4; plucked at
+0.47, before the bar's bends were corrected, 7.6 and 8.2). From 3 to
+10 kHz after 0.3 s it still falls 4.6 to 10.9 dB short. These are
 order-of-magnitude checks, not a calibration.
 
 **Playing.** `PlayingControls` holds what a player and the room change while
 the instrument sounds; the plucking fields apply at the next pluck, the rest at
 once. Release sets how a let-go string sounds on, from the playing hand
-stopping it (a 30 ms amplitude time constant) to ringing until it dies away;
+stopping it (a 30 ms amplitude time constant on average over its partials)
+to ringing until it dies away. The hand touches the string where it plucked
+it, a dashpot at that point: partial n is damped as sin^2(n pi x / L), so
+the partials with a node near the touch ring on for a moment, the
+flageolet a light touch makes, where a fade had taken every partial alike;
 mute rests a palm across every string; sympathy rests a hand on the strings
 nobody plucked. With the sharping levers on, a note a semitone above a
 string's own raises that string's lever, which shortens its speaking length
@@ -515,9 +541,10 @@ nothing until the next pluck.
   Chadefaux, Le Carrou and Fabre model (JASA 133 (2013) 2444): its 0.053 ms
   is one harpist's plucks near the fingertip in their lab, while ten
   harpists playing chords and arpeggios slipped 0.2 to 1.5 mm, mostly 0.5
-  to 1.2 (their Table V), which as a release time would leave the strings
-  far darker than any recording. How the slip lengthens with a softer
-  pluck, and the slip's 40% scatter, are authored, not measured.
+  to 1.2 (their Table V). How the slip lengthens with a softer pluck, to
+  0.8 mm at the softest, the slip's 40% scatter, and where the hand
+  touches a string to stop it (where it plucked), are authored, not
+  measured.
 - Replaying the lyre harp phrase (Freesound 649925) with each note at the
   pluck point fitted to it, the steel lyre harp falls 3.6 dB short of the
   recording from 1.25 to 5 kHz and 4.6 dB from 6 to 10 kHz, where a

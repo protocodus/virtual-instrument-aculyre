@@ -898,6 +898,11 @@ struct Loop
     double damping { 1.0 };
     double dampingTarget { 1.0 };
     double dampingStep { 0.0 };
+    // The playing hand resting on the string at one point: the line's two
+    // samples passing it, out to the yoke and back, by age, and the share of
+    // the point's velocity it takes from each (0, no hand).
+    int handOut { 0 }, handBack { 0 };
+    double handShare { 0.0 };
     // The line delay at rest (whole + fraction) and the whole loop's delay
     // at the fundamental, both in samples.
     double restLineDelay { 68.0 };
@@ -923,6 +928,7 @@ struct Loop
         silence();
         damping = dampingTarget = 1.0;
         dampingStep = 0.0;
+        handShare = 0.0;
         setLineDelay(restLineDelay);
     }
 
@@ -1001,6 +1007,31 @@ struct Loop
     {
         line[static_cast<std::size_t>(write)] = static_cast<float>(value);
         write = (write + 1) & (delayCapacity - 1);
+    }
+
+    // A dashpot at the hand's point. The line holds the outgoing wave with
+    // the bridge's inversion folded in, so the string's velocity there is
+    // the returning sample less the outgoing one; the dashpot's force takes
+    // the same share of it from both waves leaving the point.
+    void touch() noexcept
+    {
+        float& out = line[static_cast<std::size_t>((write - 1 - handOut) & (delayCapacity - 1))];
+        float& back = line[static_cast<std::size_t>((write - 1 - handBack) & (delayCapacity - 1))];
+        const float taken = static_cast<float>(handShare) * (back - out);
+        out += taken;
+        back -= taken;
+    }
+
+    // Puts the hand at `point` (a fraction of the length from the bridge)
+    // with the decay rate `rate` (1/s) averaged over the partials. A dashpot
+    // R at x damps partial n at R sin^2(n pi x / L) / (mu L); in waves,
+    // with r = R / 2Z, that is 4 r f sin^2, 2 r f on average.
+    void setHand(double point, double rate, double frequency) noexcept
+    {
+        handShare = rate > 0.0 ? std::min(0.25, rate / (2.0 * frequency)) : 0.0;
+        const int last = std::max(2, whole - 1);
+        handOut = std::clamp(static_cast<int>(std::lround(0.5 * point * loopDelay)), 1, last);
+        handBack = std::clamp(static_cast<int>(std::lround((1.0 - 0.5 * point) * loopDelay)), 1, last);
     }
 
     // The loss per round trip a resting hand adds, reached over one round trip.
@@ -1809,6 +1840,7 @@ struct AculyreEngine::State
         bool dampingDirty { true };
         int midiNote { -1 };      // its own note, lever down
         int ownerNote { -1 };     // the note that last plucked it
+        double handPoint { 0.27 };  // where the playing hand last plucked it
 
         // How the bar's coordinates move the string's end normal to the top:
         // the heave, the rock at its lever, no sway, and each bend where it
@@ -2757,19 +2789,33 @@ void AculyreEngine::applyPitch(int string, bool raised) noexcept
     voice.dampingDirty = true;
 }
 
-// Every hand on the string, as one loss per round trip reached over a round
-// trip: the palm on all strings, and on a string nobody holds, the playing
-// hand (plucked) or the resting hand (idle).
+// Every hand on the string: the palm on all strings and, on an idle string
+// nobody holds, the resting hand, each one loss per round trip reached over
+// a round trip; on a plucked string let go, the playing hand, a dashpot at
+// the point where it plucked (authored: the finger comes back to where it
+// played). A hand stops a string by touching it at a place, so the partials
+// with a node near it ring on for a moment, the flageolet a light touch
+// makes; a loss spread over the loop had faded every partial alike, a fade
+// rather than a stop. On average over the partials it damps at the same
+// rate as that loss did.
 void AculyreEngine::updateDamping(int string) noexcept
 {
     const State& s = *state_;
     State::StringVoice& voice = state_->strings[static_cast<std::size_t>(string)];
     voice.dampingDirty = false;
     double rate = s.muteRate;
+    double hand = 0.0;
     if (!voice.keyDown && !voice.sustained)
-        rate += voice.plucked ? s.releaseRate : s.sympathyRate;
+    {
+        if (voice.plucked)
+            hand = s.releaseRate;
+        else
+            rate += s.sympathyRate;
+    }
     voice.normal.setDamping(rate > 0.0 ? std::exp(-rate / voice.frequency) : 1.0);
     voice.parallel.setDamping(rate > 0.0 ? std::exp(-rate / voice.parallelFrequency) : 1.0);
+    voice.normal.setHand(voice.handPoint, hand, voice.frequency);
+    voice.parallel.setHand(voice.handPoint, hand, voice.parallelFrequency);
 }
 
 void AculyreEngine::setControls(const PlayingControls& controls) noexcept
@@ -2912,16 +2958,21 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // radian, so the finger is a point here too. A harpist's string slips
     // 0.04 mm along the harder fingertip before it leaves at about 1.5 m/s
     // (Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444); accelerating
-    // evenly, that takes 0.053 ms, the finger's release time constant.
-    // Chosen by ear over the pad's 0.2 mm (0.27 ms) and an authored 0.10 ms
-    // (Docs/decisions.md, 2026-10-28). A nail's or a plectrum's hard edge
-    // has no flesh for the string to slip along, so both release at once,
+    // evenly, that slip lasts 0.053 ms. Chosen by ear over the pad's 0.2 mm
+    // and an authored 0.10 ms (Docs/decisions.md, 2026-10-28). That slip's
+    // duration is not the exponential's time constant: one that slow has
+    // unloaded only 63% when the slip ends, and passes a third of the band
+    // of a force let go over the slip (a linear unloading over T is 3 dB
+    // down at 0.443 / T, the exponential at 1 / (2 pi tau)). The same band
+    // takes tau = T / 2.78, 0.019 ms (Docs/decisions.md, 2026-10-30). A
+    // nail's or a plectrum's hard edge has no flesh for the string to slip
+    // along, so both release at once,
     // the ideal pluck: authored, as their 0.035 and 0.025 ms were, which
     // with a 1.2 and 0.8 mm rounding had left them within 2 dB of the finger
     // at every band. At velocity 90 the instant release is 2 to 4 dB
     // brighter from 3 to 10 kHz, and more for softer plucks, whose finger
     // slips off slower (below).
-    double release = controls.technique == Technique::Finger ? 0.053e-3 : 0.0;
+    double release = controls.technique == Technique::Finger ? 0.053e-3 / (2.0 * pi * 0.443) : 0.0;
     // A harder stroke slips off faster, so it leaves brighter. Harpists'
     // release velocity rises with the string's displacement, about as D^1.2
     // from 0.5 mm at 0.2 m/s to 7 mm at 5 m/s around an average of 4 mm at
@@ -2933,13 +2984,16 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // A softer pluck also slips further along the finger, so the tone
     // follows velocity at the top of its range too, where the law above has
     // reached the harpists' fastest release (owner request, 2026-10-29). The
-    // slip runs from 0.2 mm at the softest, the shortest of ten harpists'
-    // in chords and arpeggios (Chadefaux, Le Carrou and Fabre, JASA 133
-    // (2013) 2444, Table V: 0.2 to 1.5 mm), to the lab's 0.04 mm at the
-    // hardest, geometrically with velocity: authored, between two measured
-    // slips. From velocity 64 to 127 a steel E4's 6th and 10th partials now
-    // gain 6 dB against the fundamental, where they gained 2.5, and at 90 it
-    // lets go in 0.05 ms instead of 0.03 (medians). Velocity 127 is unchanged.
+    // slip runs from 0.8 mm at the softest, the middle of the 0.5 to 1.2 mm
+    // most of ten harpists' slips in chords and arpeggios fell in
+    // (Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444, Table V: 0.2 to
+    // 1.5 mm), to the lab's 0.04 mm at the hardest, geometrically with
+    // velocity: authored, between two measured slips. Until the time
+    // constant took the slip's band (above) the softest stopped at 0.2 mm,
+    // the shortest, since longer slips left the strings darker than any
+    // recording. From velocity 64 to 127 a steel E4's 6th and 10th partials
+    // gain 4.9 and 5.2 dB against the fundamental (2.5 before 0.6.2), and at
+    // velocity 90 the finger lets go in 0.025 ms (median; 0.05 before).
     // Each pluck's slip follows its own displacement, the force's 14% draw
     // through the D^1.2 law, as one harpist's release velocity scattered by
     // 25% and the displacement by 14% (Fig. 8). The slip scatters by 40% on
@@ -2948,9 +3002,10 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // note's takes vary 1.9 dB in brightness over 2.5 kHz, where the DR
     // lyre harp's three takes vary 1.0 and two sampled ukuleles' 3.6 to 4.0
     // (Tools/compare_lyre_harp_samples.py --takes; Aculele's benchmark).
-    release *= std::clamp(std::pow(v / 0.5, -1.4 * 1.2) * std::pow(5.0, 1.0 - v), 0.4, 10.0)
+    release *= std::clamp(std::pow(v / 0.5, -1.4 * 1.2) * std::pow(20.0, 1.0 - v), 0.4, 10.0)
              * std::exp(0.4 * s.random.gaussian() - 1.2 * 0.14 * forceDraw);
     s.lastPluck = { position, force, normalShare, release };
+    voice.handPoint = position;
 
     voice.keyDown = true;
     voice.sustained = false;
@@ -3309,6 +3364,11 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                 normalPort += voice.bend[bend] * velocity[3 + bend];
             voice.normal.writeSample(normalIn[static_cast<std::size_t>(index)] - normalPort);
             voice.parallel.writeSample(parallelIn[static_cast<std::size_t>(index)] - velocity[2]);
+            if (voice.normal.handShare > 0.0)
+            {
+                voice.normal.touch();
+                voice.parallel.touch();
+            }
         }
         s.lastGeneralizedVelocity = velocity;
 

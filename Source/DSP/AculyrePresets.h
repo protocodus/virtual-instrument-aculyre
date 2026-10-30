@@ -10,14 +10,18 @@ namespace aculyre
 {
 
 // Plain music wire. Its dislocation Q of 5500 is Paté, Le Carrou and Fabre's
-// fit (JASA 135 (2014) 3045) and its bending loss factor Acustra's plain
-// steel (FittedPhysicalData.h: steelPlainBendingLoss, a by-ear point between
-// two fits to steel-string recordings). A wound string takes Acustra's wound
+// fit (JASA 135 (2014) 3045) and its bending loss factor 7.8e-4 Acustra's
+// joint refit to guitar recordings (FittedPhysicalData.h:
+// steelPlainBendingLoss, its candidate C). Acustra ships 70% of the way from
+// C toward 0.003, chosen by ear on a guitar; on the DR lyre harp's notes
+// that value left the model's 0.3-1.5 s from 3 to 10 kHz 4 to 12 dB short of
+// the recording's, and C brings 2 to 4.5 dB of it back (Docs/decisions.md,
+// 2026-10-30). A wound string takes Acustra's wound
 // steel, both by ear: dry friction between its turns, a loss angle of 2.25e-4
 // on its tension, and a bending loss factor of 0.0175 in place of the plain
 // wire's (FittedPhysicalData.h, after steelPlainBendingLoss).
 inline constexpr StringMaterial steelWire { "steel", 7850.0, 2.0e11, 0.0, 1.0 / 5500.0,
-                                            0.002334375 * 2.0e11, false, 2.25e-4, 0.0175 };
+                                            0.00078125 * 2.0e11, false, 2.25e-4, 0.0175 };
 // Monofilament nylon: density 1072-1159 kg/m^3 measured on harp strings
 // (Lynch-Aird and Woodhouse, Materials 11 (2018) 2160, Table 1). Stiffness
 // and damping are Woodhouse and Lynch-Aird's fit to their measured nylon

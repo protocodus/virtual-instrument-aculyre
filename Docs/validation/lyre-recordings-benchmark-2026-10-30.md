@@ -145,3 +145,15 @@ fits worse, not better. Not changed. The sympathetic strings and the room
 were also ruled out for the attack's missing energy between the partials
 from 4 to 8 kHz: it is there from the first 10 ms with either.
 
+**The box, swept on 0.7.4.** Same protocol: a 2 cm soundhole (3) 4.75 /
+4.70 and 1.16 / 0.65, a 4 cm one 6.17 / 6.62 and 1.28 / 0.65; the box 0.7
+times as deep 6.38 / 6.72 and 1.30 / 0.65, 1.4 times 4.72 / 4.62 and 1.14 /
+0.64. Each moves the air mode between the 198 and 250 Hz bands and leaves
+315 Hz 10 dB short. A back that vibrates (hard maple, clamped, its odd-odd
+modes below 2 kHz coupled to the top through the air in the box, the
+three-oscillator model generalised as the top's modes already are): 3 mm
+5.90 / 6.45 and 1.06 / 0.64, 4 mm 4.72 / 5.03 and 1.06 / 0.67, 5 mm 4.78 /
+5.30 and 1.05 / 0.64; on the lyre harp phrase (Freesound 649925, four
+draws) 11.5 at 4 mm and 12.4 at 3 mm against 11.2 without. Neither
+recording asks for it; not built.
+

@@ -37,6 +37,19 @@ outputGain (3.519, 4.738); the piezo hears 3 and 2.2 dB more, taken out of
 piezoGain (0.363, 0.352). The lyre harps have 109 modes below the limit
 instead of 234, and the steel phrase renders in the same time or less.
 
+**The other lyre harp recording disagrees.** Replaying the lyre harp
+phrase (Freesound 649925, its eight notes D4 to B4 transcribed by onset
+and pitch, velocity 90, the demo renderer's defaults), the long-term
+third-octave shape from 200 Hz to 10 kHz sits 7.5 dB rms from the
+recording's on 0.6.5, 8.1 on 0.7.1 and 11.2 on 0.7.2: the 6 mm top leaves
+its notes' fundamentals, 294 to 494 Hz, 8 to 15 dB short where that
+recording is strong. Over four draws, 3 to 6 mm read 8.4, 8.8, 9.9 and
+11.1 (each on 0.7.2's touch). The two harps are different instruments, the
+DR pack has 48 plucks against the phrase's eight, and a 3 mm top with no
+bracing would not carry sixteen steel strings at 55 N, so 6 mm ships; but
+the recordings do not agree on the body, and the owner's ear decides
+between the A/B set's letters.
+
 **A measurement fix on the way.** The even-touch test (and the tool that
 evens it) set the pickup blend and plucked at once, so for the first
 10 ms the blend still glided from the microphones: the piezo's touch was

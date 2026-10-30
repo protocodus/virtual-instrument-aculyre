@@ -420,7 +420,11 @@ notes. Plucked at 0.47, the gut lyre's notes decay at 19 against the
 recording's 22 dB/s (27 plucked at 0.22), and centre at 526 Hz at the left
 microphone and 761 Hz at the right, where the recording's channels read 582
 and 611 Hz: the body's drawn radiation signs part its two microphones
-further than the recording's channels.
+further than the recording's channels. Measured the same way on the gut
+lyre's README demo (onsets over the spectral flux's peaks), 0.6.5 decays
+at 25 dB/s and centres at 492 and 650 Hz; 0.7.2, with each mode's own
+radiation and the microphone pair, at 21 dB/s and 521 and 531 Hz, where
+the recording reads 20 dB/s and 577 and 607 Hz.
 A sampled lyre harp (DeadRobot's free DR Plucked Lyre Harp: 16 strings G3 to
 G#5, each plucked alone three times) is measured note by note against the
 steel lyre harp strung the same way

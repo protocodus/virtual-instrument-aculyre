@@ -1055,6 +1055,28 @@ struct Loop
     }
 };
 
+// Two doubles as one vector. The Rack's SDK compiler does not vectorize
+// loops itself, but keeps vector types to the end: written with them, the
+// strings' filters and the modes run two lanes per instruction there too
+// (SSE2, NEON). Each lane is the scalar arithmetic, so the result is the
+// same in every build.
+#if defined(__GNUC__) || defined(__clang__)
+typedef double Pair __attribute__((vector_size(16), aligned(8), may_alias));
+#else
+struct Pair
+{
+    double v[2];
+    Pair operator+(Pair o) const noexcept { return { { v[0] + o.v[0], v[1] + o.v[1] } }; }
+    Pair operator-(Pair o) const noexcept { return { { v[0] - o.v[0], v[1] - o.v[1] } }; }
+    Pair operator*(Pair o) const noexcept { return { { v[0] * o.v[0], v[1] * o.v[1] } }; }
+    Pair operator-() const noexcept { return { { -v[0], -v[1] } }; }
+    Pair& operator+=(Pair o) noexcept { return *this = *this + o; }
+};
+#endif
+inline Pair* pairs(double* p) noexcept { return reinterpret_cast<Pair*>(p); }
+inline const Pair* pairs(const double* p) noexcept { return reinterpret_cast<const Pair*>(p); }
+inline Pair splat(double x) noexcept { return Pair { x, x }; }
+
 // Reads every loop's arriving wave into `wave`. Each loop's dispersion is a
 // chain of sections, every one waiting on the last: read loop by loop, a
 // loop's chain left little else to do meanwhile, and its stage count, which
@@ -1080,6 +1102,7 @@ struct LoopFilters
         std::array<double, capacity> c0 {}, c1 {}, a1 {}, a2 {};
         std::array<double, capacity> previousInput {}, previousDifference {}, u1 {}, u2 {};
         std::array<bool, capacity> active {};
+        bool allActive { false };
 
         void gather(const UnitDcSection& section, std::size_t i) noexcept
         {
@@ -1092,6 +1115,7 @@ struct LoopFilters
             u1[i] = section.u1;
             u2[i] = section.u2;
             active[i] = section.active;
+            allActive = allActive && section.active;
         }
         void scatter(UnitDcSection& section, std::size_t i) const noexcept
         {
@@ -1104,7 +1128,22 @@ struct LoopFilters
         // input and keeps its state.
         void process(double* wave, int count) noexcept
         {
-            for (int k = 0; k < count; ++k)
+            int k = 0;
+            if (allActive)
+                for (; k + 1 < count; k += 2)
+                {
+                    const auto i = static_cast<std::size_t>(k);
+                    const Pair x = *pairs(wave + k);
+                    const Pair difference = x - *pairs(&previousInput[i]);
+                    const Pair w = *pairs(&c0[i]) * difference + *pairs(&c1[i]) * *pairs(&previousDifference[i]);
+                    const Pair u = w - *pairs(&a1[i]) * *pairs(&u1[i]) - *pairs(&a2[i]) * *pairs(&u2[i]);
+                    *pairs(&previousInput[i]) = x;
+                    *pairs(&previousDifference[i]) = difference;
+                    *pairs(&u2[i]) = *pairs(&u1[i]);
+                    *pairs(&u1[i]) = u;
+                    *pairs(wave + k) = x - u;
+                }
+            for (; k < count; ++k)
             {
                 const auto i = static_cast<std::size_t>(k);
                 const double x = wave[k];
@@ -1146,6 +1185,7 @@ struct LoopFilters
                     byPairs[static_cast<std::size_t>(n++)] = i;
             withPairs[static_cast<std::size_t>(pairs - 1)] = n;
         }
+        constantLoss.allActive = bendingLoss.allActive = true;
         for (int i = 0; i < count; ++i)
         {
             constantLoss.gather(loops[i]->constantLoss, static_cast<std::size_t>(i));
@@ -1178,7 +1218,16 @@ struct LoopFilters
         for (std::size_t stage = 0; stage < maxDispersionStages; ++stage)
         {
             double* const state = stageState[stage].data();
-            for (int j = 0; j < withStages[stage]; ++j)
+            int j = 0;
+            for (; j + 1 < withStages[stage]; j += 2)
+            {
+                const Pair y = *pairs(sorted + j);
+                const Pair d = *pairs(&dispersion[static_cast<std::size_t>(j)]);
+                const Pair out = d * y + *pairs(state + j);
+                *pairs(state + j) = y - d * out;
+                *pairs(sorted + j) = out;
+            }
+            for (; j < withStages[stage]; ++j)
             {
                 const double y = sorted[j];
                 const double out = dispersion[static_cast<std::size_t>(j)] * y + state[j];
@@ -1258,6 +1307,7 @@ struct ModeBank
     std::array<double, capacity> a1 {}, a2 {}, left {}, right {}, s1 {}, s2 {};
 };
 
+
 // Runs the bank's modes one sample on, adding what they radiate to each
 // microphone and their pull on the bar's next velocity, each lane in its own
 // sum. A group's generalized force and its recursion run together, while the
@@ -1270,31 +1320,38 @@ struct ModeBank
 void runModes(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::lanes],
               double (&right)[ModeBank::lanes], double (&past)[barCoordinates][ModeBank::lanes]) noexcept
 {
-    constexpr int lanes = ModeBank::lanes;
+    constexpr int vectors = ModeBank::lanes / 2;
     const int bounds[4] { 0, bank.evenEnd, bank.oddEnd, bank.count };
+    Pair* const sumLeft = pairs(left);
+    Pair* const sumRight = pairs(right);
     for (std::size_t part = 0; part < 3; ++part)
-        for (int group = bounds[part]; group < bounds[part + 1]; group += lanes)
+        for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
         {
-            double x[lanes];
-            for (int lane = 0; lane < lanes; ++lane)
-                x[lane] = 0.0;
+            Pair x[vectors];
+            for (int v = 0; v < vectors; ++v)
+                x[v] = splat(0.0);
             for (int n = 0; n < bank.coordinateCount[part]; ++n)
             {
                 const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-                const double* const drive = bank.drive[c].data() + group;
-                const double f = force[c];
-                for (int lane = 0; lane < lanes; ++lane)
-                    x[lane] += drive[lane] * f;
+                const Pair* const drive = pairs(bank.drive[c].data() + group);
+                const Pair f = splat(force[c]);
+                for (int v = 0; v < vectors; ++v)
+                    x[v] += drive[v] * f;
             }
-            for (int lane = 0; lane < lanes; ++lane)
+            Pair* const s1 = pairs(bank.s1.data() + group);
+            Pair* const s2 = pairs(bank.s2.data() + group);
+            const Pair* const a1 = pairs(bank.a1.data() + group);
+            const Pair* const a2 = pairs(bank.a2.data() + group);
+            const Pair* const toLeft = pairs(bank.left.data() + group);
+            const Pair* const toRight = pairs(bank.right.data() + group);
+            for (int v = 0; v < vectors; ++v)
             {
-                const auto k = static_cast<std::size_t>(group + lane);
-                const double y = x[lane] + bank.s1[k];
-                const double s1 = bank.s2[k] - bank.a1[k] * y;
-                bank.s2[k] = -x[lane] - bank.a2[k] * y;
-                bank.s1[k] = s1;
-                left[lane] += bank.left[k] * y;
-                right[lane] += bank.right[k] * y;
+                const Pair y = x[v] + s1[v];
+                const Pair next = s2[v] - a1[v] * y;
+                s2[v] = -x[v] - a2[v] * y;
+                s1[v] = next;
+                sumLeft[v] += toLeft[v] * y;
+                sumRight[v] += toRight[v] * y;
             }
         }
     const double* const s1 = bank.s1.data();
@@ -1305,34 +1362,40 @@ void runModes(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::l
         {
             const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
             const std::size_t d = bank.coordinates[part][static_cast<std::size_t>(n + 1)];
-            const double* const pullC = bank.pull[c].data();
-            const double* const pullD = bank.pull[d].data();
-            double sumC[lanes], sumD[lanes];
-            for (int lane = 0; lane < lanes; ++lane)
+            Pair sumC[vectors], sumD[vectors];
+            for (int v = 0; v < vectors; ++v)
             {
-                sumC[lane] = past[c][lane];
-                sumD[lane] = past[d][lane];
+                sumC[v] = pairs(past[c])[v];
+                sumD[v] = pairs(past[d])[v];
             }
-            for (int group = bounds[part]; group < bounds[part + 1]; group += lanes)
-                for (int lane = 0; lane < lanes; ++lane)
-                {
-                    sumC[lane] += pullC[group + lane] * s1[group + lane];
-                    sumD[lane] += pullD[group + lane] * s1[group + lane];
-                }
-            for (int lane = 0; lane < lanes; ++lane)
+            for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
             {
-                past[c][lane] = sumC[lane];
-                past[d][lane] = sumD[lane];
+                const Pair* const state = pairs(s1 + group);
+                const Pair* const pullC = pairs(bank.pull[c].data() + group);
+                const Pair* const pullD = pairs(bank.pull[d].data() + group);
+                for (int v = 0; v < vectors; ++v)
+                {
+                    sumC[v] += pullC[v] * state[v];
+                    sumD[v] += pullD[v] * state[v];
+                }
+            }
+            for (int v = 0; v < vectors; ++v)
+            {
+                pairs(past[c])[v] = sumC[v];
+                pairs(past[d])[v] = sumD[v];
             }
         }
         for (; n < bank.coordinateCount[part]; ++n)
         {
             const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-            const double* const pull = bank.pull[c].data();
-            double (&sum)[lanes] = past[c];
-            for (int group = bounds[part]; group < bounds[part + 1]; group += lanes)
-                for (int lane = 0; lane < lanes; ++lane)
-                    sum[lane] += pull[group + lane] * s1[group + lane];
+            Pair* const sum = pairs(past[c]);
+            for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
+            {
+                const Pair* const state = pairs(s1 + group);
+                const Pair* const pull = pairs(bank.pull[c].data() + group);
+                for (int v = 0; v < vectors; ++v)
+                    sum[v] += pull[v] * state[v];
+            }
         }
     }
 }

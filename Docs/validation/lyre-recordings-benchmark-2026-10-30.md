@@ -34,6 +34,28 @@ library's processing that the model's strings do not make. A search for
 the strings' lengthwise modes among the recording's strongest 3-12 kHz
 peaks found none that stand clear of the stretched partials.
 
+**Where the 5-8 kHz shortfall sits.** Not in the strings' decay: from 5
+to 8 kHz the model's partials decay at 45, 55 and 69 dB/s (median, 0.08-0.6
+s) against the recording's 49, 50 and 65. It is there from the first 10 ms,
+in every one of four draws of the body (5 to 15 dB from 5 to 8 kHz, both
+windows), and on the 4 mm top too, while 4 kHz sits within 2 dB and 10
+kHz within 1 dB on the shipping body (7 over the four draws).
+A release with no slip at all (the nail's) lifts 4-8 kHz 2 to 3 dB, but it
+leaves the 5, 6.3 and 8 kHz bands 5 to 7 dB short. The model's microphones
+against its own piezo fall 10 to 20 dB from 4 to 8 kHz relative to 2 kHz
+and come back by 10 kHz, so the shortfall is in the top's radiation, not in
+the strings' force on the bar. The bar's bends do not place it: a bar 1.5
+or 0.7 times as tall moves the bands by 2 dB at most. One reading, not
+tested: 5-8 kHz lies between the 6 mm spruce top's coincidence along the
+grain (about 2.1 kHz) and across it (about 7.5 kHz), where the rectangular
+plate's modes radiate only in part, and a real top's bars and outline may
+not leave such a band. Nothing was shipped for it.
+
+**Decays by register.** The fundamentals from G3 to A#4 decay at about half
+the recording's rate (4.3 to 11 dB/s against 7 to 27), and partials 2-6
+from G3 to F4 at 0.5 to 0.7 of it; from G4 up the partials sit within a
+quarter. Nothing shipped for it either.
+
 **Thicker treble strings, measured again.** The strings from A4 up 1.6
 times thicker at the same length and stress match the recording's
 inharmonicity note by note (A#4 3.4e-4 against 3.7e-4, C5 3.0 against 2.6,

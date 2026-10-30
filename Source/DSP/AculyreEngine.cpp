@@ -1162,44 +1162,45 @@ struct ModeBank
     std::array<int, 3> coordinateCount {};
     std::array<std::array<double, capacity>, barCoordinates> drive {}, pull {};
     std::array<double, capacity> a1 {}, a2 {}, left {}, right {}, s1 {}, s2 {};
-    // Each mode's generalized force this sample (runModes()).
-    std::array<double, capacity> excitation {};
 };
 
 // Runs the bank's modes one sample on, adding what they radiate to each
 // microphone and their pull on the bar's next velocity, each lane in its own
-// sum. Each step is its own pass over the bank, every pass a plain loop over
-// whole groups that the compiler vectorizes; done mode by mode, the sums of
-// a group (two outputs and up to ten coordinates, eight lanes each) needed
-// far more vector registers than SSE2 or NEON have, and lived on the stack.
-// Every mode adds its terms in the same order either way.
+// sum. A group's generalized force and its recursion run together, while the
+// force is still in registers; the pulls follow, one coordinate at a time.
+// Done mode by mode with every sum at once, a group's sums (two outputs and
+// up to ten coordinates, eight lanes each) needed far more vector registers
+// than SSE2 or NEON have, and lived on the stack. Every mode adds its terms
+// in the same order either way.
 void runModes(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::lanes],
               double (&right)[ModeBank::lanes], double (&past)[barCoordinates][ModeBank::lanes]) noexcept
 {
     constexpr int lanes = ModeBank::lanes;
     const int bounds[4] { 0, bank.evenEnd, bank.oddEnd, bank.count };
-    double* const x = bank.excitation.data();
-    for (int k = 0; k < bank.count; ++k)
-        x[k] = 0.0;
     for (std::size_t part = 0; part < 3; ++part)
-        for (int n = 0; n < bank.coordinateCount[part]; ++n)
+        for (int group = bounds[part]; group < bounds[part + 1]; group += lanes)
         {
-            const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-            const double* const drive = bank.drive[c].data();
-            const double f = force[c];
-            for (int k = bounds[part]; k < bounds[part + 1]; ++k)
-                x[k] += drive[k] * f;
-        }
-    for (int group = 0; group < bank.count; group += lanes)
-        for (int lane = 0; lane < lanes; ++lane)
-        {
-            const auto k = static_cast<std::size_t>(group + lane);
-            const double y = x[k] + bank.s1[k];
-            const double s1 = bank.s2[k] - bank.a1[k] * y;
-            bank.s2[k] = -x[k] - bank.a2[k] * y;
-            bank.s1[k] = s1;
-            left[lane] += bank.left[k] * y;
-            right[lane] += bank.right[k] * y;
+            double x[lanes];
+            for (int lane = 0; lane < lanes; ++lane)
+                x[lane] = 0.0;
+            for (int n = 0; n < bank.coordinateCount[part]; ++n)
+            {
+                const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
+                const double* const drive = bank.drive[c].data() + group;
+                const double f = force[c];
+                for (int lane = 0; lane < lanes; ++lane)
+                    x[lane] += drive[lane] * f;
+            }
+            for (int lane = 0; lane < lanes; ++lane)
+            {
+                const auto k = static_cast<std::size_t>(group + lane);
+                const double y = x[lane] + bank.s1[k];
+                const double s1 = bank.s2[k] - bank.a1[k] * y;
+                bank.s2[k] = -x[lane] - bank.a2[k] * y;
+                bank.s1[k] = s1;
+                left[lane] += bank.left[k] * y;
+                right[lane] += bank.right[k] * y;
+            }
         }
     for (std::size_t part = 0; part < 3; ++part)
         for (int n = 0; n < bank.coordinateCount[part]; ++n)

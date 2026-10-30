@@ -120,3 +120,28 @@ have to be over three times the published fit's 0.24 GPa to close that
 (1.5 times: 28.7, twice: 31.9, three times: 34.2, with the partials' rms
 4.7), and the recording's partials share their bands with the strings still
 ringing from earlier notes; not changed.
+
+**The bridge bar's assumed geometry, swept on 0.7.4.** Averaged over four
+draws of the body, DR shape (0-0.3 / 0.3-1.5 s, dB rms) and decay rms
+(fundamentals / partials 2-6), against 4.55 / 5.15 and 1.10 / 0.64 as
+shipped:
+
+| change | shape | decay |
+| --- | --- | --- |
+| bar at 0.20 of the top's length (0.30) | 4.90 / 5.62 | 0.87 / 0.73 |
+| at 0.25 | 4.72 / 5.22 | 0.93 / 0.65 |
+| at 0.35 | 4.55 / 5.38 | 1.22 / 0.63 |
+| at 0.40 | 4.62 / 5.72 | 1.55 / 0.62 |
+| 3 % of the width off centre | 6.67 / 6.72 | 1.40 / 0.66 |
+| 6 % off centre | 7.08 / 7.22 | 1.41 / 0.67 |
+| half the mass (3 g) | 4.47 / 4.88 | 1.03 / 0.69 |
+| 1.5 times the mass | 4.60 / 5.25 | 1.10 / 0.62 |
+| 0.7 times as tall | 4.50 / 5.03 | 1.15 / 0.70 |
+| 1.5 times as tall | 4.62 / 5.08 | 0.96 / 0.62 |
+
+None moves the recording's gaps by more than a few tenths of a dB without
+costing elsewhere; an off-centre bar, which lets every top mode meet it,
+fits worse, not better. Not changed. The sympathetic strings and the room
+were also ruled out for the attack's missing energy between the partials
+from 4 to 8 kHz: it is there from the first 10 ms with either.
+

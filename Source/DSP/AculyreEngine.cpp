@@ -2725,10 +2725,13 @@ double unitClamp(double x) noexcept { return x > 1.0 ? 1.0 : (x >= 0.0 ? x : 0.0
 // sounding from its pluck.
 constexpr double silentEnergy = 1.0e-6;
 // The engine sleeps once its output, before the volume and with the room's
-// whole tail, has stayed below -170 dBFS for half a second and every
-// string's energy is below one where a ringing string radiates about that.
-constexpr double idleLevel = 3.0e-9;
-constexpr double idleEnergy = 1.0e-12;
+// whole tail, has stayed below -140 dBFS for half a second and every
+// string's energy is below one where a ringing string radiates about that
+// (the energy is the velocity squared, so 30 dB is a factor of 1000). That
+// is under a 24-bit output's last bit; at -170 dBFS, as before 0.6.4, a
+// steel chord's last 30 dB of tail cost full CPU for about 9 s more.
+constexpr double idleLevel = 1.0e-7;
+constexpr double idleEnergy = 1.0e-9;
 } // namespace
 
 void AculyreEngine::applyPitch(int string, bool raised) noexcept

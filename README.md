@@ -22,6 +22,11 @@ reference recording below.
 
 ## Version history
 
+- **0.6.4** (prototype, not released): the engine sleeps once its tail is
+  below -140 dBFS for half a second, under a 24-bit output's last bit,
+  instead of -170 dBFS: a ringing steel chord stops costing CPU about 9 s
+  sooner (28 s after release instead of 37). Against 0.6.3 the output
+  differs only in that tail, by at most -143 dBFS on every preset.
 - **0.6.3** (prototype, not released): the same sound for about half the
   CPU. Every change is bit-identical on every preset, phrase and
   oversampling factor. The three preset demos at 48 kHz, built as the Rack
@@ -401,7 +406,7 @@ stage by stage across all the waveguides, so their chains overlap, and the
 modes, the strings' filters and the bridge solve are written with two-lane
 vector types, which the SDK compiler keeps where it vectorizes nothing by
 itself. On a bar centred on the top most modes are even or odd about its
-middle, and their passes skip the bar motions they cannot meet. Once everything has died away below -170 dBFS for
+middle, and their passes skip the bar motions they cannot meet. Once everything has died away below -140 dBFS for
 half a second the engine sleeps, and a sleeping instance costs next to
 nothing until the next pluck.
 

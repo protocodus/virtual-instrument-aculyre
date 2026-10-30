@@ -3,6 +3,100 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-30: each mode radiates by its own efficiency (0.7.0), adopted unheard
+
+**What was asked.** An eight-hour pass on sound quality, authenticity,
+microphones and behaviour, calibrated and benchmarked against the
+recordings the owner shared (the DR Plucked Lyre Harp pack).
+
+**What ships.**
+
+- **Each mode's own radiation efficiency.** Below coincidence every mode had
+  radiated Maidanik's average over a band (Crocker and Price, JSV 9 (1969)
+  469, Eq. 38) for one coincidence frequency of the whole top. Each now
+  takes Wallace's integral for its own simply supported shape in a baffle
+  (JASA 51 (1972) 946), less its net volume's share, which stays a
+  free-field monopole as before; the edge and corner share of a mode below
+  its own coincidence keeps Maidanik's doubling for clamped edges, the form
+  chosen on 2026-10-28. An orthotropic top's modes across the grain reach
+  the air's wavenumber from 4.2 kHz on the spruce, so a band's modes
+  radiate very differently: taken one by one they average 2.5 to 6 dB more
+  from 0.6 to 4.8 kHz than the band average did. Supersonic modes are not
+  capped at 1: capping them (and all) lost the 3 to 6 kHz gain and left the
+  shape after 0.3 s 0.3 dB further from the recording than 0.6.5.
+- **Each mode keeps its energy at 1x.** The bilinear transform, prewarped to
+  a mode's frequency, keeps its peak but narrows its band by sin(2x)/2x at
+  x = w/2fs: 2 dB of a 12 kHz mode's energy at 48 kHz, 3.8 dB at 16 kHz. Each
+  mode's radiation is scaled so the sampled mode radiates the continuous
+  one's energy below Nyquist. 10 to 16 kHz at 1x against 4x: steel -0.62,
+  nylon -1.05, gut +0.24 dB (0.6.5: -1.65, -1.50, -0.91; with the first
+  change alone -2.40 and -2.69 on the lyre harps, past the 2.5 dB the tests
+  allow). Not the strings' loss filters (at 4x they lose more from 10 to
+  16 kHz, not less) and not the bar's bends (a rigid bar keeps the gap).
+
+**What the measurements say** (DR lyre harp, every string alone at velocity
+0.7, 44.1 kHz, `Tools/compare_lyre_harp_samples.py`; band correlation and
+side difference from both channels over each note's first 1.5 s):
+
+| | 0.6.5 | 0.7.0 | recording |
+| --- | --- | --- | --- |
+| shape rms, 0-0.3 s / 0.3-1.5 s | 5.9 / 6.2 dB | 5.5 / 6.4 dB | |
+| 1 kHz third-octave, 0-0.3 s, from the recording | -6.8 dB | -1.3 dB | |
+| 5 and 6.3 kHz, 0.3-1.5 s, from the recording | -7.8, -10.9 dB | -13.6, -14.0 dB | |
+| sides' difference 400-800 Hz, median note | 5.3 dB | 0.9 dB | 0.7 dB |
+| sides' correlation 0.8-1.6 / 1.6-3.2 / 3.2-6.4 kHz | 0.87 / 0.91 / 0.90 | 0.73 / 0.77 / 0.51 | 0.95 / 0.64 / 0.42 |
+| decay rms log2, fundamentals / partials 2-6 | 1.23 / 0.50 | 1.42 / 0.64 | |
+
+The partials' decays by band are unchanged (the strings are), but at the
+microphones a note's partial is the sum of several modes' paths, and the
+reweighting moves single notes' fits: C5's and C#5's partials 2-6 now read
+27 and 28 dB/s against the recording's 14 and 13 (0.6.5: 19 and 23).
+
+**Tried and not shipped.**
+
+- **A spaced pair that hears each mode by its shape.** Two microphones
+  0.3 m apart, 0.5 m from the top, each mode's pressure there from the
+  Rayleigh integral over its shape and the soundhole as a piston, its sign
+  from the phase: on the symmetry line, at two offsets and at 0.4 m apart,
+  1 to 6 kHz fell 4 to 14 dB further short of the recording and the shape
+  went to 7.6 to 9.6 dB rms. A point in front of an ideal rectangular top
+  sits in the nulls of its edge radiation, which a real top's irregular
+  shape fills.
+- **Another top.** Fifteen tops from 2.5 to 5 mm and 80 to 100% of the
+  size, a beech top (Thomann's TLH-16 listing) and a 3 or 12 g bar: the
+  fundamentals' decay rms scattered from 0.81 to 1.95 with no trend in
+  either dimension, so the DR harp cannot pick a body.
+- **An instant release.** 2 to 3 dB more from 4 to 10 kHz on the DR harp's
+  notes, but nothing says its player plucked harder than velocity 0.7.
+
+Also checked: the first three partials' slow fluctuation (the polarisations
+beating) matches the recording's (residual 0.86, 1.5 and 1.1 dB against
+0.5, 1.4 and 1.7). Roosebeck's published 16-string set (D3 to E5: .010 to
+.018 plain, .024 and .028 wound) is thinner than the model's gauges where
+they share notes, which would leave the treble strings further from the DR
+harp's inharmonicity, not nearer; the gauges stay.
+
+**Listening test.** Each instrument plays every string up the scale, a
+slow tune and a rolled chord, at the Rack's defaults (room 100 %, piezo
+50 %) and with the microphones alone; 48 kHz, 1x, matched on whole-file RMS
+(trims -0.10 to +0.53 dB). In the project files
+(`aculyre/listening-tests/2026-10-30-radiation/`).
+
+| Letter | Engine |
+| --- | --- |
+| A | 0.6.5 as shipped (756a714) |
+| B | each mode's own efficiency, touch re-evened and gains re-levelled |
+| C | each mode's energy at 1x |
+| D | both, as 0.7.0 ships |
+
+**Not heard before shipping.** D ships under the owner's standing rule to
+take the candidate; the owner's pick replaces it.
+
+**What it licenses.** Each mode's radiation by Wallace's integral for its
+shape, with the clamped doubling below its own coincidence, and the energy
+correction at every rate. It does not license reading the microphones' seeded
+signs as a placement, or the 1 kHz agreement as a measured body.
+
 ## 2026-10-30: three realism steps (0.6.5), adopted unheard
 
 **What was asked.** One more pass of smart, audible realism improvements,

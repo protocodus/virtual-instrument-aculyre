@@ -1,7 +1,7 @@
 // Renders a standard MIDI file through Aculyre to a 48 kHz 24-bit stereo WAV.
 //
 //   RenderAculyreDemo <preset 0-2> <input.mid> <output.wav>
-//       [--dry] [--no-sympathy] [--piezo 0-1] [--tail seconds] [--rate hz]
+//       [--dry] [--room 0-1] [--no-sympathy] [--piezo 0-1] [--tail seconds] [--rate hz]
 //   RenderAculyreDemo --report <preset>
 //
 // Note on/off and CC64 (sustain) drive the Performer, the shipping signal
@@ -204,19 +204,20 @@ int main(int argc, char** argv)
         if (argc < 4)
         {
             std::cerr << "usage: RenderAculyreDemo <preset 0-2> <input.mid> <output.wav> "
-                         "[--dry] [--no-sympathy] [--piezo 0-1] [--tail seconds] [--rate hz]\n";
+                         "[--dry] [--room 0-1] [--no-sympathy] [--piezo 0-1] [--tail seconds] [--rate hz]\n";
             return 2;
         }
         const int preset = std::clamp(std::atoi(argv[1]), 0, 2);
         const std::string input = argv[2];
         const std::string output = argv[3];
         bool dry = false, sympathy = true;
-        double tail = 2.5, piezo = 0.0;
+        double tail = 2.5, piezo = 0.0, room = -1.0;
         int rate = 48000;
         for (int i = 4; i < argc; ++i)
         {
             const std::string option = argv[i];
             if (option == "--dry") dry = true;
+            else if (option == "--room" && i + 1 < argc) room = std::atof(argv[++i]);
             else if (option == "--no-sympathy") sympathy = false;
             else if (option == "--piezo" && i + 1 < argc) piezo = std::atof(argv[++i]);
             else if (option == "--tail" && i + 1 < argc) tail = std::atof(argv[++i]);
@@ -226,6 +227,8 @@ int main(int argc, char** argv)
         performer->prepare(rate);
         performer->setInstrument(preset);
         aculyre::PlayingControls controls = aculyre::Performer::defaultControls(preset);
+        if (room >= 0.0)
+            controls.room = room;
         if (dry)
             controls.room = 0.0;
         if (!sympathy)

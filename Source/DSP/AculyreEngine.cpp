@@ -1698,6 +1698,74 @@ double warburtonH(int m) noexcept
     return g * g * (1.0 - 2.0 / (g * pi));
 }
 
+// One direction's factor in Wallace's integrand: cos(x / 2) for an odd
+// order, sin(x / 2) for an even one, over (x / m pi)^2 - 1, taken at its
+// finite limit where the denominator vanishes.
+double wallaceFactor(double x, int m) noexcept
+{
+    const double mPi = m * pi;
+    const double denominator = x * x / (mPi * mPi) - 1.0;
+    if (std::abs(denominator) < 1.0e-6)
+        return m % 2 == 1 ? -0.25 * mPi * std::sin(0.5 * mPi) : 0.25 * mPi * std::cos(0.5 * mPi);
+    return (m % 2 == 1 ? std::cos(0.5 * x) : std::sin(0.5 * x)) / denominator;
+}
+
+// A simply supported a x b plate mode's radiation efficiency in an infinite
+// baffle, at the air's wavenumber k: Wallace's far-field integral (JASA 51
+// (1972) 946, Eq. 6) over the quarter hemisphere, by the midpoint rule on
+// 48 x 48 points, within 0.002 dB of 1024 x 1024 on every mode of both
+// tops. It counts an odd-odd mode's net volume too.
+double wallaceEfficiency(double k, double a, double b, int m, int n) noexcept
+{
+    constexpr int points = 48;
+    constexpr double step = 0.5 * pi / points;
+    double sum = 0.0;
+    for (int i = 0; i < points; ++i)
+    {
+        const double theta = (i + 0.5) * step;
+        const double sine = std::sin(theta);
+        for (int j = 0; j < points; ++j)
+        {
+            const double phi = (j + 0.5) * step;
+            const double term = wallaceFactor(k * a * sine * std::cos(phi), m)
+                              * wallaceFactor(k * b * sine * std::sin(phi), n);
+            sum += term * term * sine;
+        }
+    }
+    return 64.0 * k * k * a * b / (std::pow(pi, 6.0) * m * m * n * n) * sum * step * step;
+}
+
+// What a mode radiates, its volume acceleration per unit force, has the
+// power spectrum W^4 / ((w^2 - W^2)^2 + (W w / Q)^2) at angular frequency W.
+// The bilinear transform, prewarped to the mode's own frequency w, keeps its
+// peak's height and place, but the sampled spectrum at W lies at
+// w_d = 2 atan(W / k) fs, k = w / tan(w / 2fs), so its band is narrowed by
+// dw_d / dW = (2 fs / k) / (1 + (W / k)^2), sin(2x) / 2x at x = w / 2fs: a
+// mode at 12 kHz radiates 2 dB less energy at 48 kHz than at 192 kHz, one at
+// 16 kHz 3.8 dB. This is the amplitude gain that gives the sampled mode the
+// continuous one's energy below Nyquist, both integrated over log frequency
+// in steps of a sixth of the bandwidth. Without it the top octave from 10
+// to 16 kHz fell 2.4 to 2.7 dB under the 4x sound on the lyre harps at 1x
+// once each mode radiated by its own efficiency, and 1.5 to 1.65 dB before.
+double bilinearEnergyGain(double frequency, double q, double sampleRate) noexcept
+{
+    const double omega = 2.0 * pi * frequency;
+    const double k = omega / std::tan(omega / (2.0 * sampleRate));
+    const double nyquist = pi * sampleRate;
+    const double step = std::min(0.02, 1.0 / (6.0 * q));
+    double continuous = 0.0, sampled = 0.0;
+    for (double u = std::log(1.0e-3); u < std::log(1.0e6); u += step)
+    {
+        const double w = omega * std::exp(u);
+        const double detune = omega * omega - w * w;
+        const double power = w * w * w * w / (detune * detune + w * w * omega * omega / (q * q)) * w * step;
+        if (w < nyquist)
+            continuous += power;
+        sampled += power * 2.0 * sampleRate / k / (1.0 + w * w / (k * k));
+    }
+    return std::sqrt(continuous / sampled);
+}
+
 // The body's mode damping. Wooden-box statistics, not a lyre measurement:
 // Acustra's measured guitar bridge (g21, MeasuredBridgeData.h) holds mode Qs
 // of 16-75 (median about 35) below 1.5 kHz and 5-36 above 2 kHz. The anchors
@@ -2009,8 +2077,6 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     const double dTwist = wood.shear * h * h * h / 12.0;
     const double dCross = wood.poisson * dAcross + 2.0 * dTwist;
     const double plateMass = surfaceMass * a * b;
-    const double coincidenceHz = soundSpeed * soundSpeed / (2.0 * pi)
-                               * std::sqrt(surfaceMass / std::sqrt(dAlong * dAcross));
     const double topFrequencyLimit = std::min(20000.0, 0.45 * fs);
 
     const double bridgeX = body.bridgeAlong * a;
@@ -2134,37 +2200,34 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                     mode.participation[c] = 0.0;
         mode.volume = (mode.m % 2 == 1 && mode.n % 2 == 1)
             ? 4.0 * a * b / (mode.m * mode.n * pi * pi) : 0.0;
-        // What a mode radiates besides its net volume: edge and corner
-        // radiation below coincidence, all of it above (radiation efficiency
+        // What a mode radiates besides its net volume (radiation efficiency
         // sigma; an equivalent volume velocity c sqrt(4 pi S sigma <v^2>) /
-        // omega). Below coincidence sigma is Maidanik's average over a
-        // baffled plate's corner and edge modes, as Crocker and Price correct
-        // it (JSV 9 (1969) 469, Eq. 38), doubled for a top glued to its box,
+        // omega): each mode's own efficiency in a baffle, Wallace's integral
+        // for its simply supported shape (wallaceEfficiency), less the net
+        // volume's share, which is added at its free-field level as the
+        // monopole above. Below its own coincidence, where its bending
+        // wavenumber exceeds the air's, a mode radiates from its edges and
+        // corners, and that share is doubled for a top glued to its box,
         // whose edges the plate's frequencies already take as clamped:
         // Maidanik gives a clamped panel twice a simply supported one's
-        // (ibid., p. 484). It reaches 1 short of coincidence and holds there.
-        // An uncited 0.28 sqrt(f / fc) had run up to 1.4 dB over it near
-        // 1 kHz and up to 6 dB under it below coincidence, where it stepped
-        // up 5.5 dB. Its sign and weight at each microphone are seeded draws:
-        // a symmetric pair, each string placed by where it sits on the bar,
-        // was heard against this and not chosen (Docs/decisions.md,
-        // 2026-10-28).
+        // (JSV 9 (1969) 469, p. 484). Maidanik's average over every mode in
+        // a band (Crocker and Price's Eq. 38) had stood in for this, with
+        // one coincidence for the whole top. An orthotropic top has none:
+        // spruce's modes across the grain reach the air's wavenumber from
+        // 4.2 kHz, along it from 15 kHz, and its modes' own efficiencies
+        // from 0.6 to 4.8 kHz average 2.5 to 6 dB over the band's. Its sign
+        // and weight at each microphone are seeded draws: a symmetric pair,
+        // each string placed by where it sits on the bar, was heard against
+        // this and not chosen (Docs/decisions.md, 2026-10-28), and a spaced
+        // pair hearing each mode by its shape's Rayleigh integral left the
+        // DR lyre harp's 1 to 6 kHz 4 to 14 dB further short
+        // (Docs/decisions.md, 2026-10-30).
         const double omega = 2.0 * pi * mode.frequency;
-        const double ratio = mode.frequency / coincidenceHz;
-        double sigma = 1.0;
-        if (ratio < 1.0)
-        {
-            const double alpha = std::sqrt(ratio);
-            const double wavelength = soundSpeed / coincidenceHz;
-            const double corner = ratio < 0.5
-                ? 8.0 / (pi * pi * pi * pi) * wavelength * wavelength / (a * b)
-                      * (1.0 - 2.0 * ratio) / (alpha * std::sqrt(1.0 - ratio))
-                : 0.0;
-            const double edge = 2.0 * (a + b) * wavelength / (4.0 * pi * pi * a * b)
-                * ((1.0 - ratio) * std::log((1.0 + alpha) / (1.0 - alpha)) + 2.0 * alpha)
-                / std::pow(1.0 - ratio, 1.5);
-            sigma = std::min(1.0, 2.0 * (corner + edge));
-        }
+        const double k = omega / soundSpeed;
+        const double netShare = 2.0 * k * k * mode.volume * mode.volume / (pi * a * b);
+        const bool subsonic = k < std::hypot(mode.m * pi / a, mode.n * pi / b);
+        const double radiated = std::max(0.0, wallaceEfficiency(k, a, b, mode.m, mode.n) - netShare);
+        const double sigma = subsonic ? 2.0 * radiated : std::min(1.0, radiated);
         const double multipole = soundSpeed / omega
             * std::sqrt(4.0 * pi * a * b * sigma) * 0.5;
         mode.multipoleLeft = multipole * (modeRandom.bipolar() < 0.0 ? -1.0 : 1.0)
@@ -2455,9 +2518,12 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             bank.a1[k] = mode.a1;
             bank.a2[k] = mode.a2;
             // Its share of the volume acceleration (process()) carries the
-            // k / 2fs of its bilinear design, k = w / tan(w / 2fs).
+            // k / 2fs of its bilinear design, k = w / tan(w / 2fs), and
+            // the energy its bandwidth loses to the transform
+            // (bilinearEnergyGain).
             const double omega = 2.0 * pi * mode.frequency;
-            const double warp = omega / std::tan(omega / (2.0 * fs)) / (2.0 * fs);
+            const double warp = omega / std::tan(omega / (2.0 * fs)) / (2.0 * fs)
+                              * bilinearEnergyGain(mode.frequency, mode.q, fs);
             bank.left[k] = mode.radiationLeft * warp;
             bank.right[k] = mode.radiationRight * warp;
         }

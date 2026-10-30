@@ -22,6 +22,25 @@ reference recording below.
 
 ## Version history
 
+- **0.7.0** (prototype, not released): each soundbox mode radiates by its
+  own efficiency, worked out for its own shape, where a band average for the
+  whole top had stood in. The spruce top's modes across the grain radiate
+  far better than that average said, so the lyre harps gain presence around
+  1 kHz: on the microphones a steel phrase stands 5.4 dB higher at 1 kHz,
+  2.2 lower at 2 kHz and 1.7 higher at 4 kHz, the gut lyre 2 dB higher at
+  500 Hz and 2 lower at 1 kHz. Against the DR lyre harp's notes the 1 kHz
+  third-octave over the first 0.3 s comes from 6.8 to 1.3 dB short and the
+  shape over that time 0.4 dB rms closer (5.5); after 0.3 s it is 0.2 dB
+  further (6.4), as the 5 to 6.3 kHz bands fall 3 to 6 dB further short.
+  The low modes, which radiate mostly their net volume, now sound alike at
+  both microphones: from 400 to 800 Hz the two sides differ by 0.9 dB on
+  the median note where they differed by 5.3 (the recording 0.7), and from
+  1.6 to 6.4 kHz the sides correlate 0.51 to 0.77 where they did 0.90 (the
+  recording 0.42 to 0.64). At 1x, the back panel's default, each mode keeps
+  the energy the sampled design's narrowed band had cost it near Nyquist,
+  so the top octave sits within 1.1 dB of the 4x sound (1.65 before). The
+  touch is re-evened and the gains re-levelled to -9 VU; the CPU is
+  unchanged, and designing an instrument takes about 10% longer.
 - **0.6.5** (prototype, not released): three steps towards the sampled lyre
   harp. The finger lets go of the string as fast as its measured slip says:
   the release had used the slip's whole length as its time constant, which
@@ -267,17 +286,24 @@ to 10 at 2 kHz and 9 at 10 kHz, its median, and 20 for the air mode. The
 junction is solved implicitly every sample, so it is passive and every string, played or idle, is coupled to every other.
 
 **Radiation and room.** Each mode radiates its net volume change as a
-monopole, plus an equivalent volume for its edge and corner radiation, from a
-radiation efficiency, with a seeded sign and weight at each of the two
-microphones. Below the top's coincidence frequency (7.9 kHz for the spruce
-top, 6.0 kHz for the maple) the efficiency is Maidanik's average for a
-baffled plate's corner and edge modes, as Crocker and Price correct it
-(JSV 9 (1969) 469), doubled for edges glued to the box as Maidanik gives a
-clamped panel; it reaches 1 short of coincidence and holds there. The
-far-field pressure at 0.5 m is rho/(4 pi r) times the volume acceleration,
-each mode's taken as its bilinear design takes s times its velocity,
-k (1 - z^-1)/(1 + z^-1), so the tails the transform compresses toward
-Nyquist keep their acceleration. A small feedback-delay room follows: six early reflections, then an
+monopole, plus an equivalent volume for its edge and corner radiation, from
+its own radiation efficiency, with a seeded sign and weight at each of the
+two microphones. The efficiency is Wallace's integral for the mode's own
+shape in a baffle (JASA 51 (1972) 946), less the net volume's share; below
+the mode's own coincidence, where its bending wavenumber exceeds the air's,
+that edge and corner share is doubled for edges glued to the box, as
+Maidanik gives a clamped panel (JSV 9 (1969) 469). An orthotropic top has no
+single coincidence frequency: the spruce's modes across the grain reach the
+air's wavenumber from 4.2 kHz, along it from 15 kHz, so a band's modes
+radiate very differently, and taken one by one they average 2.5 to 6 dB
+more from 0.6 to 4.8 kHz than Maidanik's band average, which had stood in
+until 0.7.0. The far-field pressure at 0.5 m is rho/(4 pi r) times the
+volume acceleration, each mode's taken as its bilinear design takes s times
+its velocity, k (1 - z^-1)/(1 + z^-1), so the tails the transform compresses
+toward Nyquist keep their acceleration. The transform also narrows each
+mode's band near Nyquist, by sin(2x)/2x at x = w/2fs (2 dB of a 12 kHz
+mode's energy at 48 kHz), so each mode's radiation is scaled to give back
+the energy its continuous design has below Nyquist. A small feedback-delay room follows: six early reflections, then an
 eight-line network fed through Dattorro's four input diffusers, so its tail
 is dense from about 70 ms, as a room's is, rather than a train of separate
 echoes for its first 300 ms.
@@ -483,8 +509,8 @@ nothing until the next pluck.
   fundamentals: the recording's C5 to G5 fall 23 to 60 dB/s from 0.08 to
   0.6 s where the model's fall 6 to 34, and the model's G4 falls 33 against
   8. With each note at equal power it carries up to 8 dB more from 200 to
-  500 Hz over the first 0.3 s and 6 to 10 dB less from 0.8 to 1.3 kHz,
-  where the recording peaks. Where the assumed body's modes fall sets both; a thicker top moves
+  500 Hz over the first 0.3 s and 1 to 8 dB less from 0.8 to 1.3 kHz,
+  where the recording peaks (6 to 10 dB less before 0.7.0). Where the assumed body's modes fall sets both; a thicker top moves
   them and fits the spectrum better but the partials' decays worse, and no
   lyre harp top is published to choose one
   ([benchmark](Docs/validation/dr-lyre-harp-benchmark-2026-10-29.md)).
@@ -520,21 +546,14 @@ nothing until the next pluck.
   that sound 56 to 70 dB below a steel A3's strongest over its first
   0.1 s at velocity 0.7 (64 to 80 on the wound G3, 87 to 100 on the gut
   D3).
-- At 1x, the back panel's default, the top octave from 10 to 16 kHz still
-  sits 1.1 to 2.2 dB below the 4x sound, the steel lyre harp's the most;
-  plucking every string in turn, dry, its 16 kHz third-octave falls 4.4 dB
-  short. The bar's bends no longer carry it: each holds its stiffness at
-  every rate, within 0.6 to 1.1 dB rms of the beam's impedance from 0.5 to
-  16 kHz at 48 kHz, where matched resonances alone had left the highest up
-  to 6 dB rms soft. Nor does the rigid bar's trapezoidal mass: integrating
-  it to fourth order (two thirds trapezoidal, one third backward Euler)
-  moved the gap by 0.02 dB. On the steel E4 the wave reaching the bridge
-  matches 4x from 10 to 12.5 kHz over its first 100 ms, while its partials
-  there come out up to 9 dB weaker at 1x on the microphones and the piezo
-  alike, so the rest lies where the bar meets the body's modes, each
-  bilinear with its skirts drawn in toward Nyquist, which is not yet
-  measured apart. Near the pluck's comb notches single partials also land
-  up to 16 dB apart between rates (the steel A5's 13th and 14th).
+- At 1x, the back panel's default, the top octave from 10 to 16 kHz sits
+  0.6 to 1.1 dB below the 4x sound on the lyre harps and 0.2 dB above it on
+  the gut lyre, playing every string in turn, dry. Until 0.7.0 it sat 1.5
+  to 1.65 dB below on the lyre harps: the bilinear transform narrowed each
+  mode's band near Nyquist, which each mode's radiation now makes up for.
+  The rest is not measured apart. Near the pluck's comb notches single
+  partials also land up to 16 dB apart between rates (the steel A5's 13th
+  and 14th).
 - No plucking-hand model beyond a release time and a plectrum's reach, no
   buzzing, no string-to-string contact, no hand damping
   gestures beyond note-off. The release is a stand-in for the slip

@@ -43,22 +43,38 @@ kHz within 1 dB on the shipping body (7 over the four draws).
 A release with no slip at all (the nail's) lifts 4-8 kHz 2 to 3 dB, but it
 leaves the 5, 6.3 and 8 kHz bands 5 to 7 dB short. The model's microphones
 against its own piezo fall 10 to 20 dB from 4 to 8 kHz relative to 2 kHz
-and come back by 10 kHz, so the shortfall is in the top's radiation, not in
-the strings' force on the bar. The bar's bends do not place it: a bar 1.5
-or 0.7 times as tall moves the bands by 2 dB at most. One reading, not
-tested: 5-8 kHz lies between the 6 mm spruce top's coincidence along the
-grain (about 2.1 kHz) and across it (about 7.5 kHz), where the rectangular
-plate's modes radiate only in part, and a real top's bars and outline may
-not leave such a band. Nothing was shipped for it.
+and come back by 10 kHz, so the shortfall is in the body, not in the
+strings' force on the bar. The bar's bends do not place it: a bar 1.5
+or 0.7 times as tall moves the bands by 2 dB at most. The radiation does not place
+it either: every top mode from 5 to 8 kHz but two is past its own
+coincidence, radiating at an efficiency of 1. The coupling does: the bar
+runs across the top, so it averages away the modes with several half-waves
+across it, and from 4.2 to 10 kHz only the (4,1) mode at 7.3 kHz meets it
+with a heave participation above 0.1 (the bar's bends, above, add little) (the (3,1) at 4.1 kHz and the (5,1)
+at 10.2 kHz bracket the dip). A real top's outline, bars and grain
+scatter would spread that coupling; the rectangular plate cannot say how
+much. Nothing was shipped for it.
 
 **Decays by register.** The fundamentals from G3 to A#4 decay at about half
 the recording's rate (4.3 to 11 dB/s against 7 to 27), and partials 2-6
 from G3 to F4 mostly at 0.5 to 0.8 of it (C4's at 1.7); from G4 up the
-partials scatter from 0.7 to 2.4 times the recording's, with no trend. A
-3 or 4 mm top leaves the fundamentals from G3 to F4 at 5 to 11 dB/s (one
-note near the air mode at 21), so their slow decay is not the top's
-coupling; the thinner tops move the treble's fundamentals by up to 4 times
-either way, note by note. Nothing shipped for it either.
+partials scatter from 0.7 to 2.4 times the recording's, with no trend. The
+strings' own losses set most of it: G3's intrinsic T60 is 14 s, 4.3
+dB/s, and the shipping body adds 0.5 dB/s, where the recording's 8.9 dB/s
+needs the bar's real mobility near 0.004 m/s/N at 196 Hz (more than twice the 6 mm
+top's |Y|). The top's thickness moves it, against the spectrum: as the
+mean log2 of model over recording, G3 to F4,
+
+| top | fundamentals G3-F4 | partials 2-6 G3-F4 / G4-G#5 | DR shape |
+| --- | --- | --- | --- |
+| 6 mm (0.7.2) | -0.77 | -0.49 / +0.31 | 4.9 / 5.1 |
+| 5 mm | -0.72 | -0.19 / +0.15 | 4.7 / 6.5 |
+| 3 mm | -0.06 | -0.08 / +0.03 | 5.1 / 6.7 |
+
+The 3 mm top's treble fundamentals scatter further (rms 1.85 against
+1.17), and its late spectrum sits further from this recording.
+Like the lyre harp phrase below, the bass decays favour a thinner top than
+the DR spectrum does. Nothing shipped for it either.
 
 **Thicker treble strings, measured again.** The strings from A4 up 1.6
 times thicker at the same length and stress match the recording's

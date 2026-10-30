@@ -22,6 +22,14 @@ reference recording below.
 
 ## Version history
 
+- **0.6.3** (prototype, not released): the same sound for about half the
+  CPU. Every change is bit-identical on every preset, phrase and
+  oversampling factor. The three preset demos at 48 kHz, built as the Rack
+  SDK builds, fell from 47% to 24% of one core of a cloud container summed
+  (the 4x nylon demo from 68% to 39%): the strings' filters run stage by
+  stage across all 32 waveguides, and the modes, the filters and the bridge
+  solve run two lanes per instruction with explicit vector types, which the
+  SDK compiler keeps.
 - **0.6.2** (prototype, not released): velocity moves the tone as well as
   the level, and each pluck sounds a little different. A softer pluck
   slips further along the finger before it lets go, from the lab
@@ -385,13 +393,15 @@ the output by 2 ms rounded down to 4 samples (88 at 44.1 kHz, 96 at
 48 kHz).
 
 **Cost.** The steel lyre harp (32 waveguides, 234 modes, seven bar bends
-and the room), plucked every half second, renders about 11 times faster
-than real time on one core of a cloud container at 1x (118-128 us per
-64-sample block at 48 kHz, GCC -O3, the nylon lyre harp alike; 80-89 with
-0.5.0's rigid bar, in alternating runs) and about 3 times at 4x. The modes
-run in passes a compiler can vectorize. On a bar centred on the top most
-modes are even or odd about its middle, and their passes skip the bar
-motions they cannot meet. Once everything has died away below -170 dBFS for
+and the room) playing its demo uses about 9% of one core of a cloud
+container at 1x and 48 kHz, built as the Rack SDK builds (clang -O3
+-fno-builtin, no auto-vectorization), the nylon lyre harp alike and the gut
+lyre 7%, where 0.6.2 used 16% and 15%. The strings' dispersion stages run
+stage by stage across all the waveguides, so their chains overlap, and the
+modes, the strings' filters and the bridge solve are written with two-lane
+vector types, which the SDK compiler keeps where it vectorizes nothing by
+itself. On a bar centred on the top most modes are even or odd about its
+middle, and their passes skip the bar motions they cannot meet. Once everything has died away below -170 dBFS for
 half a second the engine sleeps, and a sleeping instance costs next to
 nothing until the next pluck.
 

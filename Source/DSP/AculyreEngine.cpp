@@ -872,6 +872,10 @@ struct Loop
     // it on a bass string): a wave squeezed into the line alone would leave
     // a gap and pluck at the wrong point.
     std::array<float, delayCapacity> pending {};
+    // How many of the next samples' pending slots a pluck may have written:
+    // past them every slot is zero, and the stream through the array is
+    // skipped (it missed the cache once every sixteen samples, on every loop).
+    int pendingAhead { 0 };
     int write { 0 };
     int whole { 64 };
     double fraction { 2.0 };
@@ -906,6 +910,7 @@ struct Loop
     {
         line.fill(0.0f);
         pending.fill(0.0f);
+        pendingAhead = 0;
         tx1 = tx2 = ty1 = ty2 = last = 0.0;
         dispersionState.fill(0.0);
         pairState = {};
@@ -987,9 +992,15 @@ struct Loop
                 dampingStep = 0.0;
             }
         }
-        float& arriving = pending[static_cast<std::size_t>(write)];
+        float arriving = 0.0f;
+        if (pendingAhead > 0)
+        {
+            --pendingAhead;
+            float& slot = pending[static_cast<std::size_t>(write)];
+            arriving = slot;
+            slot = 0.0f;
+        }
         y = y * gain * damping + arriving;
-        arriving = 0.0f;
         last = y;
         return y;
     }
@@ -2837,6 +2848,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             const double value = wave[static_cast<std::size_t>(k)] - mean;
             const auto slot = static_cast<std::size_t>((loop.write + k) & (delayCapacity - 1));
             loop.pending[slot] += static_cast<float>(value);
+            loop.pendingAhead = std::max(loop.pendingAhead, k + 1);
             if (k < voice.roundTrip)
             {
                 float& square = voice.squares[static_cast<std::size_t>((voice.squaresIndex - voice.roundTrip + k)

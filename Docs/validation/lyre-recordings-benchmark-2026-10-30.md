@@ -111,3 +111,12 @@ decay from 80 to 550 ms: 0.6.5 centres at 492 / 650 Hz and decays at 25
 dB/s, 0.7.2 at 521 / 531 Hz and 21 dB/s; the recording reads 577 / 607 Hz
 and 20 dB/s. The gut lyre's body did not change; the radiation and the
 microphone pair moved it.
+
+**After 0.7.3 (the gut lyre plucked at 0.11).** Replaying the recording's
+melody (`Tools/compare_gut_lyre_phrase.py`), partials 2-12 sit 3.5 dB rms
+from the recording's, against 10.4 at 0.27. Partial 1 decays at 15.2 dB/s
+against 15.9; partials 2-6 at 27.5 against 37.5. Gut's loss modulus would
+have to be over three times the published fit's 0.24 GPa to close that
+(1.5 times: 28.7, twice: 31.9, three times: 34.2, with the partials' rms
+4.7), and the recording's partials share their bands with the strings still
+ringing from earlier notes; not changed.

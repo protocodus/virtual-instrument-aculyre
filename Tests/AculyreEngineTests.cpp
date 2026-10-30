@@ -554,6 +554,43 @@ int main()
         check(rms(none, 0, 24000) < 1.0e-9, "without levers a note between strings is silent");
     }
 
+    // Every MIDI note sounds with the levers up: one past the strings folds
+    // by octaves onto the string of its pitch class, and its key lets it go.
+    for (const aculyre::InstrumentSpec* preset : aculyre::presets)
+    {
+        aculyre::AculyreEngine engine;
+        engine.prepare(48000.0);
+        engine.setInstrument(*preset);
+        aculyre::PlayingControls controls = engine.controls();
+        controls.levers = true;
+        engine.setControls(controls);
+        std::vector<float> l(2400), r(2400);
+        int silent = 0;
+        for (int note = 0; note < 128; ++note)
+        {
+            engine.reset();
+            engine.noteOn(note, 0.7f);
+            engine.process(l.data(), r.data(), 2400);
+            if (rms(l, 0, 2400) < 1.0e-4)
+                ++silent;
+        }
+        std::printf("%-16s silent MIDI notes with the levers up: %d of 128\n", preset->name, silent);
+        check(silent == 0, "every MIDI note sounds with the levers up");
+    }
+    {
+        const auto folded = renderNote(aculyre::lyreHarpSteel, 36, 3.5, 64, false, true);
+        const double nominal = tuned(aculyre::lyreHarpSteel, 60);
+        const double cents = 1200.0 * std::log2(peakNear(folded, settled, 48000, nominal).frequency / nominal);
+        std::printf("C2 on the lyre harp sounds its C4 string: %+.2f cents\n", cents);
+        check(std::abs(cents) < 6.0, "a note below the strings plays the string of its pitch class");
+        aculyre::AculyreEngine engine;
+        engine.prepare(48000.0);
+        engine.setInstrument(aculyre::lyreHarpSteel);
+        engine.noteOn(36, 0.7f);
+        engine.noteOff(36);
+        check(!engine.stringActivity(engine.stringForNote(60)).held, "the folded note's key releases its string");
+    }
+
     // The pitch bend moves every string; two semitones up lands on B4 from
     // A4.
     {

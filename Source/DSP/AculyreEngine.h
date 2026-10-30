@@ -164,8 +164,9 @@ public:
     void reset() noexcept;
 
     // The string tuned to midiNote plays (with levers, also the string a
-    // semitone below, its lever raised); a note no string can sound is
-    // ignored (a lyre has no frets).
+    // semitone below, its lever raised). A note above or below the strings
+    // folds by octaves into their compass; one between strings with the
+    // levers off is ignored (a lyre has no frets).
     void noteOn(int midiNote, float velocity) noexcept;
     // The playing hand damps the string (PlayingControls::release), unless
     // sustain holds it.

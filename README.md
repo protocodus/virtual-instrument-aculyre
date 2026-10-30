@@ -22,6 +22,10 @@ reference recording below.
 
 ## Version history
 
+- **0.7.4** (prototype, not released): every MIDI note sounds. A note
+  above or below the strings plays the string an octave or more away that
+  sounds its pitch class (C2 plays the lyre harp's C4), where it was
+  silent; with the levers off, notes between the strings stay silent.
 - **0.7.3** (prototype, not released): the gut lyre is plucked at 0.11 of
   the string's length, where it was 0.27, the lyre harp's point. Its
   recording (Freesound 191883), replayed note by note, puts its 2nd to 12th
@@ -463,7 +467,9 @@ mute rests a palm across every string; sympathy rests a hand on the strings
 nobody plucked. With the sharping levers on, a note a semitone above a
 string's own raises that string's lever, which shortens its speaking length
 by a semitone, and the string's own note lowers it again, as a lyre harp
-player sets the levers by hand. `AculyrePerformer` designs all three
+player sets the levers by hand. A note above or below the strings plays
+the string an octave or more away that sounds its pitch class, so every
+MIDI note sounds with the levers on. `AculyrePerformer` designs all three
 instruments once, outside real time, so choosing one is a real-time switch:
 the old instrument fades out over 20 ms while the new one starts, and every
 front end (the Rack adapter now, a plug-in later) plays through it. The

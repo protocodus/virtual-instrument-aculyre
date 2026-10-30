@@ -2950,11 +2950,22 @@ void AculyreEngine::setControls(const PlayingControls& controls) noexcept
 
 void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
 {
-    int index = stringForNote(midiNote);
+    // A note past the strings plays the string an octave or more away that
+    // sounds its pitch class, so every key on a keyboard sounds the lyre
+    // (a host tester's first notes are rarely inside a 16-string compass).
+    // The voice keeps the key it was played with, so noteOff finds it.
+    const int lowest = state_->strings[0].midiNote;
+    const int highest = state_->strings[static_cast<std::size_t>(stringCount_ - 1)].midiNote + (controls_.levers ? 1 : 0);
+    int note = midiNote;
+    while (note < lowest)
+        note += 12;
+    while (note > highest)
+        note -= 12;
+    int index = stringForNote(note);
     bool raise = false;
     if (index < 0 && controls_.levers)
     {
-        index = stringForNote(midiNote - 1);
+        index = stringForNote(note - 1);
         raise = true;
     }
     if (index < 0 || !(velocity > 0.0f))

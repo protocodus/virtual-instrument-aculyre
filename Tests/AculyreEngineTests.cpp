@@ -1154,6 +1154,52 @@ int main()
         check(peak > 0.8 && peak <= 0.8414, "the limiter holds the hardest chord 12 dB too loud under -1.5 dBFS");
     }
 
+    // An audio reset leaves nothing of what was played: after a phrase that
+    // bends, raises a lever, glides the strings' tension and leaves notes
+    // ringing, a reset plays the next phrase sample for sample as a freshly
+    // prepared Performer does, for every instrument, at 1x and 2x, with the
+    // microphones, the room and the piezo all heard. Its outputs once faded
+    // in from zero on a fresh instance, and a reset kept each string's glided
+    // round trip, its delay-line positions and the hand's last pluck point.
+    for (int instrument = 0; instrument < aculyre::Performer::instrumentCount; ++instrument)
+        for (int oversampling : { 1, 2 })
+        {
+            const auto phrase = [instrument] (aculyre::Performer& performer, double bend)
+            {
+                aculyre::PlayingControls controls = aculyre::Performer::defaultControls(instrument);
+                controls.room = 1.0;
+                controls.piezo = 0.5;
+                controls.levers = true;
+                controls.pitchBend = bend;
+                performer.setControls(controls);
+                performer.setInstrument(instrument);
+                std::vector<float> out;
+                std::array<float, 64> l {}, r {};
+                for (int block = 0; block < 200; ++block)
+                {
+                    if (block == 0)
+                        for (int note : { 55, 62, 67 })
+                            performer.noteOn(note, 1.0f);
+                    if (block == 80)
+                    {
+                        performer.noteOff(62);
+                        performer.noteOn(61, 0.8f);
+                    }
+                    performer.process(l.data(), r.data(), 64);
+                    out.insert(out.end(), l.begin(), l.end());
+                    out.insert(out.end(), r.begin(), r.end());
+                }
+                return out;
+            };
+            auto fresh = std::make_unique<aculyre::Performer>();
+            fresh->prepare(48000.0, oversampling);
+            auto played = std::make_unique<aculyre::Performer>();
+            played->prepare(48000.0, oversampling);
+            phrase(*played, 1.5);
+            played->reset();
+            check(phrase(*fresh, 0.0) == phrase(*played, 0.0), "a reset plays as a fresh instance, sample for sample");
+        }
+
     std::printf(failures == 0 ? "all passed\n" : "%d failed\n", failures);
     return failures == 0 ? 0 : 1;
 }

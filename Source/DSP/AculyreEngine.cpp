@@ -939,6 +939,10 @@ struct Loop
     void reset() noexcept
     {
         silence();
+        // Back to where prepare() leaves the line, so a reset plays as a
+        // fresh instance does, sample for sample.
+        write = 0;
+        handOut = handBack = 0;
         damping = dampingTarget = 1.0;
         dampingStep = 0.0;
         handShare = 0.0;
@@ -1883,6 +1887,9 @@ void jacobiEigen(std::array<std::array<double, N>, N>& a, int n,
 
 } // namespace
 
+// Where a string's damping hand sits before anyone has plucked it.
+constexpr double restingHandPoint = 0.27;
+
 struct AculyreEngine::State
 {
     InstrumentSpec instrument {};
@@ -1941,7 +1948,7 @@ struct AculyreEngine::State
         bool dampingDirty { true };
         int midiNote { -1 };      // its own note, lever down
         int ownerNote { -1 };     // the note that last plucked it
-        double handPoint { 0.27 };  // where the playing hand last plucked it
+        double handPoint { restingHandPoint };  // where the playing hand last plucked it
 
         // How the bar's coordinates move the string's end normal to the top:
         // the heave, the rock at its lever, no sway, and each bend where it
@@ -2838,19 +2845,22 @@ void AculyreEngine::reset() noexcept
     for (int index = 0; index < stringCount_; ++index)
     {
         auto& voice = s.strings[static_cast<std::size_t>(index)];
-        if (voice.raised || voice.extensionKey >= 0)
-            applyPitch(index, false);
+        // Always: a ringing string's round trip follows its tension glide.
+        applyPitch(index, false);
         voice.normal.reset();
         voice.parallel.reset();
         voice.squares.fill(0.0f);
         voice.squaresSum = 0.0;
+        voice.squaresIndex = 0;
         voice.energy = 0.0;
         voice.keyDown = voice.sustained = voice.plucked = false;
         voice.ownerNote = -1;
+        voice.handPoint = restingHandPoint;
         voice.dampingDirty = true;
     }
     s.bank.s1.fill(0.0);
     s.bank.s2.fill(0.0);
+    s.modalPast = {};
     s.modalPastStale = true;
     s.massPast = {};
     s.bendVelocityPast = {};
@@ -2988,6 +2998,14 @@ void AculyreEngine::setControls(const PlayingControls& controls) noexcept
     // Mid/side: width 1 is the two microphones as they are.
     s.outputTarget = { 0.5 * c.room, 0.5 * (1.0 + c.width), 0.5 * (1.0 - c.width), c.volume, c.piezo,
                        c.piezoInverted ? -1.0 : 1.0 };
+    // A silent engine has nothing to glide: take the controls at once, as
+    // process() does while idle, so the first pluck after prepare() sounds
+    // as one after reset() does rather than fading in from zero.
+    if (s.idle)
+    {
+        s.output = s.outputTarget;
+        s.bend = s.bendTarget;
+    }
     if (!c.levers && previous.levers)
         for (int index = 0; index < stringCount_; ++index)
             if (s.strings[static_cast<std::size_t>(index)].raised)

@@ -24,6 +24,11 @@ reference recording below.
 
 ## Version history
 
+- **0.7.6** (prototype, not released): a reset (the host's audio reset,
+  before a bounce) now plays as a fresh instance does, sample for sample.
+  Before, strings whose tension had glided kept their glided length, the
+  damping hand and the soundbox kept their history, and a fresh instance
+  faded its output in over the first notes where a reset one did not.
 - **0.7.5** (prototype, not released): the lyre harps have 27 strings,
   B2 to G6, the widest lyre harp sold, where they had the 16-string harp's
   G3 to A5: five more in the bass, wound, and six in the treble, all

@@ -32,7 +32,11 @@ constexpr double microphoneSpacing = 0.17;
 // the material leave a string almost lossless.
 constexpr double yokeRoundTripGain = 0.9995;
 
-constexpr int delayCapacity = 4096;  // a string down to 47 Hz at 192 kHz
+constexpr int delayCapacity = 8192;  // a string down to A0 (27.5 Hz) at 192 kHz
+// The keys an artificial string plays past the instrument's own: the 88 of a
+// piano, A0 to C8 (owner, 2026-10-31).
+constexpr int lowestKey = 21;
+constexpr int highestKey = 108;
 constexpr int controlPeriod = 16;
 constexpr int maxDispersionStages = 8;
 constexpr int dispersionPairs = 4;
@@ -639,7 +643,8 @@ DispersionDesign refineDispersion(const DispersionDesign& firstOrder, double fun
     return result;
 }
 
-DispersionDesign designDispersion(double fundamental, double inharmonicity, double sampleRate) noexcept
+DispersionDesign designDispersion(double fundamental, double inharmonicity, double sampleRate,
+                                  bool refine = true) noexcept
 {
     const double omega1 = 2.0 * pi * fundamental / sampleRate;
     const int partials = std::clamp(static_cast<int>(std::floor(std::min(5000.0, 0.2 * sampleRate) / fundamental)), 2, 12);
@@ -707,13 +712,17 @@ DispersionDesign designDispersion(double fundamental, double inharmonicity, doub
         if (design.worstCents < chosen.worstCents)
             chosen = design;
     }
+    if (!refine)
+        return chosen;
     DispersionDesign refined = refineDispersion(chosen, fundamental, inharmonicity, sampleRate);
     // Four sections fit the gut D3 within 4.2 cents over eight stages but
     // only 5.6 over seven, which the search above takes at 88.2, 176.4 and
     // 192 kHz (its raised D#3 6.8 over six): where the sections still leave a
-    // partial more than 5 cents out, the fit is tried again over the most.
+    // partial more than 3 cents out, the fit is tried again over the most.
+    // (Retried only past 5 cents, the nylon lyre harp's E3 sat 2.6 cents out
+    // at 48 kHz but 3.8 at 88.2, and its wound D3 2.6 against 4.2 at 176.4.)
     const DispersionDesign& most = best[static_cast<std::size_t>(maxDispersionStages)];
-    if (refined.worstCents > 5.0 && chosen.stages < maxDispersionStages && most.worstCents < infinity)
+    if (refined.worstCents > 3.0 && chosen.stages < maxDispersionStages && most.worstCents < infinity)
     {
         const DispersionDesign retried = refineDispersion(most, fundamental, inharmonicity, sampleRate);
         if (retried.worstCents < refined.worstCents)
@@ -1896,7 +1905,7 @@ struct AculyreEngine::State
         Loop normal {};
         Loop parallel {};
         std::array<PitchDesign, 2> pitch {};  // lever down, lever up
-        // The sounding pitch (pitch[raised ? 1 : 0]).
+        // The sounding pitch (pitch[raised ? 1 : 0], or the extension's).
         double frequency { 0.0 };
         double parallelFrequency { 0.0 };
         double length { 0.0 };
@@ -1928,6 +1937,7 @@ struct AculyreEngine::State
         bool sustained { false };
         bool plucked { false };   // played, and still sounding from that pluck
         bool raised { false };    // the sharping lever is up
+        int extensionKey { -1 };  // the key past the strings it sounds, or -1
         bool dampingDirty { true };
         int midiNote { -1 };      // its own note, lever down
         int ownerNote { -1 };     // the note that last plucked it
@@ -1947,6 +1957,14 @@ struct AculyreEngine::State
         }
     };
     std::array<StringVoice, maxStrings> strings {};
+    // Keys past the strings, lowestKey to highestKey: the edge string (the
+    // lowest below them, the highest above) with its speaking length scaled
+    // to sound the key at its own tension. No instrument has these strings:
+    // it is an artificial range, so that every key of a keyboard sounds at
+    // its own pitch (owner request, 2026-10-31). extensionString is the
+    // string, or -1 where the instrument's own strings play the key or none.
+    std::array<PitchDesign, 128> extension {};
+    std::array<int, 128> extensionString {};
 
     std::array<Mode, maxModes> modes {};
     int modeCount { 0 };
@@ -2413,6 +2431,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         for (int index = 0; index < stringCount_; ++index)
             detune[static_cast<std::size_t>(index)] -= mean;
     }
+    s.extensionString.fill(-1);
     for (int index = 0; index < stringCount_; ++index)
     {
         State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
@@ -2436,8 +2455,11 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         // and the bending section eta - delta_W (Acustra's split, after Paté,
         // Le Carrou and Fabre, JASA 135 (2014) 3045, Sec. III.A).
         const double constantLoss = material.constantLoss + (wound ? material.windingFriction : 0.0);
-        const double bendingLoss = wound ? std::max(0.0, material.woundBendingLoss - material.windingFriction)
-                                         : material.lossModulus / modulus;
+        // A wound string of a material with no measured wound loss (a nylon
+        // core under its wrap) bends with its core's loss.
+        const double bendingLoss = wound && material.woundBendingLoss > 0.0
+                                 ? std::max(0.0, material.woundBendingLoss - material.windingFriction)
+                                 : material.lossModulus / modulus;
         // Woodhouse and Lynch-Aird's air damping (Acta Acustica 105 (2019)
         // 516, Equation (13) with their (d + 0.2) correction, d in mm): a
         // loss factor (d + 0.2) 8 sqrt(2) rho_a / (rho d) sqrt(nu / (2 pi f)),
@@ -2446,7 +2468,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         // fundamental's rate.
         const double airRoot = material.measuredAirDamping
             ? pi * (spec.diameter * 1.0e3 + 0.2) * 8.0 * std::sqrt(2.0) * airDensity
-                / (material.density * spec.diameter) * std::sqrt(airViscosity / airDensity / (2.0 * pi))
+                / ((wound ? voice.linearMass / (0.25 * pi * spec.diameter * spec.diameter) : material.density)
+                   * spec.diameter) * std::sqrt(airViscosity / airDensity / (2.0 * pi))
             : 0.0;
         // Strings sit evenly across the bridge, bass at the u = -1 end.
         voice.lever = stringCount_ > 1
@@ -2454,10 +2477,10 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         for (int bend = 0; bend < s.bendCount; ++bend)
             voice.bend[static_cast<std::size_t>(bend)] = bendShape(bend, voice.lever);
 
-        for (int raised = 0; raised < 2; ++raised)
+        // One pitch of the string: its speaking length at its tension.
+        const auto designPitch = [&] (State::PitchDesign& pitch, double length, bool refine)
         {
-            State::PitchDesign& pitch = voice.pitch[static_cast<std::size_t>(raised)];
-            pitch.length = raised ? spec.length * leverRatio : spec.length;
+            pitch.length = length;
             const double frequency = waveSpeed / (2.0 * pitch.length);
             pitch.inharmonicity = pi * pi * modulus * secondMoment
                                 / (voice.tension * pitch.length * pitch.length);
@@ -2499,7 +2522,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 // fundamental is exact once the junction exists and the
                 // bridge's reflection phase is known (tuning below).
                 if (plane == 0)
-                    design = designDispersion(f0, pitch.inharmonicity, fs);
+                    design = designDispersion(f0, pitch.inharmonicity, fs, refine);
                 loop.dispersionStages = design.stages;
                 loop.dispersion = design.coefficient;
                 loop.dispersionPairs = design.pairs;
@@ -2507,7 +2530,21 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 loop.dispersionCents = design.worstCents;
                 loop.loopDelay = fs / f0;
             }
-        }
+        };
+        for (int raised = 0; raised < 2; ++raised)
+            designPitch(voice.pitch[static_cast<std::size_t>(raised)], raised ? spec.length * leverRatio : spec.length,
+                        true);
+        // The edge strings also sound the keys past the instrument's own.
+        // Their dispersion takes the first-order fit alone: the sections'
+        // refinement over a bass key's hundred partials took 20 to 120 ms
+        // each, three times the whole setup's time over the 88 keys.
+        for (int key = lowestKey; key <= highestKey; ++key)
+            if ((index == 0 && key < spec.midiNote) || (index == stringCount_ - 1 && key > spec.midiNote + 1))
+            {
+                s.extensionString[static_cast<std::size_t>(key)] = index;
+                designPitch(s.extension[static_cast<std::size_t>(key)],
+                            spec.length * std::pow(2.0, (spec.midiNote - key) / 12.0), false);
+            }
     }
 
     // ---- The junction ---------------------------------------------------
@@ -2633,11 +2670,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     for (int index = 0; index < stringCount_; ++index)
     {
         State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
-        for (int design = 0; design < 4; ++design)
+        const auto tune = [&] (LoopDesign& loop, int plane)
         {
-            const int plane = design & 1;
-            LoopDesign& loop = voice.pitch[static_cast<std::size_t>(design >> 1)]
-                                    .planes[static_cast<std::size_t>(plane)];
             const double f0 = loop.frequency;
             // The port's admittance with every other port loading the bar.
             const auto reflectionLead = [&] (double frequency)
@@ -2694,22 +2728,24 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 // R = (ZY - 1)/(1 + ZY); the loop carries -R.
                 return std::arg((1.0 - zy) / (1.0 + zy));
             };
-            const auto lagAt = [&] (double omega, double lineDelay)
+            // The reflection depends on the frequency alone, so each
+            // frequency's is found once (the search below reuses it).
+            const auto lagAt = [&] (double omega, double lineDelay, double lead)
             {
                 const int whole = wholeFor(lineDelay);
                 const double fraction = lineDelay - whole;
                 double t1 = 0.0, t2 = 0.0;
                 thiranCoefficients(fraction, t1, t2);
-                return omega * whole + allpassLag(2, t1, t2, omega) + loop.filterLag(omega)
-                     - reflectionLead(omega * fs / (2.0 * pi));
+                return omega * whole + allpassLag(2, t1, t2, omega) + loop.filterLag(omega) - lead;
             };
             const auto solveLine = [&] (double omega, double cycles)
             {
+                const double lead = reflectionLead(omega * fs / (2.0 * pi));
                 double lower = 6.0, upper = delayCapacity - 16.0;
                 for (int iteration = 0; iteration < 60; ++iteration)
                 {
                     const double middle = 0.5 * (lower + upper);
-                    if (lagAt(omega, middle) < 2.0 * pi * cycles)
+                    if (lagAt(omega, middle, lead) < 2.0 * pi * cycles)
                         lower = middle;
                     else
                         upper = middle;
@@ -2721,9 +2757,17 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             for (std::size_t k = 0; k < bendRatios.size(); ++k)
             {
                 const double omega = omega0 * bendRatios[k];
-                loop.lagCycles[k] = (lagAt(omega, loop.restLineDelay) - omega * loop.restLineDelay) / (2.0 * pi);
+                loop.lagCycles[k] = (lagAt(omega, loop.restLineDelay, reflectionLead(omega * fs / (2.0 * pi)))
+                                     - omega * loop.restLineDelay) / (2.0 * pi);
             }
-        }
+        };
+        for (int design = 0; design < 4; ++design)
+            tune(voice.pitch[static_cast<std::size_t>(design >> 1)].planes[static_cast<std::size_t>(design & 1)],
+                 design & 1);
+        for (int key = lowestKey; key <= highestKey; ++key)
+            if (s.extensionString[static_cast<std::size_t>(key)] == index)
+                for (int plane = 0; plane < 2; ++plane)
+                    tune(s.extension[static_cast<std::size_t>(key)].planes[static_cast<std::size_t>(plane)], plane);
         voice.normal.whole = wholeFor(voice.pitch[0].planes[0].restLineDelay);
         voice.parallel.whole = wholeFor(voice.pitch[0].planes[1].restLineDelay);
         applyPitch(index, false);
@@ -2794,7 +2838,7 @@ void AculyreEngine::reset() noexcept
     for (int index = 0; index < stringCount_; ++index)
     {
         auto& voice = s.strings[static_cast<std::size_t>(index)];
-        if (voice.raised)
+        if (voice.raised || voice.extensionKey >= 0)
             applyPitch(index, false);
         voice.normal.reset();
         voice.parallel.reset();
@@ -2860,11 +2904,13 @@ constexpr double idleLevel = 1.0e-7;
 constexpr double idleEnergy = 1.0e-9;
 } // namespace
 
-void AculyreEngine::applyPitch(int string, bool raised) noexcept
+void AculyreEngine::applyPitch(int string, bool raised, int extensionKey) noexcept
 {
     State::StringVoice& voice = state_->strings[static_cast<std::size_t>(string)];
-    const State::PitchDesign& pitch = voice.pitch[raised ? 1u : 0u];
+    const State::PitchDesign& pitch = extensionKey >= 0 ? state_->extension[static_cast<std::size_t>(extensionKey)]
+                                                        : voice.pitch[raised ? 1u : 0u];
     voice.raised = raised;
+    voice.extensionKey = extensionKey;
     voice.frequency = pitch.planes[0].frequency;
     voice.parallelFrequency = pitch.planes[1].frequency;
     voice.length = pitch.length;
@@ -2950,23 +2996,21 @@ void AculyreEngine::setControls(const PlayingControls& controls) noexcept
 
 void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
 {
-    // A note past the strings plays the string an octave or more away that
-    // sounds its pitch class, so every key on a keyboard sounds the lyre
-    // (a host tester's first notes are rarely inside a 16-string compass).
-    // The voice keeps the key it was played with, so noteOff finds it.
-    const int lowest = state_->strings[0].midiNote;
-    const int highest = state_->strings[static_cast<std::size_t>(stringCount_ - 1)].midiNote + (controls_.levers ? 1 : 0);
-    int note = midiNote;
-    while (note < lowest)
-        note += 12;
-    while (note > highest)
-        note -= 12;
-    int index = stringForNote(note);
+    int index = stringForNote(midiNote);
     bool raise = false;
     if (index < 0 && controls_.levers)
     {
-        index = stringForNote(note - 1);
+        index = stringForNote(midiNote - 1);
         raise = true;
+    }
+    // A key past the strings stretches the edge string to its own pitch.
+    int extensionKey = -1;
+    if (index < 0 && midiNote >= lowestKey && midiNote <= highestKey
+        && state_->extensionString[static_cast<std::size_t>(midiNote)] >= 0)
+    {
+        index = state_->extensionString[static_cast<std::size_t>(midiNote)];
+        raise = false;
+        extensionKey = midiNote;
     }
     if (index < 0 || !(velocity > 0.0f))
         return;
@@ -3019,8 +3063,8 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             square *= kept;
     }
     // The other hand sets the lever before the pluck.
-    if (voice.raised != raise)
-        applyPitch(index, raise);
+    if (voice.raised != raise || voice.extensionKey != extensionKey)
+        applyPitch(index, raise, extensionKey);
 
     // Each pluck differs as a harpist's do (Chadefaux et al., JASA 131 (2012)
     // 844). Where the finger meets the string: Fig. 7's spread of the pluck

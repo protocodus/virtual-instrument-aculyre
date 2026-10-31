@@ -3,6 +3,24 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-10-31: 27-string lyre harps and every piano key at its own pitch (0.7.5), owner's choice
+
+**What was decided.** Reason Studios' review heard no sound from the Rack
+device: the keys a tester played lay outside the 16 strings. 0.7.4 folded
+keys past the strings by octaves onto them; the owner rejected that ("we
+should not map higher tones to lower notes"), asked first for the widest
+version of each instrument and then for an artificial range past it, and
+chose its extent among options put to them: the 88 keys of a piano, A0 to
+C8, with keys past them silent.
+
+**What it licensed.** The lyre harps take the widest lyre harp sold, 27
+strings B2 to G6 (Pures Music); the gut lyre stays at its sixteen strings,
+already past the reconstructions' six. Keys past an instrument's strings
+play its lowest or highest string with the speaking length scaled to the
+key at the string's own tension. That range is no instrument's, and the
+README says so. No listening test chose any of it: it is a product
+requirement, not a fidelity claim.
+
 ## 2026-10-30: the gut lyre is plucked at 0.11 (0.7.3), by measurement
 
 **What was decided.** The gut lyre's pluck point, until now assumed to be

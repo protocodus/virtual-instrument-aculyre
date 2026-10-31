@@ -22,7 +22,7 @@
 namespace aculyre
 {
 
-inline constexpr int maxStrings = 24;
+inline constexpr int maxStrings = 28;
 inline constexpr int maxModes = 400;
 
 struct StringMaterial
@@ -164,9 +164,10 @@ public:
     void reset() noexcept;
 
     // The string tuned to midiNote plays (with levers, also the string a
-    // semitone below, its lever raised). A note above or below the strings
-    // folds by octaves into their compass; one between strings with the
-    // levers off is ignored (a lyre has no frets).
+    // semitone below, its lever raised). A key past the strings, A0 to C8,
+    // stretches the lowest or the highest string to its own pitch (one key
+    // at a time at each end); a note between strings with the levers off,
+    // or past C8 or below A0, is ignored (a lyre has no frets).
     void noteOn(int midiNote, float velocity) noexcept;
     // The playing hand damps the string (PlayingControls::release), unless
     // sustain holds it.
@@ -242,7 +243,7 @@ public:
 
 private:
     struct State;
-    void applyPitch(int string, bool raised) noexcept;
+    void applyPitch(int string, bool raised, int extensionKey = -1) noexcept;
     void updateDamping(int string) noexcept;
     void sleep() noexcept;
 

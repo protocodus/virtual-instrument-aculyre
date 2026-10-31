@@ -152,7 +152,7 @@ int main()
         check(std::abs(10.0 * std::log10(ratio)) < 1.0, "the tension glide leaves the decay alone");
     }
 
-    // The bass steel string's partials follow the stiff-string law,
+    // The steel G3's partials follow the stiff-string law,
     // f_n = n f0 sqrt((1 + B n^2) / (1 + B)), through every one below 5 kHz
     // that the dispersion is fitted to (5 cents by design, plus the two
     // polarisations and the scan's resolution). A dispersion fitted to one
@@ -168,7 +168,11 @@ int main()
         aculyre::AculyreEngine engine;
         engine.prepare(48000.0);
         engine.setInstrument(spec);
-        const auto report = engine.stringReport(0);
+        // G3, the lowest of the 16-string harp's strings. The 27-string
+        // harp's B2 is a heavier wound string: its partials above the 28th
+        // fall 80 to 93 dB under its fundamental within this window, so the
+        // scan there measures the noise, not the string.
+        const auto report = engine.stringReport(engine.stringForNote(55));
         const auto audio = renderNote(spec, report.midiNote, 1.6, 64, false, false);
         // Against the sounding fundamental: a hard pluck's tension glide
         // raises every partial alike.
@@ -554,8 +558,9 @@ int main()
         check(rms(none, 0, 24000) < 1.0e-9, "without levers a note between strings is silent");
     }
 
-    // Every MIDI note sounds with the levers up: one past the strings folds
-    // by octaves onto the string of its pitch class, and its key lets it go.
+    // Every key of a piano, A0 to C8, sounds at its own pitch with the
+    // levers up: a key past the strings stretches the edge string to it,
+    // and its key lets it go. Keys past those 88 stay silent.
     for (const aculyre::InstrumentSpec* preset : aculyre::presets)
     {
         aculyre::AculyreEngine engine;
@@ -564,31 +569,62 @@ int main()
         aculyre::PlayingControls controls = engine.controls();
         controls.levers = true;
         engine.setControls(controls);
-        std::vector<float> l(2400), r(2400);
-        int silent = 0;
+        const int count = preset->stringCount;
+        const int low = preset->strings[0].midiNote;
+        const int high = preset->strings[static_cast<std::size_t>(count - 1)].midiNote;
+        const double lowTuned = engine.stringReport(0).frequency;
+        const double highTuned = engine.stringReport(count - 1).frequency;
+        std::vector<float> l(4800), r(4800);
+        int silent = 0, sounding = 0;
+        double worstCents = 0.0;
         for (int note = 0; note < 128; ++note)
         {
             engine.reset();
             engine.noteOn(note, 0.7f);
-            engine.process(l.data(), r.data(), 2400);
-            if (rms(l, 0, 2400) < 1.0e-4)
-                ++silent;
+            engine.process(l.data(), r.data(), 4800);
+            const bool sounds = rms(l, 0, 4800) > 1.0e-4;
+            if (note >= 21 && note <= 108)
+            {
+                silent += sounds ? 0 : 1;
+                if (note < low || note > high + 1)
+                {
+                    const bool below = note < low;
+                    const int edge = below ? 0 : count - 1;
+                    const double expected = (below ? lowTuned : highTuned)
+                                          * std::pow(2.0, (note - (below ? low : high)) / 12.0);
+                    worstCents = std::max(worstCents,
+                        std::abs(1200.0 * std::log2(engine.stringReport(edge).frequency / expected)));
+                }
+            }
+            else
+                sounding += sounds ? 1 : 0;
         }
-        std::printf("%-16s silent MIDI notes with the levers up: %d of 128\n", preset->name, silent);
-        check(silent == 0, "every MIDI note sounds with the levers up");
+        std::printf("%-16s A0-C8 with the levers up: %d silent; past them %d sound; stretched strings within %.3f cents\n",
+                    preset->name, silent, sounding, worstCents);
+        check(silent == 0, "every key from A0 to C8 sounds with the levers up");
+        check(sounding == 0, "keys past A0 and C8 stay silent");
+        check(worstCents < 0.01, "a key past the strings stretches the edge string to its own pitch");
     }
+    // The stretched strings sound where they are tuned, and let go with
+    // their key.
+    for (const int note : { 21, 36, 100, 108 })
     {
-        const auto folded = renderNote(aculyre::lyreHarpSteel, 36, 3.5, 64, false, true);
-        const double nominal = tuned(aculyre::lyreHarpSteel, 60);
-        const double cents = 1200.0 * std::log2(peakNear(folded, settled, 48000, nominal).frequency / nominal);
-        std::printf("C2 on the lyre harp sounds its C4 string: %+.2f cents\n", cents);
-        check(std::abs(cents) < 6.0, "a note below the strings plays the string of its pitch class");
+        const auto& preset = aculyre::lyreHarpSteel;
+        const auto audio = renderNote(preset, note, 3.5, 64, false, true);
+        // The lowest keys' fundamentals sit under the soundbox's air mode:
+        // their third partial carries the pitch.
+        const int partial = note < 40 ? 3 : 1;
+        const double nominal = tuned(preset, note < 60 ? 47 : 91) * std::pow(2.0, (note - (note < 60 ? 47 : 91)) / 12.0);
+        const double cents = 1200.0 * std::log2(peakNear(audio, settled, 48000, partial * nominal).frequency
+                                                / (partial * nominal));
+        std::printf("key %d on the lyre harp's stretched string: partial %d %+.2f cents\n", note, partial, cents);
+        check(std::abs(cents) < 15.0, "a key past the strings sounds at its own pitch");
         aculyre::AculyreEngine engine;
         engine.prepare(48000.0);
-        engine.setInstrument(aculyre::lyreHarpSteel);
-        engine.noteOn(36, 0.7f);
-        engine.noteOff(36);
-        check(!engine.stringActivity(engine.stringForNote(60)).held, "the folded note's key releases its string");
+        engine.setInstrument(preset);
+        engine.noteOn(note, 0.7f);
+        engine.noteOff(note);
+        check(!engine.stringActivity(note < 60 ? 0 : preset.stringCount - 1).held, "the stretched string's key lets it go");
     }
 
     // The pitch bend moves every string; two semitones up lands on B4 from

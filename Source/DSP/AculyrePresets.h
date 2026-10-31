@@ -44,18 +44,26 @@ namespace detail
 {
 constexpr double inch = 0.0254;
 
-// The 16-string lyre harp sold today: diatonic C major from G3 to A5, steel
-// strings of 0.010-0.028 inch on a frame about 25 inches tall (retail
-// listings: Early Music Shop, Larkin in the Morning). Speaking lengths fall
-// from 44 to 22 cm along the slanted yoke (assumed), and the gauges are
-// chosen so every string carries 54-63 N, under half the wire's strength.
-// G3 is a nickel-wound .024, as Roosebeck's set winds it. That set is for a
-// harp tuned up from D3 and winds D3 at .028 and E3-G3 at .024; no set for a
-// G3-A5 harp lists its gauges, so only the note both share is wound.
-// Its mass is D'Addario's published unit weight for that string (NW024,
-// 0.00010857 lb/in) and its core the 0.38 mm Acustra authors for its own
-// .024 wound G (AcustraEngine.cpp, steelBendingDiameter). It was chosen by
-// ear over a plain .022 on 2026-10-28 (Docs/decisions.md).
+// The widest lyre harp sold today, 27 strings in diatonic C major from B2
+// to G6 (Pures Music's 21/24/27-string range; a 24-string harp runs D3 to
+// F6, Thomann LH24), so with the levers every note from B2 to G#6 plays.
+// Its middle sixteen, G3 to A5, are the 16-string lyre harp's (Early Music
+// Shop, Larkin in the Morning: steel strings of 0.010-0.028 inch on a frame
+// about 25 inches tall), unchanged: their speaking lengths fall from 44 to
+// 22 cm along the slanted yoke (assumed), and the eleven added strings keep
+// its 1.47 cm a string, 51 cm at B2 and 13 cm at G6. G3 to A5 carry 54-63
+// N, under half the wire's strength; the treble's plain .0095 and .009
+// carry 54-59 N at 1.25-1.41 GPa, about half a .009 music wire's strength.
+// The bass is nickel wound, as Roosebeck's set for a harp tuned up from D3
+// winds it: D3 at .028, E3-G3 at .024, and C3 and B2 continue it at .030
+// and .032 (46-55 N). Their masses are D'Addario's published unit weights
+// (NW024 0.00010857, NW028 0.00014666, NW030 0.00017236, NW032 0.00019347
+// lb/in) and their cores Acustra's authored effective cores, 0.38 mm for a
+// .024 and 0.412 for a .032 (AcustraEngine.cpp, steelBendingDiameter),
+// interpolated between. G3's winding was chosen by ear over a plain .022 on
+// 2026-10-28 (Docs/decisions.md). The soundbox is the 16-string harp's,
+// whose top the DR lyre harp's notes chose (lyreHarpBody): a 27-string harp
+// is larger, so its body here is an assumption kept from the smaller one.
 //
 // Each string's fourth value is an even touch, a voicing rather than a
 // measurement: as a player evens out a scale by ear, the strings the
@@ -78,28 +86,52 @@ constexpr double inch = 0.0254;
 // AculyreEngineTests holds every string within 1 dB of the line by each
 // pickup and reports the touch each would need after a change to the strings
 // or the body.
+constexpr double poundPerInch = 17.857967;  // kg/m
 constexpr std::array<StringSpec, maxStrings> lyreHarpSteel {{
-    { 55, 0.440, 0.024 * inch, 0.61, 0.75, 0.00010857 * 17.857967, 0.38e-3 }, { 57, 0.425, 0.020 * inch, 0.40, 0.70 },
-    { 59, 0.411, 0.019 * inch, 0.35, 0.68 }, { 60, 0.396, 0.018 * inch, 0.32, 0.69 },
-    { 62, 0.381, 0.017 * inch, 0.37, 0.69 }, { 64, 0.367, 0.016 * inch, 0.33, 0.66 },
-    { 65, 0.352, 0.015 * inch, 0.31, 0.67 }, { 67, 0.337, 0.014 * inch, 0.15, 0.70 },
-    { 69, 0.323, 0.014 * inch, 0.17, 0.74 }, { 71, 0.308, 0.013 * inch, 0.52, 0.70 },
-    { 72, 0.293, 0.012 * inch, 0.52, 0.71 }, { 74, 0.279, 0.012 * inch, 1.00, 0.66 },
-    { 76, 0.264, 0.011 * inch, 0.89, 0.66 }, { 77, 0.249, 0.011 * inch, 0.74, 0.64 },
-    { 79, 0.235, 0.010 * inch, 0.20, 0.59 }, { 81, 0.220, 0.010 * inch, 0.17, 1.00 }
+    { 47, 0.513, 0.032 * inch, 1.00, 0.65, 0.00019347 * poundPerInch, 0.412e-3 },
+    { 48, 0.499, 0.030 * inch, 0.82, 0.65, 0.00017236 * poundPerInch, 0.404e-3 },
+    { 50, 0.484, 0.028 * inch, 0.79, 0.65, 0.00014666 * poundPerInch, 0.396e-3 },
+    { 52, 0.469, 0.024 * inch, 0.77, 0.65, 0.00010857 * poundPerInch, 0.38e-3 },
+    { 53, 0.455, 0.024 * inch, 0.78, 0.65, 0.00010857 * poundPerInch, 0.38e-3 },
+    { 55, 0.440, 0.024 * inch, 0.89, 0.65, 0.00010857 * poundPerInch, 0.38e-3 }, { 57, 0.425, 0.020 * inch, 0.73, 0.60 },
+    { 59, 0.411, 0.019 * inch, 0.46, 0.59 }, { 60, 0.396, 0.018 * inch, 0.41, 0.60 },
+    { 62, 0.381, 0.017 * inch, 0.40, 0.60 }, { 64, 0.367, 0.016 * inch, 0.42, 0.57 },
+    { 65, 0.352, 0.015 * inch, 0.37, 0.58 }, { 67, 0.337, 0.014 * inch, 0.20, 0.60 },
+    { 69, 0.323, 0.014 * inch, 0.23, 0.64 }, { 71, 0.308, 0.013 * inch, 0.29, 0.60 },
+    { 72, 0.293, 0.012 * inch, 0.37, 0.61 }, { 74, 0.279, 0.012 * inch, 0.74, 0.57 },
+    { 76, 0.264, 0.011 * inch, 0.48, 0.57 }, { 77, 0.249, 0.011 * inch, 0.32, 0.55 },
+    { 79, 0.235, 0.010 * inch, 0.17, 0.80 }, { 81, 0.220, 0.010 * inch, 0.11, 1.00 },
+    { 83, 0.205, 0.0095 * inch, 0.36, 0.68 }, { 84, 0.191, 0.0095 * inch, 0.20, 0.86 },
+    { 86, 0.176, 0.009 * inch, 0.27, 0.86 }, { 88, 0.161, 0.009 * inch, 0.31, 0.86 },
+    { 89, 0.147, 0.009 * inch, 0.47, 0.74 }, { 91, 0.132, 0.009 * inch, 0.37, 0.86 }
 }};
 
-// The same frame strung with nylon at 45 N in the bass falling to 30 N in
-// the treble (diameters from T = mu (2 L f)^2 at those tensions).
+// The same frame strung with nylon at 45 N in the bass falling to 23 N at
+// G6 (diameters from T = mu (2 L f)^2 at those tensions; B2 to F3 at 45 N,
+// G3 to A5 as the 16-string harp's, B5 to G6 a newton less a string, 180
+// to 200 MPa). Plain monofilament for B2 to D3 would be 1.6-1.8 mm, so
+// stiff (B 1.6-2.2e-3) that the loop's dispersion could not follow its
+// partials (up to 142 cents from the stiff-string law): as a lever harp's
+// bass is, they are wound, a 1.0 mm nylon core (estimated) under a copper
+// wrap that brings them to 45 N (mu = 45 / (2 L f)^2), about 1.1 mm over
+// the wrap.
 constexpr std::array<StringSpec, maxStrings> lyreHarpNylon {{
-    { 55, 0.440, 1.30e-3, 0.68, 0.90 }, { 57, 0.425, 1.18e-3, 0.50, 0.88 },
-    { 59, 0.411, 1.08e-3, 0.35, 0.86 }, { 60, 0.396, 1.05e-3, 0.23, 0.86 },
-    { 62, 0.381, 0.96e-3, 0.27, 0.85 }, { 64, 0.367, 0.87e-3, 0.30, 0.82 },
-    { 65, 0.352, 0.85e-3, 0.29, 0.82 }, { 67, 0.337, 0.78e-3, 0.12, 0.75 },
-    { 69, 0.323, 0.72e-3, 0.20, 0.94 }, { 71, 0.308, 0.66e-3, 0.48, 0.88 },
-    { 72, 0.293, 0.64e-3, 0.47, 0.87 }, { 74, 0.279, 0.60e-3, 1.00, 0.83 },
-    { 76, 0.264, 0.55e-3, 0.82, 0.80 }, { 77, 0.249, 0.54e-3, 0.75, 0.80 },
-    { 79, 0.235, 0.51e-3, 0.22, 0.80 }, { 81, 0.220, 0.47e-3, 0.14, 1.00 }
+    { 47, 0.513, 1.13e-3, 0.64, 0.80, 2.804e-3, 1.0e-3 },
+    { 48, 0.499, 1.12e-3, 0.48, 0.80, 2.640e-3, 1.0e-3 },
+    { 50, 0.484, 1.09e-3, 0.50, 0.80, 2.228e-3, 1.0e-3 },
+    { 52, 0.469, 1.46e-3, 1.00, 0.80 },
+    { 53, 0.455, 1.42e-3, 0.80, 0.80 },
+    { 55, 0.440, 1.30e-3, 0.76, 0.80 }, { 57, 0.425, 1.18e-3, 0.64, 0.78 },
+    { 59, 0.411, 1.08e-3, 0.36, 0.76 }, { 60, 0.396, 1.05e-3, 0.26, 0.76 },
+    { 62, 0.381, 0.96e-3, 0.31, 0.75 }, { 64, 0.367, 0.87e-3, 0.32, 0.73 },
+    { 65, 0.352, 0.85e-3, 0.26, 0.73 }, { 67, 0.337, 0.78e-3, 0.11, 0.67 },
+    { 69, 0.323, 0.72e-3, 0.18, 0.83 }, { 71, 0.308, 0.66e-3, 0.27, 0.78 },
+    { 72, 0.293, 0.64e-3, 0.23, 0.77 }, { 74, 0.279, 0.60e-3, 0.63, 0.74 },
+    { 76, 0.264, 0.55e-3, 0.36, 0.71 }, { 77, 0.249, 0.54e-3, 0.26, 0.71 },
+    { 79, 0.235, 0.51e-3, 0.08, 0.71 }, { 81, 0.220, 0.47e-3, 0.06, 1.00 },
+    { 83, 0.205, 0.44e-3, 0.18, 0.80 }, { 84, 0.191, 0.44e-3, 0.12, 0.83 },
+    { 86, 0.176, 0.42e-3, 0.18, 0.89 }, { 88, 0.161, 0.40e-3, 0.21, 0.89 },
+    { 89, 0.147, 0.40e-3, 0.29, 0.89 }, { 91, 0.132, 0.39e-3, 0.26, 0.89 }
 }};
 
 // The lyre harp's soundbox: a 20 x 30 cm top of 6 mm spruce on a box 5 cm
@@ -167,13 +199,13 @@ constexpr BodySpec gutLyreBody {
 // piezoGain puts the piezo alone within 1 dB of that (AculyreEngineTests,
 // README Level).
 inline constexpr InstrumentSpec lyreHarpSteel {
-    "Lyre Harp", steelWire, 16, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 3.519, 0.363
+    "Lyre Harp", steelWire, 27, detail::lyreHarpSteel, detail::lyreHarpBody,
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 3.361, 0.394
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {
-    "Nylon Lyre Harp", nylonMonofilament, 16, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 4.738, 0.352
+    "Nylon Lyre Harp", nylonMonofilament, 27, detail::lyreHarpNylon, detail::lyreHarpBody,
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 5.696, 0.386
 };
 
 inline constexpr InstrumentSpec gutLyre {

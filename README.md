@@ -4,9 +4,11 @@ Aculyre is an experimental physically modelled lyre, forked in method (not in
 code history) from [Acustra](https://github.com/protocodus/virtual-instrument-acustra):
 a row of open strings, each a pair of stiff-string waveguides, all ending on
 one bridge bar that stands on a modal soundbox, so idle strings ring in
-sympathy. It plays three instruments: a modern 16-string steel lyre harp, the
-same harp strung in nylon, and a gut lyre after the Anglo-Saxon
-reconstructions, extended from their six strings to sixteen. It is a feasibility prototype: there is no plug-in and no
+sympathy. It plays three instruments: a modern 27-string steel lyre harp, the
+widest sold, the same harp strung in nylon, and a gut lyre after the
+Anglo-Saxon reconstructions, extended from their six strings to sixteen.
+Every key of a piano, A0 to C8, sounds at its own pitch: past the strings,
+the lowest or the highest string is stretched to the key. It is a feasibility prototype: there is no plug-in and no
 release. A Reason Rack Extension adapter plays it from the private
 `protocodus/reason-rack-extensions` repository (source only, not yet built
 against the SDK).
@@ -22,6 +24,15 @@ reference recording below.
 
 ## Version history
 
+- **0.7.5** (prototype, not released): the lyre harps have 27 strings,
+  B2 to G6, the widest lyre harp sold, where they had the 16-string harp's
+  G3 to A5: five more in the bass, wound, and six in the treble, all
+  ringing in sympathy with the rest. Keys past an instrument's strings,
+  down to A0 and up to C8, sound at their own pitch on the lowest or the
+  highest string, its length scaled to the key at its own tension, one key
+  at a time at each end; keys past C8 or below A0 stay silent. This
+  replaces 0.7.4's octave folding, which played C2 as the harp's C4. Every
+  string is evened again by touch and the harps re-levelled to -9 VU.
 - **0.7.4** (prototype, not released): every MIDI note sounds. A note
   above or below the strings plays the string an octave or more away that
   sounds its pitch class (C2 plays the lyre harp's C4), where it was
@@ -242,11 +253,11 @@ f_n = n f0 sqrt((1 + B n^2) / (1 + B)). Where partials past the 12th fall below
 5 kHz (strings under about 417 Hz), second-order sections are fitted with
 the first-order coefficient to all of them, by least squares in cents: two,
 and a third and a fourth, each fit resuming from the last, while a partial
-lands more than 5 cents off, and where four still leave one so, again over
+lands more than 5 cents off, and where four still leave one more than 3 cents off, again over
 eight first-order sections. The first-order coefficient stays negative,
 since a positive one flattens the upper partials a stiff string sharpens.
 Every string of the three instruments, lever up or down, lands within 4.2
-cents up to 5 kHz at every rate from 44.1 to 192 kHz, no more than 0.6
+cents up to 5 kHz at every rate from 44.1 to 192 kHz, no more than 0.9
 cents further out than at 48 kHz. First-order sections alone left the steel
 G3 up to 95 cents flat, and two sections the gut D3 25 cents off.
 A second-order Thiran section sets the fractional delay, solved with the
@@ -372,11 +383,13 @@ blend it cancels the microphones where it otherwise adds to them. Against the
 microphones, the piezo carries more of the strings' fundamentals and of the
 top two octaves.
 
-**Presets.** The steel lyre harp has 16 strings G3-A5 in C major, 0.44-0.22 m,
-plain gauges 0.020-0.010 inch over a nickel-wound 0.024 inch G3, 54-63 N,
-over a 20 x 30 cm spruce top 6 mm thick on a 5 cm box
+**Presets.** The steel lyre harp has 27 strings B2-G6 in C major, 0.513-0.132 m,
+plain gauges 0.020-0.009 inch over nickel-wound 0.032-0.024 inch B2 to G3
+(46-63 N), over a 20 x 30 cm spruce top 6 mm thick on a 5 cm box
 with a 6 cm soundhole: its air mode is 237 Hz and its first top mode 835 Hz.
-The nylon harp uses the same frame with 1.30-0.47 mm monofilament at 29-44 N.
+The nylon harp uses the same frame with 1.46-0.39 mm monofilament from E3
+up and B2 to D3 wound on a 1.0 mm nylon core, 45 N in the bass falling to
+23 N at G6.
 The gut lyre has sixteen strings, D3 to E5 in G major, over a closed maple
 box whose first mode is 343 Hz: the reconstructions' six 50 cm strings D3 E3
 G3 A3 B3 D4 at about 37 N, with F#3 and C4 between them alike, and from E4 up
@@ -467,9 +480,16 @@ mute rests a palm across every string; sympathy rests a hand on the strings
 nobody plucked. With the sharping levers on, a note a semitone above a
 string's own raises that string's lever, which shortens its speaking length
 by a semitone, and the string's own note lowers it again, as a lyre harp
-player sets the levers by hand. A note above or below the strings plays
-the string an octave or more away that sounds its pitch class, so every
-MIDI note sounds with the levers on. `AculyrePerformer` designs all three
+player sets the levers by hand. Keys past the strings, down to A0 and up
+to C8, are an artificial range no lyre has: the lowest string plays the
+keys below it and the highest the keys above, its speaking length scaled
+by 2^((own - key)/12) at its own tension, so a bass key is a longer string
+and a treble key a shorter one, each designed at setup like a lever's
+pitch. Each end is one string, so it plays one such key at a time, and it
+stays at the key's pitch, as a raised lever stays up, until its own key
+plays it again. With
+the levers on, every key from A0 to C8 sounds; with them off, the notes
+between the strings stay silent, as on the instrument. `AculyrePerformer` designs all three
 instruments once, outside real time, so choosing one is a real-time switch:
 the old instrument fades out over 20 ms while the new one starts, and every
 front end (the Rack adapter now, a plug-in later) plays through it. The
@@ -504,11 +524,13 @@ lower), and the hardest chords read -1.6 VU or less. The look-ahead delays
 the output by 2 ms rounded down to 4 samples (88 at 44.1 kHz, 96 at
 48 kHz).
 
-**Cost.** The steel lyre harp (32 waveguides, 234 modes, seven bar bends
-and the room) playing its demo uses about 9% of one core of a cloud
+**Cost.** The 16-string steel lyre harp (32 waveguides, 234 modes, seven bar bends
+and the room) playing its demo used about 9% of one core of a cloud
 container at 1x and 48 kHz, built as the Rack SDK builds (clang -O3
 -fno-builtin, no auto-vectorization), the nylon lyre harp alike and the gut
-lyre 7%, where 0.6.2 used 16% and 15%. The strings' dispersion stages run
+lyre 7%, where 0.6.2 used 16% and 15%. 0.7.5's 27-string harps (54
+waveguides) cost about 1.6 times as much, alternating builds over a note
+every half second, and the gut lyre the same as before. The strings' dispersion stages run
 stage by stage across all the waveguides, so their chains overlap, and the
 modes, the strings' filters and the bridge solve are written with two-lane
 vector types, which the SDK compiler keeps where it vectorizes nothing by
@@ -556,11 +578,11 @@ nothing until the next pluck.
   gauges makes. The sampled DR lyre harp, another harp and player, jumps at
   its A4 string too (1.6e-4 on G4, 4.3e-4 on the A4 string), and from there
   up its strings are 1.9 to 3.8 times the model's. The body and the string
-  gauges are both assumed. Only G3
-  is wound: the string set it follows is for a harp tuned up from D3 and
-  winds its four lowest strings, and no set for a G3-A5 harp lists its
-  gauges. The DR harp's G3 reads as plain wire (5.3e-4 against the model's
-  1.7e-4).
+  gauges are both assumed. B2 to G3
+  are wound as the string set for a harp tuned up from D3 winds its four
+  lowest strings, C3 and B2 continuing its gauges, and no set for a
+  27-string harp lists them. The DR harp's G3 reads as plain wire (5.3e-4
+  against the model's 1.7e-4).
 - Against the DR lyre harp, note by note, the model's mid and treble
   fundamentals ring on: the recording's G#4 to F5 fall 15 to 50 dB/s from
   0.08 to 0.6 s where the model's fall 9 to 25 (G5 alike, 61 against 60),
@@ -651,6 +673,17 @@ nothing until the next pluck.
   lyre is measured, and the plectrum's reach is fitted on an archtop
   guitar. Against the finger at velocity 90 the nail is only a little
   brighter, because the fingertip already lets go in 0.03 ms.
+- The 27-string lyre harps keep the 16-string harp's soundbox and bridge
+  bar, its strings closer together on the bar: a 27-string harp is larger,
+  so where its body's modes fall is a guess beyond the smaller one's. The
+  comparisons with recordings above were measured on the 16-string harps
+  before 0.7.5 and not repeated with the eleven added strings ringing in
+  sympathy.
+- The artificial range past the strings is no instrument's: the edge
+  string keeps its own gauge, tension and losses at a length no harp would
+  give it, its dispersion takes the first-order fit alone, without the
+  second-order sections, so a bass key's upper partials drift further from
+  the stiff-string law, and each end plays one key at a time.
 - The gut lyre's ten added strings are no reconstruction's: their gauges,
   the slanted yoke and the 6 mm spacing are assumed, and the box and bridge
   bar are still the six-string lyre's.
@@ -659,7 +692,10 @@ nothing until the next pluck.
   factory patches. The pickup system is a guitar's; no lyre pickup is
   measured.
 - Designing an instrument is not real-time safe; the Performer designs all
-  three at startup, which a front end must allow for.
+  three at startup, which a front end must allow for: about 1.5 s on one
+  core of a cloud container at 48 kHz, where 0.7.4 took 0.7 s, since the
+  harps' eleven added strings and every key of the artificial range are
+  designed and tuned to the bridge with them.
 - No plug-in yet. The Rack Extension's 0.4.0d1 has been played in Recon
   from a local build; it has not been through Reason Studios' acceptance.
 

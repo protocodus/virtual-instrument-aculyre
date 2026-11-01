@@ -12,10 +12,17 @@ hold the pedal through a harmony and lift it where the hand would damp.
 
 Strings: the lyre harps (presets 0 and 1) are C major from G3 to A5; the gut
 lyre (preset 2) is D3 E3 G3 A3 B3 D4. Every phrase is original.
+
+songs/ holds longer public-domain pieces played with a person's timing
+(Performance, below); SONGS names the preset each is written for:
+
+    build/RenderAculyreDemo 0 Docs/audio/midi/songs/canon-in-c.mid canon-in-c.wav
 """
 
 import argparse
+import math
 import os
+import random
 import struct
 import sys
 
@@ -28,6 +35,8 @@ for octave in range(1, 8):
 
 
 def n(name):
+    if "#" in name:
+        return NOTE[name.replace("#", "")] + 1
     return NOTE[name]
 
 
@@ -191,6 +200,225 @@ def reference_note():
     return p
 
 
+# ---- Songs ---------------------------------------------------------------
+#
+# Longer public-domain pieces, played as a person plays them rather than as
+# a sequencer does. The score is written in beats; Performance plays it:
+# the tempo breathes along a curve of (beat, bpm) points, every onset lands
+# a few milliseconds off the grid, a chord's notes are struck as one gesture
+# and velocities wander a little around the line the score shapes. A fixed
+# seed makes every run write the same bytes.
+
+
+LEAD_IN = 0.3  # seconds
+
+
+class Performance:
+    def __init__(self, tempo, seed, timing=0.007, dynamics=4.0):
+        self.tempo = sorted(tempo)  # [(beat, bpm)], linear between, held past the ends
+        self.random = random.Random(seed)
+        self.timing = timing        # seconds, the onset scatter's standard deviation
+        self.dynamics = dynamics    # velocity steps, likewise
+        self.events = []            # (seconds, order, bytes); note-offs sort first
+
+    def bpm(self, beat):
+        points = self.tempo
+        if beat <= points[0][0]:
+            return points[0][1]
+        for (b0, t0), (b1, t1) in zip(points, points[1:]):
+            if beat <= b1:
+                return t0 + (t1 - t0) * (beat - b0) / (b1 - b0)
+        return points[-1][1]
+
+    def seconds(self, beat):
+        """Clock time of a written beat: the integral of 60 / bpm, after a
+        moment's silence before the first note."""
+        total, previous = LEAD_IN, 0.0
+        for b, _ in self.tempo[1:] + [(math.inf, 0)]:
+            end = min(beat, b)
+            if end > previous:
+                t0, t1 = self.bpm(previous), self.bpm(end)
+                slope = (t1 - t0) / (end - previous)
+                total += (60.0 * (end - previous) / t0 if abs(slope) < 1e-9
+                          else 60.0 / slope * math.log(t1 / t0))
+                previous = end
+            if beat <= b:
+                break
+        return total
+
+    def scatter(self, scale=1.0):
+        deviation = self.timing * scale
+        return max(-2.5 * deviation, min(2.5 * deviation, self.random.gauss(0.0, deviation)))
+
+    def velocity(self, value):
+        return max(1, min(127, round(value + self.random.gauss(0.0, self.dynamics))))
+
+    def at(self, beat, lean=0.0, scale=1.0):
+        """A played onset: the written beat on the breathing clock, plus a
+        deliberate lean in seconds and the hand's scatter."""
+        return max(0.0, self.seconds(beat) + lean + self.scatter(scale))
+
+    def message(self, seconds, data, order=1):
+        self.events.append((seconds, order, bytes(data)))
+
+    def play(self, onset, beats_held, beat, note, velocity, channel=0):
+        """One note struck at `onset` seconds and let go `beats_held` written
+        beats after `beat`, with the release scattered too."""
+        release = max(onset + 0.04, self.seconds(beat + beats_held) + self.scatter(0.6))
+        self.message(onset, (0x90 | channel, note, self.velocity(velocity)))
+        self.message(release, (0x80 | channel, note, 0), 0)
+
+    def smf(self):
+        """A format 0 file at the piece's opening tempo, so it sits roughly on
+        a DAW's bars; the performance's own time is in the ticks."""
+        bpm = self.tempo[0][1]
+        events = sorted(self.events, key=lambda e: (e[0], e[1]))
+        # A key struck again before its last release lets go just before.
+        struck = {}
+        trimmed = []
+        for index in range(len(events) - 1, -1, -1):
+            seconds, order, data = events[index]
+            key = (data[0] & 0x0F, data[1])
+            if data[0] & 0xF0 == 0x90:
+                struck[key] = seconds
+            elif data[0] & 0xF0 == 0x80 and key in struck and seconds >= struck[key]:
+                seconds = struck[key] - 0.004
+            trimmed.append((seconds, order, data))
+        events = sorted(trimmed, key=lambda e: (e[0], e[1]))
+        ticks_per_second = PPQ * bpm / 60.0
+        tempo = round(60_000_000 / bpm)
+        track = bytearray(b"\x00\xff\x51\x03" + tempo.to_bytes(3, "big"))
+        last = 0
+        for seconds, _, data in events:
+            tick = max(last, round(seconds * ticks_per_second))
+            track += variable(tick - last) + data
+            last = tick
+        track += b"\x00\xff\x2f\x00"
+        return (b"MThd" + struct.pack(">IHHH", 6, 0, 1, PPQ)
+                + b"MTrk" + struct.pack(">I", len(track)) + bytes(track))
+
+
+def breathe(bpm, phrases, swell=0.03, settle=0.07, last=0.22):
+    """A tempo curve over phrases of (first beat, length in beats): each
+    pushes on a little towards its middle and settles at its end; the last
+    one broadens into the close."""
+    points = []
+    for index, (start, length) in enumerate(phrases):
+        final = index == len(phrases) - 1
+        # After a breath the hand takes the tempo up again within a beat.
+        points += [(start if index == 0 else start + 0.75, bpm), (start + 0.55 * length, bpm * (1 + swell)),
+                   (start + 0.85 * length, bpm), (start + length, bpm * (1 - (last if final else settle)))]
+    return points
+
+
+def canon_in_c():
+    """Pachelbel's Canon (c. 1680), set for the steel lyre harp in C: the
+    ground bass and its broken chords in the left hand, and over them the
+    canon's first three entries, each richer than the last: a bare
+    statement of the ground, the long notes, the walking quarters, and the
+    long notes again an octave up, before a slow rolled C."""
+    ground = [  # (bass, the three strings broken above it)
+        ("C3", "G3", "C4", "E4"), ("G3", "B3", "D4", "G4"), ("A3", "C4", "E4", "A4"), ("E3", "G3", "B3", "E4"),
+        ("F3", "A3", "C4", "F4"), ("C3", "G3", "C4", "E4"), ("F3", "A3", "C4", "F4"), ("G3", "B3", "D4", "G4"),
+    ]
+    long_notes = ["E5", "D5", "C5", "B4", "A4", "G4", "A4", "B4"]
+    walking = ["C5", "E5", "G5", "F5", "E5", "C5", "E5", "D5", "C5", "A4", "C5", "G4", "F4", "A4", "G4", "F4"]
+    cycles = 4
+    p = Performance(breathe(60, [(16 * c, 16) for c in range(cycles)] + [(64, 4)],
+                            swell=0.035, settle=0.05, last=0.45), seed=1680, timing=0.009)
+    for cycle, loud in enumerate((58, 68, 78, 86)):
+        for chord, (bass, *broken) in enumerate(ground):
+            at = 16 * cycle + 2 * chord
+            rise = 5 * math.sin(math.pi * (chord + 0.5) / 8)
+            # The bass leads the hand by a hair, as a harpist's thumb does.
+            p.play(p.at(at, lean=-0.01), 1.97, at, n(bass), loud + rise)
+            if cycle == 0:
+                for index, name in enumerate(broken):
+                    p.play(p.at(at, lean=0.07 + 0.06 * index), 1.9, at, n(name), loud - 10 + rise - 2 * index)
+            else:
+                for index, name in enumerate(broken):
+                    beat = at + 0.5 * (index + 1)
+                    p.play(p.at(beat), 2 - 0.5 * (index + 1) - 0.03, beat, n(name),
+                           loud - 12 + rise + (2 if index == 1 else 0))
+            if cycle in (1, 3):
+                name = long_notes[chord]
+                if cycle == 3:
+                    name = name[:-1] + str(int(name[-1]) + 1)
+                p.play(p.at(at, lean=0.008), 1.95, at, n(name), loud + 8 + rise)
+            elif cycle == 2:
+                for half in range(2):
+                    beat = at + half
+                    p.play(p.at(beat, lean=0.008), 0.95, beat, n(walking[2 * chord + half]),
+                           loud + 6 + rise + (3 if half == 0 else -2))
+    # The close: C rolled up the harp from the bass, let ring.
+    for index, name in enumerate(["C3", "G3", "C4", "E4", "G4", "C5", "E5", "G5", "C6"]):
+        p.play(p.at(64, lean=0.075 * index, scale=0.6), 5.5, 64, n(name), 80 - 2 * index)
+    return p
+
+
+def scarborough_fair():
+    """Scarborough Fair, the English ballad, on the gut lyre in A dorian:
+    the hand strums the chord across the strings on each bar's first beat
+    while the other picks the tune, damping at the bar. An Am strum to set
+    the mode, the verse with the chords bare, then again with a flick of
+    the upper strings on the third beat, and a slow last strum."""
+    tune = [
+        [(0, "A3", 2), (2, "A3", 1)], [(0, "E4", 2), (2, "E4", 1)],
+        [(0, "B3", 1.5), (1.5, "C4", 0.5), (2, "B3", 1)], [(0, "A3", 3)],
+        [(1, "E4", 1), (2, "G4", 1)], [(0, "A4", 2), (2, "G4", 1)],
+        [(0, "E4", 1), (1, "F#4", 1), (2, "D4", 1)], [(0, "E4", 3)],
+        [(0, "A4", 2), (2, "A4", 1)], [(0, "G4", 2), (2, "E4", 1)],
+        [(0, "E4", 1), (1, "D4", 1), (2, "C4", 1)], [(0, "B3", 1), (1, "G3", 2)],
+        [(0, "A3", 2), (2, "E4", 1)], [(0, "D4", 2), (2, "C4", 1)],
+        [(0, "B3", 1), (1, "A3", 1), (2, "G3", 1)], [(0, "A3", 3)],
+    ]
+    chords = {"Am": ["E3", "A3", "C4", "E4"], "G": ["D3", "G3", "B3", "D4"], "C": ["E3", "G3", "C4", "E4"],
+              "D": ["D3", "F#3", "A3", "D4"], "Em": ["E3", "G3", "B3", "E4"]}
+    harmony = ["Am", "Am", "G", "Am", "C", "D", "G", "Am", "Am", "C", "G", "Em", "Am", "D", "G", "Am"]
+    intro = 6
+    verses = [(intro, 92, 74, False), (intro + 48, 96, 82, True)]
+    tempo = breathe(88, [(0, intro)], last=0.08) + breathe(92, [(intro + 12 * k, 12) for k in range(4)]) \
+        + breathe(96, [(intro + 48 + 12 * k, 12) for k in range(4)], last=0.4)
+    p = Performance(tempo, seed=1600, timing=0.01)
+
+    def strum(beat, names, velocity, held, spread=0.022, skip=()):
+        onset = p.at(beat)
+        for index, name in enumerate(x for x in names if x not in skip):
+            p.play(onset + spread * index, held, beat, n(name), velocity - 2 * index)
+
+    def flick(beat, names, velocity, held):
+        onset = p.at(beat, scale=1.2)
+        for index, name in enumerate(reversed(names[1:])):
+            p.play(onset + 0.018 * index, held, beat, n(name), velocity - 2 * index)
+
+    for bar in range(2):
+        strum(3 * bar, chords["Am"], 66 + 6 * bar, 2.9)
+        flick(3 * bar + 2, chords["Am"], 48, 0.9)
+    for start, _, loud, flicks in verses:
+        for bar, notes in enumerate(tune):
+            at = start + 3 * bar
+            rise = 6 * math.sin(math.pi * ((bar % 4) + 0.5) / 4)
+            melody = {name for beat, name, _ in notes if beat == 0}
+            final = flicks and bar == 15
+            if final:
+                strum(at, chords["Am"] + ["A4"], loud, 6.0, spread=0.06)
+                continue
+            strum(at, chords[harmony[bar]], loud - 14 + rise, 2.95, skip=melody)
+            if flicks:
+                flick(at + 2, chords[harmony[bar]], loud - 30 + rise, 0.95)
+            for beat, name, length in notes:
+                p.play(p.at(at + beat, lean=0.012), length * 0.97, at + beat, n(name),
+                       loud + rise + (4 if beat == 0 else 0))
+    return p
+
+
+SONGS = {
+    # file in Docs/audio/midi/songs/: (phrase, the preset it is written for)
+    "canon-in-c.mid": (canon_in_c, 0),
+    "scarborough-fair.mid": (scarborough_fair, 2),
+}
+
+
 DEMOS = {
     "00-lyre-harp.mid": lyre_harp_steel,
     "01-nylon-lyre-harp.mid": lyre_harp_nylon,
@@ -201,6 +429,7 @@ DEMOS = {
     "more/04-shared-phrase.mid": shared_phrase,
     "more/05-reference-a4.mid": reference_note,
 }
+DEMOS.update({"songs/" + name: build for name, (build, _) in SONGS.items()})
 
 
 def main():

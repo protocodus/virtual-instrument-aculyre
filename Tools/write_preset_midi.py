@@ -365,7 +365,7 @@ def scarborough_fair():
     """Scarborough Fair, the traditional English ballad, in D dorian, which
     the lyre harps' C major strings play without levers. The tune is the
     common traditional one (as transcribed in E dorian at flutetunes.com,
-    tune 21, here a tone lower), on the steel lyre harp an octave up; the
+    tune 21, here a tone lower), on the steel lyre harp; the
     nylon lyre harp plays chords chosen for this setting. Two Dm bars set
     the mode; the first verse rolls each bar's chord, the second breaks it
     across the bar; a slow Dm roll closes."""
@@ -426,8 +426,7 @@ def scarborough_fair():
             at = start + beat
             final = second and index == len(tune) - 1
             rise = 5 * math.sin(math.pi * ((beat % 12) + 1) / 13)
-            octave = name[:-1] + str(int(name[-1]) + 1)
-            p.play(p.at(at, lean=0.012), 6.0 if final else length * 0.97, at, n(octave),
+            p.play(p.at(at, lean=0.012), 6.0 if final else length * 0.97, at, n(name),
                    loud + rise + (5 if beat % 3 == 0 else -3 if beat % 1 else 0))
     return p
 
@@ -447,7 +446,7 @@ class _PartFile:
 # trim in dB. Tools/render_songs.py renders and mixes them.
 SONGS = {
     "canon-in-c": (canon_in_c, {"ground": (1, -0.3, -6.0), "canon": (0, 0.3, 0.0)}),
-    "scarborough-fair": (scarborough_fair, {"tune": (0, 0.25, 0.0), "chords": (1, -0.3, -7.0)}),
+    "scarborough-fair": (scarborough_fair, {"tune": (0, 0.7, 0.0), "chords": (1, -0.7, -0.8)}),
 }
 
 

@@ -362,68 +362,73 @@ def canon_in_c():
 
 
 def scarborough_fair():
-    """Scarborough Fair, the English ballad, in A dorian for three lyres.
-    The gut lyre sings the tune; the nylon lyre harp strums the chord across
-    its strings on each bar's first beat, damping at the bar, and the second
-    time flicks its upper strings on the third beat; and the second time
-    the steel lyre harp rings a high chord tone over each bar, a descant.
-    An Am strum sets the mode, and a slow last strum closes."""
+    """Scarborough Fair, the traditional English ballad, in D dorian, which
+    the lyre harps' C major strings play without levers. The tune is the
+    common traditional one (as transcribed in E dorian at flutetunes.com,
+    tune 21, here a tone lower), on the steel lyre harp an octave up; the
+    nylon lyre harp plays chords chosen for this setting. Two Dm bars set
+    the mode; the first verse rolls each bar's chord, the second breaks it
+    across the bar; a slow Dm roll closes."""
+    # (beat, note, beats) of one verse, 19 bars of 3/4; D4 is the tonic.
     tune = [
-        [(0, "A3", 2), (2, "A3", 1)], [(0, "E4", 2), (2, "E4", 1)],
-        [(0, "B3", 1.5), (1.5, "C4", 0.5), (2, "B3", 1)], [(0, "A3", 3)],
-        [(1, "E4", 1), (2, "G4", 1)], [(0, "A4", 2), (2, "G4", 1)],
-        [(0, "E4", 1), (1, "F#4", 1), (2, "D4", 1)], [(0, "E4", 3)],
-        [(0, "A4", 2), (2, "A4", 1)], [(0, "G4", 2), (2, "E4", 1)],
-        [(0, "E4", 1), (1, "D4", 1), (2, "C4", 1)], [(0, "B3", 1), (1, "G3", 2)],
-        [(0, "A3", 2), (2, "E4", 1)], [(0, "D4", 2), (2, "C4", 1)],
-        [(0, "B3", 1), (1, "A3", 1), (2, "G3", 1)], [(0, "A3", 3)],
+        (0, "D4", 2), (2, "D4", 1), (3, "A4", 2), (5, "A4", 1), (6, "E4", 1.5), (7.5, "F4", 0.5),
+        (8, "E4", 1), (9, "D4", 4),
+        (13, "A4", 1), (14, "C5", 1), (15, "D5", 2), (17, "C5", 1), (18, "A4", 1), (19, "B4", 1),
+        (20, "G4", 1), (21, "A4", 5),
+        (26, "D5", 1), (27, "D5", 2), (29, "D5", 1), (30, "C5", 2), (32, "A4", 1), (33, "A4", 1),
+        (34, "G4", 1), (35, "F4", 1), (36, "E4", 1), (37, "C4", 5),
+        (42, "D4", 2), (44, "A4", 1), (45, "G4", 2), (47, "F4", 1), (48, "E4", 1), (49, "D4", 1),
+        (50, "C4", 1), (51, "D4", 6),
     ]
-    # The lyre harp is diatonic in C, so its D chord is the bare fifth.
-    chords = {"Am": ["E3", "A3", "C4", "E4"], "G": ["D3", "G3", "B3", "D4"], "C": ["E3", "G3", "C4", "E4"],
-              "D": ["D3", "A3", "D4"], "Em": ["E3", "G3", "B3", "E4"]}
-    descant = {"Am": "E5", "G": "D5", "C": "E5", "D": "A5", "Em": "B5"}
-    harmony = ["Am", "Am", "G", "Am", "C", "D", "G", "Am", "Am", "C", "G", "Em", "Am", "D", "G", "Am"]
+    # One chord a bar, dorian's own: the major IV (G) and the minor v (Am)
+    # beside i, III (F) and VII (C).
+    harmony = ["Dm", "Dm", "C", "Dm", "F", "Dm", "G", "Am", "Dm", "Dm",
+               "Am", "F", "C", "Am", "Dm", "C", "Am", "Dm", "Dm"]
+    chords = {"Dm": ["D3", "A3", "D4", "F4"], "C": ["C3", "G3", "C4", "E4"], "F": ["F3", "C4", "F4", "A4"],
+              "G": ["G3", "D4", "G4", "B4"], "Am": ["A3", "E4", "A4", "C5"]}
+    verse = 57
     intro = 6
-    verses = [(intro, 74, False), (intro + 48, 82, True)]
-    tempo = breathe(88, [(0, intro)], last=0.08) + breathe(92, [(intro + 12 * k, 12) for k in range(4)]) \
-        + breathe(96, [(intro + 48 + 12 * k, 12) for k in range(4)], last=0.4)
+    verses = [(intro, 76, False), (intro + verse, 84, True)]
+    lines = [(0, 13), (13, 13), (26, 16), (42, 15)]
+    tempo = breathe(88, [(0, intro)], last=0.08) \
+        + breathe(92, [(intro + s, n) for s, n in lines]) \
+        + breathe(96, [(intro + verse + s, n) for s, n in lines], last=0.4)
     p = Performance(tempo, seed=1600, timing=0.01)
 
-    def strum(beat, names, velocity, held, spread=0.022):
-        onset = p.at(beat)
+    def roll(beat, names, velocity, held, spread=0.035):
+        onset = p.at(beat, lean=-0.01)
         for index, name in enumerate(names):
-            p.play(onset + spread * index, held, beat, n(name), velocity - 2 * index)
+            p.play(onset + spread * index, held, beat, n(name), velocity - 3 * index)
 
-    def flick(beat, names, velocity, held):
-        onset = p.at(beat, scale=1.2)
-        for index, name in enumerate(reversed(names[1:])):
-            p.play(onset + 0.018 * index, held, beat, n(name), velocity - 2 * index)
+    def broken(beat, names, velocity, final_beats=3.0):
+        """Bass on the bar, then the chord's upper strings in eighths."""
+        p.play(p.at(beat, lean=-0.01), final_beats - 0.05, beat, n(names[0]), velocity)
+        for index, name in enumerate([names[1], names[2], names[3], names[2]]):
+            at = beat + 1 + 0.5 * index
+            p.play(p.at(at), final_beats - 1 - 0.5 * index - 0.05, at, n(name), velocity - 12 + (3 if index == 2 else 0))
 
     p.voice = "chords"
     for bar in range(2):
-        strum(3 * bar, chords["Am"], 66 + 6 * bar, 2.9)
-        flick(3 * bar + 2, chords["Am"], 48, 0.9)
+        broken(3 * bar, chords["Dm"], 66 + 4 * bar)
     for start, loud, second in verses:
-        for bar, notes in enumerate(tune):
+        p.voice = "chords"
+        for bar, chord in enumerate(harmony):
             at = start + 3 * bar
-            rise = 6 * math.sin(math.pi * ((bar % 4) + 0.5) / 4)
-            final = second and bar == 15
-            chord = harmony[bar]
-            p.voice = "chords"
-            if final:
-                strum(at, chords["Am"] + ["A4"], loud - 6, 6.0, spread=0.06)
+            rise = 5 * math.sin(math.pi * ((bar % 4) + 0.5) / 4)
+            if second and bar == len(harmony) - 1:
+                roll(at, chords["Dm"] + ["A4", "D5"], loud - 8, 6.0, spread=0.07)
+            elif second:
+                broken(at, chords[chord], loud - 14 + rise)
             else:
-                strum(at, chords[chord], loud - 12 + rise, 2.95)
-                if second:
-                    flick(at + 2, chords[chord], loud - 28 + rise, 0.95)
-            if second:
-                p.voice = "descant"
-                p.play(p.at(at, lean=0.03), 6.0 if final else 2.9, at, n("A5" if final else descant[chord]),
-                       loud - 16 + rise)
-            p.voice = "tune"
-            for beat, name, length in notes:
-                p.play(p.at(at + beat, lean=0.012), 6.0 if final else length * 0.97, at + beat, n(name),
-                       loud + rise + (4 if beat == 0 else 0))
+                roll(at, chords[chord], loud - 16 + rise, 2.95)
+        p.voice = "tune"
+        for index, (beat, name, length) in enumerate(tune):
+            at = start + beat
+            final = second and index == len(tune) - 1
+            rise = 5 * math.sin(math.pi * ((beat % 12) + 1) / 13)
+            octave = name[:-1] + str(int(name[-1]) + 1)
+            p.play(p.at(at, lean=0.012), 6.0 if final else length * 0.97, at, n(octave),
+                   loud + rise + (5 if beat % 3 == 0 else -3 if beat % 1 else 0))
     return p
 
 
@@ -442,8 +447,7 @@ class _PartFile:
 # trim in dB. Tools/render_songs.py renders and mixes them.
 SONGS = {
     "canon-in-c": (canon_in_c, {"ground": (1, -0.3, -6.0), "canon": (0, 0.3, 0.0)}),
-    "scarborough-fair": (scarborough_fair, {"tune": (2, 0.15, 0.0), "chords": (1, -0.35, -4.0),
-                                            "descant": (0, 0.4, 0.0)}),
+    "scarborough-fair": (scarborough_fair, {"tune": (0, 0.25, 0.0), "chords": (1, -0.3, -7.0)}),
 }
 
 

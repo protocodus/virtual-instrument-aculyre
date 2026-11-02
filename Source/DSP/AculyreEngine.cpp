@@ -637,7 +637,7 @@ DispersionDesign refineDispersion(const DispersionDesign& firstOrder, double fun
             }
             result.worstCents = worst;
         }
-        if (result.worstCents <= 5.0)
+        if (result.worstCents <= 2.0)
             break;
     }
     return result;
@@ -722,7 +722,7 @@ DispersionDesign designDispersion(double fundamental, double inharmonicity, doub
     // (Retried only past 5 cents, the nylon lyre harp's E3 sat 2.6 cents out
     // at 48 kHz but 3.8 at 88.2, and its wound D3 2.6 against 4.2 at 176.4.)
     const DispersionDesign& most = best[static_cast<std::size_t>(maxDispersionStages)];
-    if (refined.worstCents > 3.0 && chosen.stages < maxDispersionStages && most.worstCents < infinity)
+    if (refined.worstCents > 1.5 && chosen.stages < maxDispersionStages && most.worstCents < infinity)
     {
         const DispersionDesign retried = refineDispersion(most, fundamental, inharmonicity, sampleRate);
         if (retried.worstCents < refined.worstCents)
@@ -934,6 +934,32 @@ struct Loop
         pairState = {};
         constantLoss.reset();
         bendingLoss.reset();
+    }
+
+    void scale(double factor) noexcept
+    {
+        const float f = static_cast<float>(factor);
+        for (float& sample : line)
+            sample *= f;
+        for (float& sample : pending)
+            sample *= f;
+        tx1 *= factor;
+        tx2 *= factor;
+        ty1 *= factor;
+        ty2 *= factor;
+        last *= factor;
+        for (double& state : dispersionState)
+            state *= factor;
+        for (auto& pair : pairState)
+            for (double& state : pair)
+                state *= factor;
+        for (UnitDcSection* section : { &constantLoss, &bendingLoss })
+        {
+            section->previousInput *= factor;
+            section->previousDifference *= factor;
+            section->u1 *= factor;
+            section->u2 *= factor;
+        }
     }
 
     void reset() noexcept
@@ -2213,32 +2239,41 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     // Participations along the bridge bar: the rigid bar's heave, rock about
     // its middle, normalized so its ends move h +- r, and sway of its top,
     // where the strings cross it, as the bar tips about its foot; then its
-    // bends.
+    // bends. On a soundbox lyre harp (holeRadius > 0), the saddle curves
+    // around the lower bout below the soundhole in a symmetric arc x(u) =
+    // bridgeX + 0.12 a (u^2 - 1/3) whose mean along the bar is bridgeX; that
+    // arc sweeps across the x = a/3 nodal line of the m = 3 plate modes in
+    // 4.3-7 kHz instead of sitting on a single straight line at x = 0.30 a.
+    const double bridgeArch = body.holeRadius > 0.0 ? 0.12 * a : 0.0;
     for (int index = 0; index < plateCount; ++index)
     {
         PlateMode& mode = plate[static_cast<std::size_t>(index)];
         const double kx = mode.m * pi / a;
         const double ky = mode.n * pi / b;
-        double meanSine = 0.0, meanLeveredSine = 0.0;
+        double meanSine = 0.0, meanLeveredSine = 0.0, meanSwaySine = 0.0;
         std::array<double, maxBends> meanBentSine {};
         for (int point = 0; point < points; ++point)
         {
             const double t = (point + 0.5) / points;
             const double y = y0 + t * (y1 - y0);
             const double u = 2.0 * t - 1.0;
+            const double x = bridgeX + bridgeArch * (u * u - 1.0 / 3.0);
+            const double sineX = std::sin(kx * x);
+            const double cosX = std::cos(kx * x);
             const double sine = std::sin(ky * y);
-            meanSine += sine / points;
-            meanLeveredSine += u * sine / points;
+            meanSine += sineX * sine / points;
+            meanLeveredSine += u * sineX * sine / points;
+            meanSwaySine += cosX * sine / points;
             for (int bend = 0; bend < s.bendCount; ++bend)
                 meanBentSine[static_cast<std::size_t>(bend)]
-                    += barShapes[static_cast<std::size_t>(bend)][static_cast<std::size_t>(point)] * sine / points;
+                    += barShapes[static_cast<std::size_t>(bend)][static_cast<std::size_t>(point)] * sineX * sine / points;
         }
         mode.mass = 0.25 * plateMass;
-        mode.participation[0] = std::sin(kx * bridgeX) * meanSine;
-        mode.participation[1] = 3.0 * std::sin(kx * bridgeX) * meanLeveredSine;
-        mode.participation[2] = body.bridgeHeight * kx * std::cos(kx * bridgeX) * meanSine;
+        mode.participation[0] = meanSine;
+        mode.participation[1] = 3.0 * meanLeveredSine;
+        mode.participation[2] = body.bridgeHeight * kx * meanSwaySine;
         for (std::size_t bend = 0; bend < maxBends; ++bend)
-            mode.participation[3 + bend] = std::sin(kx * bridgeX) * meanBentSine[bend];
+            mode.participation[3 + bend] = meanBentSine[bend];
         // A bar centred across the top meets every shape even about its
         // middle (odd n) or odd (even n), so the other half of the
         // participations vanish; exactly zero, process() can skip them.
@@ -2417,10 +2452,9 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     // A sharping lever shortens the speaking length to raise the note a
     // semitone; the tension stays, so the string's impedance does too.
     const double leverRatio = std::pow(2.0, -1.0 / 12.0);
-    // Strings tuned by hand each sit a few cents off, the same ones every
-    // time this instrument is set up: the six strings of a lyre harp phrase
-    // (Freesound 649925) spread by 4.1 cents about their mean, while
-    // repeated notes on one string agree within half a cent.
+    // Strings tuned by hand each sit within half a cent of their notes, the
+    // same ones every time this instrument is set up: repeated notes on one
+    // string of a lyre harp phrase (Freesound 649925) agree within 0.35 cents.
     std::array<double, maxStrings> detune {};
     {
         std::uint64_t hash = 0xcbf29ce484222325ull;  // FNV-1a of the name
@@ -2431,7 +2465,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         double mean = 0.0;
         for (int index = 0; index < stringCount_; ++index)
         {
-            detune[static_cast<std::size_t>(index)] = 4.1 * tuning.gaussian();
+            detune[static_cast<std::size_t>(index)] = 0.35 * tuning.gaussian();
             mean += detune[static_cast<std::size_t>(index)];
         }
         mean /= stringCount_;
@@ -2491,11 +2525,19 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             const double frequency = waveSpeed / (2.0 * pitch.length);
             pitch.inharmonicity = pi * pi * modulus * secondMoment
                                 / (voice.tension * pitch.length * pitch.length);
-            // The plane parallel to the soundboard is longer by about one
-            // string diameter (Woodhouse, Acta Acustica 90 (2004) 945, Sec.
-            // 4.3; Acustra ships the same end correction).
-            pitch.parallelLength = pitch.length + spec.diameter;
-            pitch.glidePerEnergy = modulus * area
+            // The plane parallel to the soundboard is slightly longer at the
+            // bridge and yoke pins (a tenth of a diameter, keeping the
+            // sustained parallel plane within half a cent of the normal
+            // plane's pitch while preserving two-plane beating).
+            pitch.parallelLength = pitch.length + 0.12 * spec.diameter;
+            // The wooden yoke, tuning pin and soundboard bridge yield in
+            // series with the wire's axial stiffness EA / L (a frame stiffness
+            // of 25 kN/m), so a stiff steel bass wire does not stretch as if
+            // held between rigid walls.
+            constexpr double frameStiffness = 2.5e4;
+            const double axialStiffness = modulus * area
+                                        / (1.0 + modulus * area / (frameStiffness * pitch.length));
+            pitch.glidePerEnergy = axialStiffness
                                  / (2.0 * voice.tension * waveSpeed * waveSpeed);
             // Air damping (Valette, in Mechanics of Musical Instruments,
             // 1995): R = 2 pi eta + 2 pi d sqrt(pi eta rho f), decay rate
@@ -2546,7 +2588,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         // refinement over a bass key's hundred partials took 20 to 120 ms
         // each, three times the whole setup's time over the 88 keys.
         for (int key = lowestKey; key <= highestKey; ++key)
-            if ((index == 0 && key < spec.midiNote) || (index == stringCount_ - 1 && key > spec.midiNote + 1))
+            if ((index == 0 && key < spec.midiNote) || (index == stringCount_ - 1 && key > spec.midiNote))
             {
                 s.extensionString[static_cast<std::size_t>(key)] = index;
                 designPitch(s.extension[static_cast<std::size_t>(key)],
@@ -2684,13 +2726,14 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             const auto reflectionLead = [&] (double frequency)
             {
                 const double omega = 2.0 * pi * frequency;
+                const Complex z1 = std::polar(1.0, -omega / fs);
+                const Complex z2 = z1 * z1;
                 std::array<std::array<Complex, barCoordinates>, barCoordinates> plateMobility {};
                 for (int m = 0; m < s.modeCount; ++m)
                 {
                     const Mode& mode = s.modes[static_cast<std::size_t>(m)];
-                    const double wm = 2.0 * pi * mode.frequency;
-                    const Complex response = Complex(0.0, omega)
-                        / Complex(wm * wm - omega * omega, omega * wm / mode.q);
+                    const Complex response = mode.b0 * (1.0 - z2)
+                                           / (1.0 + mode.a1 * z1 + mode.a2 * z2);
                     for (std::size_t i = 0; i < barCoordinates; ++i)
                         for (std::size_t j = 0; j < barCoordinates; ++j)
                             plateMobility[i][j] += response * mode.participation[i] * mode.participation[j];
@@ -2707,7 +2750,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                     for (std::size_t j = 0; j < barCoordinates; ++j)
                         others[i][j] -= voice.impedance * port[i] * port[j];
                 for (std::size_t i = 0; i < barCoordinates; ++i)
-                    others[i][i] += s.barImpedance(omega, i);
+                    others[i][i] += i < 3 ? s.massImpedance[i] * (1.0 - z1) / (1.0 + z1)
+                                          : (s.massImpedance[i] + s.bendTap1[i] * z1 + s.bendTap2[i] * z2) / (1.0 - z2);
                 // Y_port = e^T (I + Yp W)^-1 Yp e.
                 std::array<std::array<Complex, barCoordinates>, barCoordinates> system {};
                 for (std::size_t i = 0; i < barCoordinates; ++i)
@@ -3054,34 +3098,29 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // held force below: preloaded, without the click of a step.
     BarVector preload {};
     const BarVector port = voice.normalPort();
+    const bool pitchChanged = voice.raised != raise || voice.extensionKey != extensionKey;
+    const bool keepPartialWave = controls.technique == Technique::Plectrum && !pitchChanged;
     if (voice.keyDown || voice.sustained || voice.energy > silentEnergy)
     {
-        const double stopped = controls.technique == Technique::Plectrum ? 0.7 : 1.0;
+        const double stopped = keepPartialWave ? 0.7 : 1.0;
         const double normalForce = 2.0 * voice.impedance * stopped * voice.normal.last;
         for (std::size_t c = 0; c < barCoordinates; ++c)
             preload[c] -= normalForce * port[c];
         preload[2] -= 2.0 * voice.impedance * stopped * voice.parallel.last;
         for (Loop* loop : { &voice.normal, &voice.parallel })
-        {
-            if (controls.technique != Technique::Plectrum)
-            {
+            if (keepPartialWave)
+                loop->scale(0.3);
+            else
                 loop->silence();
-                continue;
-            }
-            for (float& sample : loop->line)
-                sample *= 0.3f;
-            for (float& sample : loop->pending)
-                sample *= 0.3f;
-        }
     }
     if (voice.keyDown || voice.sustained || voice.energy > silentEnergy)
     {
-        const float kept = controls.technique == Technique::Plectrum ? 0.09f : 0.0f;
+        const float kept = keepPartialWave ? 0.09f : 0.0f;
         for (float& square : voice.squares)
             square *= kept;
     }
     // The other hand sets the lever before the pluck.
-    if (voice.raised != raise || voice.extensionKey != extensionKey)
+    if (pitchChanged)
         applyPitch(index, raise, extensionKey);
 
     // Each pluck differs as a harpist's do (Chadefaux et al., JASA 131 (2012)

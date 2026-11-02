@@ -285,8 +285,8 @@ int main()
         const double mean = sum / preset->stringCount;
         const double spread = std::sqrt(squares / preset->stringCount - mean * mean);
         std::printf("%-16s tuning: mean %+.2f, spread %.2f, worst %.2f cents\n", preset->name, mean, spread, worst);
-        check(std::abs(mean) < 1.0e-9 && spread > 1.0 && worst <= 2.0 * 3.0 * 4.1,
-              "strings sit a few cents off their notes about the instrument's pitch");
+        check(std::abs(mean) < 1.0e-9 && spread > 0.1 && worst <= 2.0 * 3.0 * 0.35,
+              "strings sit within a cent of their notes about the instrument's pitch");
     }
 
     // An even touch: at velocity 90 each string's level over its first
@@ -607,7 +607,7 @@ int main()
     }
     // The stretched strings sound where they are tuned, and let go with
     // their key.
-    for (const int note : { 21, 36, 100, 108 })
+    for (const int note : { 21, 36, 92, 100, 108 })
     {
         const auto& preset = aculyre::lyreHarpSteel;
         const auto audio = renderNote(preset, note, 3.5, 64, false, true);

@@ -24,6 +24,34 @@ reference recording below.
 
 ## Version history
 
+- **0.7.7** (prototype, not released): every string across all three
+  instruments is tuned within half a cent of its exact 12-TET pitch in sustain
+  (`0.49`, `0.55` and `0.40` cents rms at `2.5-3.5 s` on the steel, nylon and
+  gut lyres, down from `4.54`, `4.14` and `4.23`; `0.80`, `0.45` and `0.37`
+  cents rms in `0.5-1.5 s`, down from `4.65`, `3.82` and `4.17`): the seeded
+  hand-tuning spread is tightened from `4.1` to `0.35` cents (a single string's
+  half-cent tuning-pin repeatability rather than an uncalibrated recording's
+  spread), the parallel plane's end correction is scaled to `0.12` diameters so
+  the slower-decaying parallel plane does not pull the sustained tone `-2` to
+  `-5` cents flat, the tension-glide stiffness includes the series longitudinal
+  compliance of the wooden yoke and floating bridge (`2.5e4 N/m`) so the stiff
+  steel bass strings B2-A3 overshoot by `+1.1` to `+3.0` cents on the attack
+  instead of `+5.2` to `+9.4`, the bridge reflection phase is solved from the
+  discrete-time biquad and bar-bend responses rather than the continuous-time
+  admittance, and the second-order dispersion fit refines until partials below
+  5 kHz sit within `2.0` cents (`1.5` on retry). With octaves aligned,
+  sympathetic octave selectivity (`C4 -> C5 vs D5`) rises from `25.8` to
+  `40.2 dB`. On the soundbox lyre harps the bridge bar also follows a symmetric
+  arc below the soundhole (`x(u) = bridgeX + 0.12 a (u^2 - 1/3)`), so it sweeps
+  across the $x = a/3$ nodal line of the $m = 3$ plate modes in 4.3-7 kHz
+  instead of sitting on a single straight line at $x = 0.30 a$. The semitone
+  above each instrument's highest string (`G#6` on the 27-string harps, `F5` on
+  the gut lyre) plays on the stretched highest string when `levers` is off
+  instead of falling silent between the open string and its second-semitone
+  extension, and a plectrum re-plucking a ringing string scales the loop's
+  internal filter states with the delay line (or clears them when a lever or
+  extension changes the string's pitch). Touch and `outputGain` are re-evened
+  and re-levelled to -9 VU.
 - **0.7.6** (prototype, not released): a reset (the host's audio reset,
   before a bounce) now plays as a fresh instance does, sample for sample.
   Before, strings whose tension had glided kept their glided length, the
@@ -238,7 +266,8 @@ None: this is a source-only prototype.
 
 **Strings.** Each string is two digital waveguides, one per polarisation, each
 holding the round trip from the bridge to the yoke and back. The plane parallel
-to the soundboard is longer by one string diameter (Woodhouse, Acta Acustica
+to the soundboard is longer by 0.12 of a string diameter so the two planes beat
+gently without pulling the parallel-dominated sustain flat (after Woodhouse, Acta Acustica
 90 (2004)). Steel carries Acustra 1.9.0's string loss laws unchanged: a
 constant loss angle for dislocation damping, Valette's and Woodhouse's bending
 loss, and Valette's air damping. A wound steel string takes its maker's
@@ -258,18 +287,18 @@ f_n = n f0 sqrt((1 + B n^2) / (1 + B)). Where partials past the 12th fall below
 5 kHz (strings under about 417 Hz), second-order sections are fitted with
 the first-order coefficient to all of them, by least squares in cents: two,
 and a third and a fourth, each fit resuming from the last, while a partial
-lands more than 5 cents off, and where four still leave one more than 3 cents off, again over
+lands more than 2 cents off, and where four still leave one more than 1.5 cents off, again over
 eight first-order sections. The first-order coefficient stays negative,
 since a positive one flattens the upper partials a stiff string sharpens.
-Every string of the three instruments, lever up or down, lands within 4.2
+Every string of the three instruments, lever up or down, lands within 2.6
 cents up to 5 kHz at every rate from 44.1 to 192 kHz, no more than 0.9
 cents further out than at 48 kHz. First-order sections alone left the steel
 G3 up to 95 cents flat, and two sections the gut D3 25 cents off.
 A second-order Thiran section sets the fractional delay, solved with the
-bridge's reflection phase so the coupled string sounds its note. The strings
-are tuned by hand: each instrument's sit a few cents off their notes, the
-same ones every time, spread by 4.1 cents about the instrument's pitch as the
-six strings of a lyre harp phrase are (Freesound 649925).
+bridge's discrete-time reflection phase so the coupled string sounds its note. The strings
+are tuned by hand within half a cent of 12-TET: each instrument's sit a fraction
+of a cent off their notes, the same ones every time, spread by 0.35 cents about
+the instrument's pitch.
 
 **Pluck.** The released shape is a triangle. A finger meets the string at a
 point: a harpist's finger touches at most 2 cm of string, too little to

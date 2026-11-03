@@ -24,6 +24,16 @@ reference recording below.
 
 ## Version history
 
+- **0.7.9** (prototype, not released): the lyre harps' back is a 4 mm
+  hard-maple plate that moves with the air in the box, where it was rigid.
+  Its modes below 4 kHz join the top's in the coupled soundbox, so the air
+  mode falls from `237` to `225 Hz` and a back mode appears at `507 Hz`: in
+  a third-octave average of the steel phrase, `+6` dB at 200 Hz, `-5` at 250,
+  `-3` to `-4` from 315 to 500 Hz, and `+0.2` to `-0.9` dB above 630 Hz. The
+  gut lyre's carved back is too thick to move and is unchanged. Chosen by ear
+  among 3 and 4 mm (heard as no big difference; the 4 mm sits nearer the DR
+  lyre harp: shape `4.7 / 5.0` dB rms against `5.9 / 6.5`, decays unchanged).
+  Touch is evened again for it and the gains re-levelled to 0.7.8's level.
 - **0.7.8** (prototype, not released): every string is evened by touch again
   for the 0.7.7 body. The arched saddle had left the steel harp's strings up
   to `0.94 dB` off the register's line by the microphones (`0.76` by the
@@ -371,7 +381,11 @@ with it, so each string drives the modes beneath its own place instead of
 an average along the bar. The bar stands on a modal
 soundbox: an orthotropic plate (Warburton's clamped-plate frequencies,
 simply-supported shapes for the bar's participation), coupled through the
-cavity's stiffness to a Helmholtz air plug when the box has a soundhole. Mode
+cavity's stiffness to a Helmholtz air plug when the box has a soundhole, and
+on the lyre harps to a 4 mm maple back, a clamped plate of its own whose
+modes with a net volume join the top's in the same eigenproblem below 4 kHz
+and radiate only that volume (the box stands between its edges and the
+microphones). Mode
 Qs are authored from the spread of Acustra's measured guitar bridge (16-75
 below 1.5 kHz, 5-36 above 2 kHz): 23 to 1 kHz, its lower quartile, falling
 to 10 at 2 kHz and 9 at 10 kHz, its median, and 20 for the air mode. The
@@ -430,7 +444,7 @@ top two octaves.
 **Presets.** The steel lyre harp has 27 strings B2-G6 in C major, 0.513-0.132 m,
 plain gauges 0.020-0.009 inch over nickel-wound 0.032-0.024 inch B2 to G3
 (46-63 N), over a 20 x 30 cm spruce top 6 mm thick on a 5 cm box
-with a 6 cm soundhole: its air mode is 237 Hz and its first top mode 835 Hz.
+with a 6 cm soundhole and a 4 mm maple back: its air mode is 225 Hz, its first back mode 507 Hz and its first top mode 835 Hz.
 The nylon harp uses the same frame with 1.46-0.39 mm monofilament from E3
 up and B2 to D3 wound on a 1.0 mm nylon core, 45 N in the bass falling to
 23 N at G6.
@@ -641,6 +655,17 @@ nothing until the next pluck.
   replaying its phrase (Freesound 649925, D4 to B4), the 6 mm top leaves
   the fundamentals 8 to 15 dB short and the shape 11.2 dB rms from the
   recording's, where the 3 mm top's sat 8.1.
+- The lyre harps' back is a flat, clamped 4 mm maple plate: the thickness
+  and the clamped edge are assumed, as is the top's, and it radiates only its
+  net volume. A 3 mm back (air mode 208 Hz, back modes at 410 and 531 Hz)
+  was heard against it and the difference called small; the recordings are
+  indifferent to a 4 mm back and mildly against 3 mm.
+- Plucked alone, the model's low strings ring far longer than any recorded
+  lyre harp's: fundamentals B2 to G3 fall 1.8 to 3.5 dB/s on the steel harp
+  (a 60 dB decay in 17 to 33 s) and 3.3 to 11 dB/s on the nylon, and the back
+  plate leaves them unchanged. The strings' own losses set it (G3's intrinsic
+  T60 is 14 s); the DR lyre harp's G3 to A#4 fundamentals fall 7 to 27 dB/s.
+  The 3 mm top shortens it and costs the treble elsewhere (see above).
 - The parallel polarisation reaches the body by a stand-in path: it tips
   the bar toward the yoke, which is what the string's pull along its own
   length does. A sideways pull at the bar's top is a moment about the

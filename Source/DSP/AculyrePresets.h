@@ -89,21 +89,21 @@ constexpr double inch = 0.0254;
 constexpr double poundPerInch = 17.857967;  // kg/m
 constexpr std::array<StringSpec, maxStrings> lyreHarpSteel {{
     { 47, 0.513, 0.032 * inch, 1.00, 0.67, 0.00019347 * poundPerInch, 0.412e-3 },
-    { 48, 0.499, 0.030 * inch, 0.86, 0.67, 0.00017236 * poundPerInch, 0.404e-3 },
-    { 50, 0.484, 0.028 * inch, 0.87, 0.67, 0.00014666 * poundPerInch, 0.396e-3 },
-    { 52, 0.469, 0.024 * inch, 0.66, 0.67, 0.00010857 * poundPerInch, 0.38e-3 },
-    { 53, 0.455, 0.024 * inch, 0.66, 0.67, 0.00010857 * poundPerInch, 0.38e-3 },
-    { 55, 0.440, 0.024 * inch, 0.99, 0.66, 0.00010857 * poundPerInch, 0.38e-3 }, { 57, 0.425, 0.020 * inch, 0.80, 0.63 },
-    { 59, 0.411, 0.019 * inch, 0.48, 0.61 }, { 60, 0.396, 0.018 * inch, 0.45, 0.63 },
-    { 62, 0.381, 0.017 * inch, 0.41, 0.62 }, { 64, 0.367, 0.016 * inch, 0.45, 0.60 },
-    { 65, 0.352, 0.015 * inch, 0.41, 0.62 }, { 67, 0.337, 0.014 * inch, 0.19, 0.61 },
-    { 69, 0.323, 0.014 * inch, 0.20, 0.70 }, { 71, 0.308, 0.013 * inch, 0.33, 0.65 },
-    { 72, 0.293, 0.012 * inch, 0.45, 0.64 }, { 74, 0.279, 0.012 * inch, 0.77, 0.63 },
-    { 76, 0.264, 0.011 * inch, 0.45, 0.61 }, { 77, 0.249, 0.011 * inch, 0.35, 0.60 },
-    { 79, 0.235, 0.010 * inch, 0.13, 0.78 }, { 81, 0.220, 0.010 * inch, 0.12, 1.00 },
-    { 83, 0.205, 0.0095 * inch, 0.29, 0.83 }, { 84, 0.191, 0.0095 * inch, 0.24, 0.89 },
-    { 86, 0.176, 0.009 * inch, 0.32, 0.93 }, { 88, 0.161, 0.009 * inch, 0.35, 0.95 },
-    { 89, 0.147, 0.009 * inch, 0.36, 0.92 }, { 91, 0.132, 0.009 * inch, 0.31, 0.87 }
+    { 48, 0.499, 0.030 * inch, 0.84, 0.67, 0.00017236 * poundPerInch, 0.404e-3 },
+    { 50, 0.484, 0.028 * inch, 0.84, 0.67, 0.00014666 * poundPerInch, 0.396e-3 },
+    { 52, 0.469, 0.024 * inch, 0.61, 0.67, 0.00010857 * poundPerInch, 0.38e-3 },
+    { 53, 0.455, 0.024 * inch, 0.63, 0.67, 0.00010857 * poundPerInch, 0.38e-3 },
+    { 55, 0.440, 0.024 * inch, 0.96, 0.66, 0.00010857 * poundPerInch, 0.38e-3 }, { 57, 0.425, 0.020 * inch, 0.70, 0.63 },
+    { 59, 0.411, 0.019 * inch, 0.49, 0.61 }, { 60, 0.396, 0.018 * inch, 0.41, 0.63 },
+    { 62, 0.381, 0.017 * inch, 0.38, 0.62 }, { 64, 0.367, 0.016 * inch, 0.43, 0.60 },
+    { 65, 0.352, 0.015 * inch, 0.39, 0.62 }, { 67, 0.337, 0.014 * inch, 0.18, 0.60 },
+    { 69, 0.323, 0.014 * inch, 0.19, 0.70 }, { 71, 0.308, 0.013 * inch, 0.32, 0.65 },
+    { 72, 0.293, 0.012 * inch, 0.36, 0.65 }, { 74, 0.279, 0.012 * inch, 0.63, 0.63 },
+    { 76, 0.264, 0.011 * inch, 0.42, 0.61 }, { 77, 0.249, 0.011 * inch, 0.33, 0.60 },
+    { 79, 0.235, 0.010 * inch, 0.12, 0.77 }, { 81, 0.220, 0.010 * inch, 0.12, 1.00 },
+    { 83, 0.205, 0.0095 * inch, 0.28, 0.83 }, { 84, 0.191, 0.0095 * inch, 0.23, 0.89 },
+    { 86, 0.176, 0.009 * inch, 0.31, 0.93 }, { 88, 0.161, 0.009 * inch, 0.35, 0.94 },
+    { 89, 0.147, 0.009 * inch, 0.35, 0.92 }, { 91, 0.132, 0.009 * inch, 0.31, 0.87 }
 }};
 
 // The same frame strung with nylon at 45 N in the bass falling to 23 N at
@@ -116,22 +116,22 @@ constexpr std::array<StringSpec, maxStrings> lyreHarpSteel {{
 // wrap that brings them to 45 N (mu = 45 / (2 L f)^2), about 1.1 mm over
 // the wrap.
 constexpr std::array<StringSpec, maxStrings> lyreHarpNylon {{
-    { 47, 0.513, 1.13e-3, 0.68, 0.77, 2.804e-3, 1.0e-3 },
-    { 48, 0.499, 1.12e-3, 0.56, 0.77, 2.640e-3, 1.0e-3 },
-    { 50, 0.484, 1.09e-3, 0.57, 0.76, 2.228e-3, 1.0e-3 },
+    { 47, 0.513, 1.13e-3, 0.72, 0.77, 2.804e-3, 1.0e-3 },
+    { 48, 0.499, 1.12e-3, 0.57, 0.77, 2.640e-3, 1.0e-3 },
+    { 50, 0.484, 1.09e-3, 0.58, 0.76, 2.228e-3, 1.0e-3 },
     { 52, 0.469, 1.46e-3, 1.00, 0.82 },
-    { 53, 0.455, 1.42e-3, 0.84, 0.82 },
-    { 55, 0.440, 1.30e-3, 0.86, 0.80 }, { 57, 0.425, 1.18e-3, 0.72, 0.78 },
-    { 59, 0.411, 1.08e-3, 0.39, 0.75 }, { 60, 0.396, 1.05e-3, 0.27, 0.75 },
-    { 62, 0.381, 0.96e-3, 0.34, 0.75 }, { 64, 0.367, 0.87e-3, 0.35, 0.73 },
+    { 53, 0.455, 1.42e-3, 0.83, 0.82 },
+    { 55, 0.440, 1.30e-3, 0.87, 0.80 }, { 57, 0.425, 1.18e-3, 0.64, 0.78 },
+    { 59, 0.411, 1.08e-3, 0.43, 0.75 }, { 60, 0.396, 1.05e-3, 0.26, 0.75 },
+    { 62, 0.381, 0.96e-3, 0.33, 0.75 }, { 64, 0.367, 0.87e-3, 0.34, 0.72 },
     { 65, 0.352, 0.85e-3, 0.30, 0.73 }, { 67, 0.337, 0.78e-3, 0.11, 0.67 },
-    { 69, 0.323, 0.72e-3, 0.16, 0.83 }, { 71, 0.308, 0.66e-3, 0.27, 0.77 },
-    { 72, 0.293, 0.64e-3, 0.26, 0.76 }, { 74, 0.279, 0.60e-3, 0.64, 0.72 },
-    { 76, 0.264, 0.55e-3, 0.36, 0.68 }, { 77, 0.249, 0.54e-3, 0.26, 0.68 },
-    { 79, 0.235, 0.51e-3, 0.08, 0.67 }, { 81, 0.220, 0.47e-3, 0.07, 1.00 },
-    { 83, 0.205, 0.44e-3, 0.22, 0.81 }, { 84, 0.191, 0.44e-3, 0.14, 0.83 },
-    { 86, 0.176, 0.42e-3, 0.21, 0.94 }, { 88, 0.161, 0.40e-3, 0.25, 0.90 },
-    { 89, 0.147, 0.40e-3, 0.25, 0.87 }, { 91, 0.132, 0.39e-3, 0.24, 0.84 }
+    { 69, 0.323, 0.72e-3, 0.16, 0.82 }, { 71, 0.308, 0.66e-3, 0.27, 0.77 },
+    { 72, 0.293, 0.64e-3, 0.23, 0.77 }, { 74, 0.279, 0.60e-3, 0.55, 0.72 },
+    { 76, 0.264, 0.55e-3, 0.35, 0.68 }, { 77, 0.249, 0.54e-3, 0.26, 0.68 },
+    { 79, 0.235, 0.51e-3, 0.08, 0.66 }, { 81, 0.220, 0.47e-3, 0.07, 1.00 },
+    { 83, 0.205, 0.44e-3, 0.22, 0.81 }, { 84, 0.191, 0.44e-3, 0.14, 0.82 },
+    { 86, 0.176, 0.42e-3, 0.22, 0.94 }, { 88, 0.161, 0.40e-3, 0.26, 0.90 },
+    { 89, 0.147, 0.40e-3, 0.26, 0.87 }, { 91, 0.132, 0.39e-3, 0.24, 0.84 }
 }};
 
 // The lyre harp's soundbox: a 20 x 30 cm top of 6 mm spruce on a box 5 cm
@@ -144,11 +144,14 @@ constexpr std::array<StringSpec, maxStrings> lyreHarpNylon {{
 // third-octave shape 4.6 / 5.2 dB rms (first 0.3 s / after) and the
 // fundamentals' decay 1.07 (log2 rms) at 6 mm, against 5.6 / 6.7 and 1.41
 // at 3 mm and 5.1 / 6.1 and 0.97 at 5 mm. The top is unbraced, so its
-// thickness also stands in for the bracing a real top carries.
+// thickness also stands in for the bracing a real top carries. The back is a
+// flat 4 mm maple plate, clamped, whose modes below 4 kHz move with the top's
+// through the air in the box (an assumed thickness; Docs/decisions.md).
 constexpr BodySpec lyreHarpBody {
     0.20, 0.30, 0.006, sitkaSpruce,
     0.20 * 0.30 * 0.05 * 0.85, 0.03,
-    0.30, 0.10, 0.90, 0.010, 0.006, hardMaple
+    0.30, 0.10, 0.90, 0.010, 0.006, hardMaple,
+    0.004, hardMaple
 };
 
 // A gut lyre after the Anglo-Saxon instruments (the Sutton Hoo and
@@ -171,10 +174,12 @@ constexpr std::array<StringSpec, maxStrings> gutLyreStrings {{
     { 71, 0.297, 0.60e-3, 0.41, 0.99 }, { 72, 0.281, 0.60e-3, 0.43, 1.00 }, { 74, 0.250, 0.59e-3, 1.00, 0.85 },
     { 76, 0.223, 0.58e-3, 0.64, 0.77 }
 }};
+// The carved back is too thick to move (backThickness 0).
 constexpr BodySpec gutLyreBody {
     0.36, 0.18, 0.004, hardMaple,
     0.36 * 0.18 * 0.025 * 0.8, 0.0,
-    0.15, 0.25, 0.75, 0.012, 0.004, hardMaple
+    0.15, 0.25, 0.75, 0.012, 0.004, hardMaple,
+    0.0, hardMaple
 };
 } // namespace detail
 
@@ -200,12 +205,12 @@ constexpr BodySpec gutLyreBody {
 // README Level).
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 27, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 3.370, 0.374
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 3.418, 0.376
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {
     "Nylon Lyre Harp", nylonMonofilament, 27, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 5.285, 0.398
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 5.021, 0.399
 };
 
 inline constexpr InstrumentSpec gutLyre {

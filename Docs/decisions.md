@@ -3,6 +3,30 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-03: the lyre harps' back is a vibrating 4 mm plate (0.7.9), chosen by ear
+
+**What was decided.** Whether the lyre harps' soundbox back, rigid until now,
+should be a plate that moves with the air in the box. A letter-coded
+listening test (A the 0.7.8 engine, B a 4 mm clamped maple back, C a 3 mm
+one; single notes and the shared phrase on the steel harp, the phrase on the
+nylon harp; level-matched on whole-file RMS; touches re-evened for B and C)
+was heard by the owner, who kept B or C and called the difference between
+them not big. B was taken: the DR lyre harp's third-octave shape is 4.72 /
+5.03 dB rms at 4 mm against 5.90 / 6.45 at 3 mm and 4.55 / 5.15 for the rigid
+back, and the lyre harp phrase 11.5 against 12.4 (11.2 rigid)
+([benchmark](validation/lyre-recordings-benchmark-2026-10-30.md)). The
+direction is chosen by ear; the thickness between the two is a measurement's
+tie-break, not the ear's.
+
+**What it licensed.** The back plate in `setInstrument` (`BodySpec`
+`backThickness`, `backWood`; zero for the gut lyre's carved back), with the
+touch evened again and the gains re-levelled to 0.7.8's level. Nothing
+else: the recordings neither asked for the back nor ruled it out, and the
+strings' long ring, which the owner also remarked on, is not the back's:
+the steel and nylon fundamentals from B2 to G3 decay the same to 0.2 dB/s
+with it, and the median over all strings moves from 7.4 to 7.7 dB/s
+(0.6 to 2.5 s).
+
 ## 2026-11-03: the touch evened again for the 0.7.7 body (0.7.8), measured
 
 **What was decided.** The even touch (README, Level) puts each string's first

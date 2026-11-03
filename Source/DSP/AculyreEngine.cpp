@@ -2350,12 +2350,53 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         if (plate[static_cast<std::size_t>(index)].volume != 0.0
             && plate[static_cast<std::size_t>(index)].frequency < 4000.0)
             coupledIndex[static_cast<std::size_t>(coupledCount++)] = index;
+    // The back: a clamped plate of its own wood on the top's footprint, which
+    // the strings reach only through the air in the box. Its modes with a
+    // net volume move the cavity as the top's do, so they join the same
+    // eigenproblem below 4 kHz; the rest are never driven. It radiates its
+    // net volume only: the box stands between its edges and the
+    // microphones.
+    std::array<double, coupledCapacity> backFrequency {}, backMass {}, backVolume {};
+    int backCount = 0;
+    if (body.backThickness > 0.0)
+    {
+        const WoodSpec& backWood = body.backWood;
+        const double hb = body.backThickness;
+        const double backSurfaceMass = backWood.density * hb;
+        const double backNu = backWood.poisson * backWood.eAcross / backWood.eAlong;
+        const double backCommon = hb * hb * hb / (12.0 * (1.0 - backWood.poisson * backNu));
+        const double backAlong = backWood.eAlong * backCommon;
+        const double backAcross = backWood.eAcross * backCommon;
+        const double backCross = backWood.poisson * backAcross + 2.0 * backWood.shear * hb * hb * hb / 12.0;
+        Random backRandom;
+        backRandom.seed(0xba0cba0cba0cull);
+        for (int m = 1; m <= 59; m += 2)
+            for (int n = 1; n <= 59; n += 2)
+            {
+                const double gm = warburtonG(m), gn = warburtonG(n);
+                const double stiffness = backAlong * std::pow(gm / a, 4.0)
+                    + 2.0 * backCross * warburtonH(m) * warburtonH(n) / (a * a * b * b)
+                    + backAcross * std::pow(gn / b, 4.0);
+                double frequency = 0.5 * pi * std::sqrt(stiffness / backSurfaceMass);
+                const double scatter = backRandom.bipolar();
+                if (m + n > 3)
+                    frequency *= std::exp(0.05 * scatter);
+                if (frequency >= 4000.0 || coupledCount + backCount >= static_cast<int>(coupledCapacity) - 1)
+                    continue;
+                const auto k = static_cast<std::size_t>(backCount++);
+                backFrequency[k] = frequency;
+                backMass[k] = 0.25 * backSurfaceMass * a * b;
+                backVolume[k] = 4.0 * a * b / (m * n * pi * pi);
+            }
+    }
+    const int wallCount = coupledCount + backCount;
+
     const double holeArea = hasHole ? pi * body.holeRadius * body.holeRadius : 0.0;
     // End corrections of a hole in a thin wall, flanged both sides.
     const double neckLength = h + 1.7 * body.holeRadius;
     const double plugMass = airDensity * holeArea * neckLength;
     const double cavityStiffness = airDensity * soundSpeed * soundSpeed / body.cavityVolume;
-    const int systemSize = coupledCount + (hasHole ? 1 : 0);
+    const int systemSize = wallCount + (hasHole ? 1 : 0);
 
     std::array<std::array<double, coupledCapacity>, coupledCapacity> system {};
     std::array<double, coupledCapacity> masses {};
@@ -2366,19 +2407,26 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         masses[static_cast<std::size_t>(i)] = mode.mass;
         volumes[static_cast<std::size_t>(i)] = mode.volume;
     }
+    for (int i = 0; i < backCount; ++i)
+    {
+        masses[static_cast<std::size_t>(coupledCount + i)] = backMass[static_cast<std::size_t>(i)];
+        volumes[static_cast<std::size_t>(coupledCount + i)] = backVolume[static_cast<std::size_t>(i)];
+    }
     if (hasHole)
     {
-        masses[static_cast<std::size_t>(coupledCount)] = plugMass;
-        volumes[static_cast<std::size_t>(coupledCount)] = holeArea;
+        masses[static_cast<std::size_t>(wallCount)] = plugMass;
+        volumes[static_cast<std::size_t>(wallCount)] = holeArea;
     }
     for (int i = 0; i < systemSize; ++i)
         for (int j = 0; j < systemSize; ++j)
         {
             const auto si = static_cast<std::size_t>(i), sj = static_cast<std::size_t>(j);
             double stiffness = cavityStiffness * volumes[si] * volumes[sj];
-            if (i == j && i < coupledCount)
+            if (i == j && i < wallCount)
             {
-                const double omega = 2.0 * pi * plate[static_cast<std::size_t>(coupledIndex[si])].frequency;
+                const double omega = 2.0 * pi * (i < coupledCount
+                    ? plate[static_cast<std::size_t>(coupledIndex[si])].frequency
+                    : backFrequency[static_cast<std::size_t>(i - coupledCount)]);
                 stiffness += masses[si] * omega * omega;
             }
             system[si][sj] = stiffness / std::sqrt(masses[si] * masses[sj]);
@@ -2431,10 +2479,15 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             left += psi * mode.multipoleLeft;
             right += psi * mode.multipoleRight;
         }
+        for (int i = coupledCount; i < wallCount; ++i)
+        {
+            const auto si = static_cast<std::size_t>(i);
+            monopole += vectors[si][sj] / std::sqrt(masses[si]) * volumes[si];
+        }
         double airShare = 0.0;
         if (hasHole)
         {
-            const auto sa = static_cast<std::size_t>(coupledCount);
+            const auto sa = static_cast<std::size_t>(wallCount);
             const double chi = vectors[sa][sj];
             airShare = chi * chi;
             monopole += chi / std::sqrt(plugMass) * holeArea;

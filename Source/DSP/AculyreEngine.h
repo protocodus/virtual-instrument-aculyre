@@ -91,6 +91,8 @@ struct BodySpec
     // The bar's wood: a solid section bridgeHeight tall, as wide as its mass
     // needs; it sets how the bar bends.
     WoodSpec bridgeWood;
+    double backThickness;  // m; 0 for a back too thick to move (a carved box)
+    WoodSpec backWood;
 };
 
 enum class Technique

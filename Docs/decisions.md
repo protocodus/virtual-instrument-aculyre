@@ -3,6 +3,25 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-03: the touch evened again for the 0.7.7 body (0.7.8), measured
+
+**What was decided.** The even touch (README, Level) puts each string's first
+300 ms on the straight line through every string's level, microphones and
+piezo each by their own touch. The 0.7.7 arched saddle moved the body under
+it, and the touch it shipped with had drifted to 0.94 / 0.76 dB (steel,
+microphones / piezo), 0.87 / 0.56 (nylon) and 0.71 / 0.59 (gut) off the line,
+inside the engine test's 1 dB but not what the touch is for. The touch is
+re-derived by the engine test's own measure: every string's level at velocity
+90, multiply each touch by the inverse of its distance from the line, scale
+the strongest to 1, three rounds, round to two decimals. They now sit within
+0.17 / 0.06, 0.51 / 0.05 and 0.07 / 0.06 dB. The gains follow so the
+typical playing level is unchanged to 0.01 dB (outputGain 3.550 to 3.370,
+5.696 to 5.285, 2.938 to 2.771; piezoGain 0.394 to 0.374, 0.386 to 0.398,
+0.439 to 0.436).
+
+**What it licensed.** Nothing beyond the touch: no engine or body change,
+nothing chosen by ear. It is a voicing kept at the line its README states.
+
 ## 2026-11-02: exact 12-TET tuning alignment, arched lyre-harp saddle, and edge-extension / plectrum re-pluck fixes (0.7.7), measured
 
 **What was decided.** Eight physical and tuning improvements across all three instruments:

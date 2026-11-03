@@ -24,6 +24,14 @@ reference recording below.
 
 ## Version history
 
+- **0.7.8** (prototype, not released): every string is evened by touch again
+  for the 0.7.7 body. The arched saddle had left the steel harp's strings up
+  to `0.94 dB` off the register's line by the microphones (`0.76` by the
+  piezo), the nylon harp's `0.87` (`0.56`) and the gut lyre's `0.71`
+  (`0.59`); they now sit within `0.17`, `0.51` and `0.07` dB (piezo `0.06`,
+  `0.05`, `0.06`). `outputGain` and `piezoGain` are re-levelled so typical
+  playing reads what it did in 0.7.7 (-9.0, -8.9 and -9.0 VU on the
+  microphones).
 - **0.7.7** (prototype, not released): every string across all three
   instruments is tuned within half a cent of its exact 12-TET pitch in sustain
   (`0.49`, `0.55` and `0.40` cents rms at `2.5-3.5 s` on the steel, nylon and

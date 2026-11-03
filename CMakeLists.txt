@@ -30,6 +30,9 @@ target_link_libraries(RenderAculyreDemo PRIVATE AculyreDSP)
 add_executable(RenderAculyreNotes Tools/RenderNotes.cpp)
 target_link_libraries(RenderAculyreNotes PRIVATE AculyreDSP)
 
+add_executable(MeasureAculyreDesign Tools/MeasureDesign.cpp)
+target_link_libraries(MeasureAculyreDesign PRIVATE AculyreDSP)
+
 if(BUILD_TESTING)
     enable_testing()
     add_executable(AculyreEngineTests Tests/AculyreEngineTests.cpp)

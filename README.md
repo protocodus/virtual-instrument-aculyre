@@ -31,7 +31,9 @@ reference recording below.
   (`0.59`); they now sit within `0.17`, `0.51` and `0.07` dB (piezo `0.06`,
   `0.05`, `0.06`). `outputGain` and `piezoGain` are re-levelled so typical
   playing reads what it did in 0.7.7 (-9.0, -8.9 and -9.0 VU on the
-  microphones).
+  microphones). Designing the three instruments at startup takes 19 % fewer
+  instructions (about 1.3 s instead of 1.7), with every sample unchanged
+  ([design cost](Docs/benchmarks/design-cost-2026-11-03.md)).
 - **0.7.7** (prototype, not released): every string across all three
   instruments is tuned within half a cent of its exact 12-TET pitch in sustain
   (`0.49`, `0.55` and `0.40` cents rms at `2.5-3.5 s` on the steel, nylon and
@@ -734,8 +736,9 @@ nothing until the next pluck.
   factory patches. The pickup system is a guitar's; no lyre pickup is
   measured.
 - Designing an instrument is not real-time safe; the Performer designs all
-  three at startup, which a front end must allow for: about 1.5 s on one
-  core of a cloud container at 48 kHz, where 0.7.4 took 0.7 s, since the
+  three at startup, which a front end must allow for: about 1.3 s on one
+  core of a cloud container at 48 kHz (1.7 s before 0.7.8), where 0.7.4 took
+  0.7 s, since the
   harps' eleven added strings and every key of the artificial range are
   designed and tuned to the bridge with them.
 - No plug-in yet. The Rack Extension's 0.4.0d1 has been played in Recon

@@ -31,8 +31,9 @@ reference recording below.
   a third-octave average of the steel phrase, `+6` dB at 200 Hz, `-5` at 250,
   `-3` to `-4` from 315 to 500 Hz, and `+0.2` to `-0.9` dB above 630 Hz. The
   gut lyre's carved back is too thick to move and is unchanged. Chosen by ear
-  among 3 and 4 mm (heard as no big difference; the 4 mm sits nearer the DR
-  lyre harp: shape `4.7 / 5.0` dB rms against `5.9 / 6.5`, decays unchanged).
+  among 3 and 4 mm, the owner calling the difference small; the 4 mm also sits
+  nearer the DR lyre harp (shape `4.7 / 5.0` dB rms against `5.9 / 6.5`, decays
+  unchanged).
   Touch is evened again for it and the gains re-levelled to 0.7.8's level.
 - **0.7.8** (prototype, not released): every string is evened by touch again
   for the 0.7.7 body. The arched saddle had left the steel harp's strings up

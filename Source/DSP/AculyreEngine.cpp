@@ -409,15 +409,22 @@ constexpr int maxFittedPartials = 64;
 bool dispersionErrors(const DispersionFit& fit, int stages, int pairs, double omega1, double inharmonicity,
                       int partials, std::array<double, maxFittedPartials>& cents) noexcept
 {
+    // The sections' poles do not depend on the frequency.
+    std::array<Complex, dispersionPairs> poles {};
+    for (int k = 0; k < pairs; ++k)
+        poles[static_cast<std::size_t>(k)] = std::polar(fit[static_cast<std::size_t>(1 + 2 * k)],
+                                                        fit[static_cast<std::size_t>(2 + 2 * k)]);
     const auto lag = [&] (double omega)
     {
         double total = stages * firstOrderLag(fit[0], omega);
-        for (int k = 0; k < pairs; ++k)
+        if (pairs > 0)
         {
-            const Complex pole = std::polar(fit[static_cast<std::size_t>(1 + 2 * k)],
-                                            fit[static_cast<std::size_t>(2 + 2 * k)]);
             const Complex z1 = std::exp(Complex(0.0, -omega));
-            total += 2.0 * omega + 2.0 * (std::arg(1.0 - pole * z1) + std::arg(1.0 - std::conj(pole) * z1));
+            for (int k = 0; k < pairs; ++k)
+            {
+                const Complex pole = poles[static_cast<std::size_t>(k)];
+                total += 2.0 * omega + 2.0 * (std::arg(1.0 - pole * z1) + std::arg(1.0 - std::conj(pole) * z1));
+            }
         }
         return total;
     };
@@ -648,14 +655,14 @@ DispersionDesign designDispersion(double fundamental, double inharmonicity, doub
 {
     const double omega1 = 2.0 * pi * fundamental / sampleRate;
     const int partials = std::clamp(static_cast<int>(std::floor(std::min(5000.0, 0.2 * sampleRate) / fundamental)), 2, 12);
-    const auto lag = firstOrderLag;
-    const auto groupDelay = firstOrderGroupDelay;
     const double infinity = std::numeric_limits<double>::infinity();
-    // The worst partial's error in cents with coefficient a = -0.0025 step.
-    const auto worstAt = [&] (int stages, int step)
+    // The worst partial's error in cents with coefficient a = -0.0025 step;
+    // once it reaches `bound`, the best so far, the step cannot win and its
+    // exact error is not needed.
+    const auto worstAt = [&] (int stages, int step, double bound)
     {
         const double a = -0.0025 * step;
-        const double delay = (2.0 * pi - stages * lag(a, omega1)) / omega1;
+        const double delay = (2.0 * pi - stages * firstOrderLag(a, omega1)) / omega1;
         // The line, its Thiran section and the loss filters need some.
         if (delay < 8.0)
             return infinity;
@@ -665,9 +672,11 @@ DispersionDesign designDispersion(double fundamental, double inharmonicity, doub
             const double target = omega1 * stretchedPartial(n, inharmonicity);
             double omega = target;
             for (int iteration = 0; iteration < 4; ++iteration)
-                omega -= (omega * delay + stages * lag(a, omega) - 2.0 * pi * n)
-                       / (delay + stages * groupDelay(a, omega));
+                omega -= (omega * delay + stages * firstOrderLag(a, omega) - 2.0 * pi * n)
+                       / (delay + stages * firstOrderGroupDelay(a, omega));
             worst = std::max(worst, std::abs(1200.0 * std::log2(omega / target)));
+            if (worst >= bound)
+                break;
         }
         return worst;
     };
@@ -675,15 +684,14 @@ DispersionDesign designDispersion(double fundamental, double inharmonicity, doub
     // of the evaluations of the full grid (the setup of three instruments,
     // levers included, fits in about half a second).
     constexpr int lastStep = 380, coarse = 8;
-    std::array<DispersionDesign, maxDispersionStages + 1> best {};
-    for (int stages = 1; stages <= maxDispersionStages; ++stages)
+    const auto bestFor = [&] (int stages)
     {
-        DispersionDesign& found = best[static_cast<std::size_t>(stages)];
+        DispersionDesign found {};
         found.worstCents = infinity;
         int centre = 0;
         for (int step = 0; step <= lastStep; step += coarse)
         {
-            const double worst = worstAt(stages, step);
+            const double worst = worstAt(stages, step, found.worstCents);
             if (worst == infinity)
                 break;
             if (worst < found.worstCents)
@@ -694,16 +702,19 @@ DispersionDesign designDispersion(double fundamental, double inharmonicity, doub
         }
         for (int step = std::max(0, centre - coarse + 1); step < std::min(lastStep + 1, centre + coarse); ++step)
         {
-            const double worst = worstAt(stages, step);
+            const double worst = worstAt(stages, step, found.worstCents);
             if (worst < found.worstCents)
                 found = { stages, -0.0025 * step, worst };
         }
-    }
-    // The fewest sections within a cent; otherwise the closest fit.
-    DispersionDesign chosen = best[1];
-    for (int stages = 1; stages <= maxDispersionStages; ++stages)
+        return found;
+    };
+    // The fewest sections within a cent; otherwise the closest fit. The
+    // sections past the first within a cent are searched only if the retry
+    // below needs the most of them.
+    DispersionDesign chosen = bestFor(1);
+    for (int stages = chosen.worstCents <= 1.0 ? maxDispersionStages + 1 : 2; stages <= maxDispersionStages; ++stages)
     {
-        const DispersionDesign& design = best[static_cast<std::size_t>(stages)];
+        const DispersionDesign design = bestFor(stages);
         if (design.worstCents <= 1.0)
         {
             chosen = design;
@@ -721,12 +732,15 @@ DispersionDesign designDispersion(double fundamental, double inharmonicity, doub
     // partial more than 3 cents out, the fit is tried again over the most.
     // (Retried only past 5 cents, the nylon lyre harp's E3 sat 2.6 cents out
     // at 48 kHz but 3.8 at 88.2, and its wound D3 2.6 against 4.2 at 176.4.)
-    const DispersionDesign& most = best[static_cast<std::size_t>(maxDispersionStages)];
-    if (refined.worstCents > 1.5 && chosen.stages < maxDispersionStages && most.worstCents < infinity)
+    if (refined.worstCents > 1.5 && chosen.stages < maxDispersionStages)
     {
-        const DispersionDesign retried = refineDispersion(most, fundamental, inharmonicity, sampleRate);
-        if (retried.worstCents < refined.worstCents)
-            refined = retried;
+        const DispersionDesign most = bestFor(maxDispersionStages);
+        if (most.worstCents < infinity)
+        {
+            const DispersionDesign retried = refineDispersion(most, fundamental, inharmonicity, sampleRate);
+            if (retried.worstCents < refined.worstCents)
+                refined = retried;
+        }
     }
     return refined;
 }
@@ -2728,16 +2742,38 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 const double omega = 2.0 * pi * frequency;
                 const Complex z1 = std::polar(1.0, -omega / fs);
                 const Complex z2 = z1 * z1;
-                std::array<std::array<Complex, barCoordinates>, barCoordinates> plateMobility {};
+                // Summed over the modes by real and imaginary part, and only
+                // over the coordinates a mode meets: half of every mode's
+                // participations are exactly zero (the bar is centred), and a
+                // zero term adds nothing, so the sums are the full product's
+                // bit for bit at a quarter of its work.
+                std::array<std::array<double, barCoordinates>, barCoordinates> mobilityRe {}, mobilityIm {};
                 for (int m = 0; m < s.modeCount; ++m)
                 {
                     const Mode& mode = s.modes[static_cast<std::size_t>(m)];
                     const Complex response = mode.b0 * (1.0 - z2)
                                            / (1.0 + mode.a1 * z1 + mode.a2 * z2);
+                    const double responseRe = response.real(), responseIm = response.imag();
                     for (std::size_t i = 0; i < barCoordinates; ++i)
+                    {
+                        const double rowWeight = mode.participation[i];
+                        if (rowWeight == 0.0)
+                            continue;
+                        const double leftRe = responseRe * rowWeight, leftIm = responseIm * rowWeight;
                         for (std::size_t j = 0; j < barCoordinates; ++j)
-                            plateMobility[i][j] += response * mode.participation[i] * mode.participation[j];
+                        {
+                            const double pj = mode.participation[j];
+                            if (pj == 0.0)
+                                continue;
+                            mobilityRe[i][j] += leftRe * pj;
+                            mobilityIm[i][j] += leftIm * pj;
+                        }
+                    }
                 }
+                std::array<std::array<Complex, barCoordinates>, barCoordinates> plateMobility {};
+                for (std::size_t i = 0; i < barCoordinates; ++i)
+                    for (std::size_t j = 0; j < barCoordinates; ++j)
+                        plateMobility[i][j] = Complex(mobilityRe[i][j], mobilityIm[i][j]);
                 std::array<std::array<Complex, barCoordinates>, barCoordinates> others {};
                 for (std::size_t i = 0; i < barCoordinates; ++i)
                     for (std::size_t j = 0; j < barCoordinates; ++j)
@@ -2781,22 +2817,25 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             };
             // The reflection depends on the frequency alone, so each
             // frequency's is found once (the search below reuses it).
-            const auto lagAt = [&] (double omega, double lineDelay, double lead)
+            // `filter` is the loop's own phase lag at omega, which does not
+            // depend on the line, so the search for the line takes it once.
+            const auto lagAt = [&] (double omega, double lineDelay, double filter, double lead)
             {
                 const int whole = wholeFor(lineDelay);
                 const double fraction = lineDelay - whole;
                 double t1 = 0.0, t2 = 0.0;
                 thiranCoefficients(fraction, t1, t2);
-                return omega * whole + allpassLag(2, t1, t2, omega) + loop.filterLag(omega) - lead;
+                return omega * whole + allpassLag(2, t1, t2, omega) + filter - lead;
             };
             const auto solveLine = [&] (double omega, double cycles)
             {
                 const double lead = reflectionLead(omega * fs / (2.0 * pi));
+                const double filter = loop.filterLag(omega);
                 double lower = 6.0, upper = delayCapacity - 16.0;
                 for (int iteration = 0; iteration < 60; ++iteration)
                 {
                     const double middle = 0.5 * (lower + upper);
-                    if (lagAt(omega, middle, lead) < 2.0 * pi * cycles)
+                    if (lagAt(omega, middle, filter, lead) < 2.0 * pi * cycles)
                         lower = middle;
                     else
                         upper = middle;
@@ -2808,7 +2847,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             for (std::size_t k = 0; k < bendRatios.size(); ++k)
             {
                 const double omega = omega0 * bendRatios[k];
-                loop.lagCycles[k] = (lagAt(omega, loop.restLineDelay, reflectionLead(omega * fs / (2.0 * pi)))
+                loop.lagCycles[k] = (lagAt(omega, loop.restLineDelay, loop.filterLag(omega),
+                                           reflectionLead(omega * fs / (2.0 * pi)))
                                      - omega * loop.restLineDelay) / (2.0 * pi);
             }
         };

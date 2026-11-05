@@ -1021,15 +1021,6 @@ struct Loop
     // line and its Thiran section, the dispersion stages, each pair, the
     // loss sections, then the rest.
     double readTap() const noexcept { return line[static_cast<std::size_t>((write - whole) & (delayCapacity - 1))]; }
-    double dispersePair(std::size_t k, double y) noexcept
-    {
-        const double c1 = pair[k][0], c2 = pair[k][1];
-        auto& state = pairState[k];
-        const double out = c2 * y + state[0];
-        state[0] = c1 * (y - out) + state[1];
-        state[1] = y - c2 * out;
-        return out;
-    }
     double finishRead(double y) noexcept
     {
         if (dampingStep != 0.0)
@@ -1167,10 +1158,10 @@ inline Pair splat(double x) noexcept { return Pair { x, x }; }
 // stage by stage across the loops instead, the chains of different loops
 // overlap, and a stage or loss section of every loop is one vector pass.
 // For a block, gather() copies the Thiran sections and the loss sections
-// (in loop order) and the dispersion stages (by stage count, most first:
-// `withStages[s]` loops have a stage s) out of the loops, and scatter() puts
-// their state back; the pairs, rarer, stay in the loops. Each loop runs
-// exactly the arithmetic it runs alone.
+// (in loop order), the dispersion stages (by stage count, most first:
+// `withStages[s]` loops have a stage s) and the second-order pairs (by pair
+// count, likewise) out of the loops, and scatter() puts their state back.
+// Each loop runs exactly the arithmetic it runs alone.
 struct LoopFilters
 {
     static constexpr int capacity = 2 * maxStrings;
@@ -1179,6 +1170,9 @@ struct LoopFilters
     std::array<int, capacity> byStages {}, byPairs {};
     std::array<int, maxDispersionStages> withStages {};
     std::array<int, dispersionPairs> withPairs {};
+    // Each loop's second-order sections (Loop::pair, pairState), by pair and
+    // in byPairs order.
+    std::array<std::array<double, capacity>, dispersionPairs> pairC1 {}, pairC2 {}, pairS0 {}, pairS1 {};
     std::array<double, capacity> dispersion {};
     std::array<std::array<double, capacity>, maxDispersionStages> stageState {};
     // The constant and the bending loss section, as UnitDcSection.
@@ -1282,7 +1276,17 @@ struct LoopFilters
         {
             for (int i = 0; i < count; ++i)
                 if (loops[i]->dispersionPairs == pairs)
-                    byPairs[static_cast<std::size_t>(n++)] = i;
+                {
+                    const auto j = static_cast<std::size_t>(n++);
+                    byPairs[j] = i;
+                    for (std::size_t k = 0; k < static_cast<std::size_t>(pairs); ++k)
+                    {
+                        pairC1[k][j] = loops[i]->pair[k][0];
+                        pairC2[k][j] = loops[i]->pair[k][1];
+                        pairS0[k][j] = loops[i]->pairState[k][0];
+                        pairS1[k][j] = loops[i]->pairState[k][1];
+                    }
+                }
             withPairs[static_cast<std::size_t>(pairs - 1)] = n;
         }
         constantLoss.allActive = bendingLoss.allActive = true;
@@ -1303,6 +1307,12 @@ struct LoopFilters
             Loop& loop = *loops[byStages[static_cast<std::size_t>(j)]];
             for (std::size_t stage = 0; stage < static_cast<std::size_t>(loop.dispersionStages); ++stage)
                 loop.dispersionState[stage] = stageState[stage][static_cast<std::size_t>(j)];
+        }
+        for (int j = 0; j < withPairs[0]; ++j)
+        {
+            Loop& loop = *loops[byPairs[static_cast<std::size_t>(j)]];
+            for (std::size_t k = 0; k < static_cast<std::size_t>(loop.dispersionPairs); ++k)
+                loop.pairState[k] = { pairS0[k][static_cast<std::size_t>(j)], pairS1[k][static_cast<std::size_t>(j)] };
         }
         for (int i = 0; i < count; ++i)
         {
@@ -1362,12 +1372,35 @@ struct LoopFilters
         }
         for (int j = 0; j < withStages[0]; ++j)
             wave[byStages[static_cast<std::size_t>(j)]] = sorted[j];
+        for (int j = 0; j < withPairs[0]; ++j)
+            sorted[j] = wave[byPairs[static_cast<std::size_t>(j)]];
         for (std::size_t k = 0; k < dispersionPairs; ++k)
-            for (int j = 0; j < withPairs[k]; ++j)
+        {
+            double* const c1 = pairC1[k].data();
+            double* const c2 = pairC2[k].data();
+            double* const s0 = pairS0[k].data();
+            double* const s1 = pairS1[k].data();
+            const int loopsWithPair = withPairs[k];
+            int j = 0;
+            for (; j + 1 < loopsWithPair; j += 2)
             {
-                const int i = byPairs[static_cast<std::size_t>(j)];
-                wave[i] = loops[i]->dispersePair(k, wave[i]);
+                const Pair y = *pairs(sorted + j);
+                const Pair out = *pairs(c2 + j) * y + *pairs(s0 + j);
+                *pairs(s0 + j) = *pairs(c1 + j) * (y - out) + *pairs(s1 + j);
+                *pairs(s1 + j) = y - *pairs(c2 + j) * out;
+                *pairs(sorted + j) = out;
             }
+            for (; j < loopsWithPair; ++j)
+            {
+                const double y = sorted[j];
+                const double out = c2[j] * y + s0[j];
+                s0[j] = c1[j] * (y - out) + s1[j];
+                s1[j] = y - c2[j] * out;
+                sorted[j] = out;
+            }
+        }
+        for (int j = 0; j < withPairs[0]; ++j)
+            wave[byPairs[static_cast<std::size_t>(j)]] = sorted[j];
         constantLoss.process(wave, count);
         bendingLoss.process(wave, count);
         for (int i = 0; i < count; ++i)

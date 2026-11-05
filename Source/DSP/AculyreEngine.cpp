@@ -3529,6 +3529,30 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
     LoopFilters& filters = s.filters;
     filters.gather(loops.data(), 2 * count);
     std::array<double, 2 * maxStrings> wave {};
+    // How each string drives the bar and how the bar moves each string's
+    // end, laid out for vectors: `coupling` is a string's 2Z times its
+    // normal port (sway, coordinate 2, takes the parallel plane at 2Z), in
+    // coordinate pairs; `port` holds the rock's lever and each bend's shape
+    // by coordinate, two strings a Pair. Products and sums run in the order
+    // of the scalar loops they replace, so every sample is the same.
+    static_assert(barCoordinates % 2 == 0 && maxStrings % 2 == 0, "the coordinates and the strings pair up");
+    alignas(16) std::array<BarVector, maxStrings> coupling;
+    alignas(16) double port[barCoordinates][maxStrings] {};
+    for (int index = 0; index < count; ++index)
+    {
+        const State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+        const double twiceZ = 2.0 * voice.impedance;
+        BarVector& c = coupling[static_cast<std::size_t>(index)];
+        c[0] = twiceZ;
+        c[1] = twiceZ * voice.lever;
+        c[2] = twiceZ;
+        port[1][index] = voice.lever;
+        for (std::size_t bend = 0; bend < maxBends; ++bend)
+        {
+            c[3 + bend] = twiceZ * voice.bend[bend];
+            port[3 + bend][index] = voice.bend[bend];
+        }
+    }
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
@@ -3579,7 +3603,7 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         }
 
         filters.read(loops.data(), 2 * count, wave.data());
-        BarVector drive {};
+        alignas(16) BarVector drive {};
         for (int index = 0; index < count; ++index)
         {
             State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
@@ -3587,12 +3611,13 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             const double vp = wave[static_cast<std::size_t>(2 * index + 1)];
             normalIn[static_cast<std::size_t>(index)] = vn;
             parallelIn[static_cast<std::size_t>(index)] = vp;
-            const double twiceZ = 2.0 * voice.impedance;
-            drive[0] += twiceZ * vn;
-            drive[1] += twiceZ * voice.lever * vn;
-            drive[2] += twiceZ * vp;
-            for (std::size_t bend = 0; bend < maxBends; ++bend)
-                drive[3 + bend] += twiceZ * voice.bend[bend] * vn;
+            const Pair* const c = pairs(coupling[static_cast<std::size_t>(index)].data());
+            Pair* const d = pairs(drive.data());
+            const Pair n = splat(vn);
+            d[0] += c[0] * n;
+            d[1] += c[1] * Pair { vp, vn };
+            for (std::size_t p = 2; p < barCoordinates / 2; ++p)
+                d[p] += c[p] * n;
             // The loop's mean squared velocity over a round trip; both
             // directions' slopes count, hence the factor in glidePerEnergy.
             const float square = static_cast<float>(vn * vn + vp * vp);
@@ -3652,13 +3677,18 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                 s.modalPast[c] += lanePast[c][lane];
         }
 
+        alignas(16) double normalPort[maxStrings];
+        for (int index = 0; index < count; index += 2)
+        {
+            Pair sum = splat(velocity[0]) + *pairs(&port[1][index]) * splat(velocity[1]);
+            for (std::size_t bend = 0; bend < maxBends; ++bend)
+                sum += *pairs(&port[3 + bend][index]) * splat(velocity[3 + bend]);
+            *pairs(&normalPort[index]) = sum;
+        }
         for (int index = 0; index < count; ++index)
         {
             State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
-            double normalPort = velocity[0] + voice.lever * velocity[1];
-            for (std::size_t bend = 0; bend < maxBends; ++bend)
-                normalPort += voice.bend[bend] * velocity[3 + bend];
-            voice.normal.writeSample(normalIn[static_cast<std::size_t>(index)] - normalPort);
+            voice.normal.writeSample(normalIn[static_cast<std::size_t>(index)] - normalPort[index]);
             voice.parallel.writeSample(parallelIn[static_cast<std::size_t>(index)] - velocity[2]);
             if (voice.normal.handShare > 0.0)
             {

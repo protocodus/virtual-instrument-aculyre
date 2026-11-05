@@ -24,6 +24,10 @@ reference recording below.
 
 ## Version history
 
+- **0.7.10** (prototype, not released): the same sound for about 15 % less
+  CPU while playing (the three demos at 48 kHz, 39.0 % to 33.3 % of a core
+  in the Rack's code generation; 13 % less at 96 and 192 kHz), every sample
+  unchanged ([playing CPU](Docs/benchmarks/cpu-2026-11-05.md)).
 - **0.7.9** (prototype, not released): the lyre harps' back is a 4 mm
   hard-maple plate that moves with the air in the box, where it was rigid.
   Its modes below 4 kHz join the top's in the coupled soundbox, so the air

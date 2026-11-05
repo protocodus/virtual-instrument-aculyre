@@ -1962,7 +1962,7 @@ struct AculyreEngine::State
         // Delta f / f per unit of the loop's mean squared wave velocity.
         double glidePerEnergy { 0.0 };
         // The last round trip's squared wave velocities, both planes, and
-        // their sum: `energy` is their mean. A mean over exactly one period
+        // their sum: energy() is their mean. A mean over exactly one period
         // holds no ripple at the partials' frequencies; a one-pole of that
         // time constant left a ripple at twice the pitch that, through the
         // glide, modulated the line at 2 f0 and pumped the fundamental (a
@@ -1979,7 +1979,9 @@ struct AculyreEngine::State
         double lever { 0.0 };  // bridge position, -1 bass end to +1 treble end
         // The bar's bending shapes where the string crosses it.
         std::array<double, maxBends> bend {};
-        double energy { 0.0 };
+        // Computed where it is read, the control step and the observers,
+        // rather than kept per sample: a division per string every sample.
+        double energy() const noexcept { return squaresSum / roundTrip; }
         bool keyDown { false };
         bool sustained { false };
         bool plucked { false };   // played, and still sounding from that pluck
@@ -2989,7 +2991,6 @@ void AculyreEngine::reset() noexcept
         voice.squares.fill(0.0f);
         voice.squaresSum = 0.0;
         voice.squaresIndex = 0;
-        voice.energy = 0.0;
         voice.keyDown = voice.sustained = voice.plucked = false;
         voice.ownerNote = -1;
         voice.handPoint = restingHandPoint;
@@ -3070,7 +3071,6 @@ void AculyreEngine::applyPitch(int string, bool raised, int extensionKey) noexce
     voice.squaresSum = 0.0;
     for (int k = 1; k <= voice.roundTrip; ++k)
         voice.squaresSum += voice.squares[static_cast<std::size_t>((voice.squaresIndex - k) & (delayCapacity - 1))];
-    voice.energy = voice.squaresSum / voice.roundTrip;
     voice.normal.apply(pitch.planes[0]);
     voice.parallel.apply(pitch.planes[1]);
     voice.dampingDirty = true;
@@ -3193,7 +3193,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     const BarVector port = voice.normalPort();
     const bool pitchChanged = voice.raised != raise || voice.extensionKey != extensionKey;
     const bool keepPartialWave = controls.technique == Technique::Plectrum && !pitchChanged;
-    if (voice.keyDown || voice.sustained || voice.energy > silentEnergy)
+    if (voice.keyDown || voice.sustained || voice.energy() > silentEnergy)
     {
         const double stopped = keepPartialWave ? 0.7 : 1.0;
         const double normalForce = 2.0 * voice.impedance * stopped * voice.normal.last;
@@ -3206,7 +3206,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             else
                 loop->silence();
     }
-    if (voice.keyDown || voice.sustained || voice.energy > silentEnergy)
+    if (voice.keyDown || voice.sustained || voice.energy() > silentEnergy)
     {
         const float kept = keepPartialWave ? 0.09f : 0.0f;
         for (float& square : voice.squares)
@@ -3424,7 +3424,6 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     voice.squaresSum = 0.0;
     for (int k = 1; k <= voice.roundTrip; ++k)
         voice.squaresSum += voice.squares[static_cast<std::size_t>((voice.squaresIndex - k) & (delayCapacity - 1))];
-    voice.energy = voice.squaresSum / voice.roundTrip;
     ModeBank& bank = s.bank;
     for (int k = 0; k < bank.count; ++k)
     {
@@ -3479,7 +3478,6 @@ void AculyreEngine::sleep() noexcept
         voice.parallel.silence();
         voice.squares.fill(0.0f);
         voice.squaresSum = 0.0;
-        voice.energy = 0.0;
         if (voice.plucked)
         {
             voice.plucked = false;
@@ -3543,7 +3541,7 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                 State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
                 // A released string that has died away is idle again: the
                 // playing hand has left it.
-                if (voice.plucked && !voice.keyDown && !voice.sustained && voice.energy < silentEnergy)
+                if (voice.plucked && !voice.keyDown && !voice.sustained && voice.energy() < silentEnergy)
                 {
                     voice.plucked = false;
                     voice.dampingDirty = true;
@@ -3552,13 +3550,13 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                     updateDamping(index);
                 // A held key or pedal does not keep a string sounding: a
                 // string that has died away under it lets the engine sleep.
-                if (voice.energy > idleEnergy)
+                if (voice.energy() > idleEnergy)
                     s.quietSamples = 0;
                 // Tension modulation (Kirchhoff-Carrier): the string's mean
                 // squared slope stretches it, Delta f / f = EA <y'^2> / (4T);
                 // the pitch bend scales every string alike.
                 const double ratio = (tensionModulation_
-                    ? 1.0 + voice.glidePerEnergy * voice.energy : 1.0) * s.bend;
+                    ? 1.0 + voice.glidePerEnergy * voice.energy() : 1.0) * s.bend;
                 for (Loop* loop : { &voice.normal, &voice.parallel })
                     loop->setLineDelay(loop->lineDelayAt(ratio));
                 // The mean follows the period the bend and the glide set.
@@ -3604,8 +3602,7 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             voice.squaresSum = std::max(0.0, voice.squaresSum + static_cast<double>(square) - leaving);
             slot = square;
             voice.squaresIndex = (voice.squaresIndex + 1) & (delayCapacity - 1);
-            voice.energy = voice.squaresSum / voice.roundTrip;
-        }
+                }
 
         ModeBank& bank = s.bank;
         if (s.modalPastStale)
@@ -3761,7 +3758,7 @@ double AculyreEngine::stringEnergy(int string) const noexcept
 {
     if (string < 0 || string >= stringCount_)
         return 0.0;
-    return state_->strings[static_cast<std::size_t>(string)].energy;
+    return state_->strings[static_cast<std::size_t>(string)].energy();
 }
 
 AculyreEngine::StringActivity AculyreEngine::stringActivity(int string) const noexcept
@@ -3769,7 +3766,7 @@ AculyreEngine::StringActivity AculyreEngine::stringActivity(int string) const no
     if (string < 0 || string >= stringCount_)
         return {};
     const auto& voice = state_->strings[static_cast<std::size_t>(string)];
-    return { voice.energy, voice.keyDown || voice.sustained, voice.plucked, voice.raised };
+    return { voice.energy(), voice.keyDown || voice.sustained, voice.plucked, voice.raised };
 }
 
 int AculyreEngine::modeCount() const noexcept { return state_->modeCount; }

@@ -1016,16 +1016,7 @@ struct Loop
     // The wave arriving at the bridge is read in steps (LoopFilters): the
     // line and its Thiran section, the dispersion stages, each pair, the
     // loss sections, then the rest.
-    double readLine() noexcept
-    {
-        const double x = line[static_cast<std::size_t>((write - whole) & (delayCapacity - 1))];
-        const double y = thiranA2 * x + thiranA1 * tx1 + tx2 - thiranA1 * ty1 - thiranA2 * ty2;
-        tx2 = tx1;
-        tx1 = x;
-        ty2 = ty1;
-        ty1 = y;
-        return y;
-    }
+    double readTap() const noexcept { return line[static_cast<std::size_t>((write - whole) & (delayCapacity - 1))]; }
     double dispersePair(std::size_t k, double y) noexcept
     {
         const double c1 = pair[k][0], c2 = pair[k][1];
@@ -1171,14 +1162,16 @@ inline Pair splat(double x) noexcept { return Pair { x, x }; }
 // differs from string to string, ended it in a mispredicted branch. Read
 // stage by stage across the loops instead, the chains of different loops
 // overlap, and a stage or loss section of every loop is one vector pass.
-// For a block, gather() copies the dispersion stages (by stage count, most
-// first: `withStages[s]` loops have a stage s) and the loss sections (in
-// loop order) out of the loops, and scatter() puts their state back; the
-// pairs, rarer, stay in the loops. Each loop runs exactly the arithmetic it
-// runs alone.
+// For a block, gather() copies the Thiran sections and the loss sections
+// (in loop order) and the dispersion stages (by stage count, most first:
+// `withStages[s]` loops have a stage s) out of the loops, and scatter() puts
+// their state back; the pairs, rarer, stay in the loops. Each loop runs
+// exactly the arithmetic it runs alone.
 struct LoopFilters
 {
     static constexpr int capacity = 2 * maxStrings;
+    // Loop::setLineDelay's Thiran section, as Loop::readTap's sample enters it.
+    std::array<double, capacity> thiranA1 {}, thiranA2 {}, tx1 {}, tx2 {}, ty1 {}, ty2 {};
     std::array<int, capacity> byStages {}, byPairs {};
     std::array<int, maxDispersionStages> withStages {};
     std::array<int, dispersionPairs> withPairs {};
@@ -1249,6 +1242,21 @@ struct LoopFilters
     };
     Losses constantLoss {}, bendingLoss {};
 
+    void gatherThiran(const Loop& loop, std::size_t i) noexcept
+    {
+        thiranA1[i] = loop.thiranA1;
+        thiranA2[i] = loop.thiranA2;
+        tx1[i] = loop.tx1;
+        tx2[i] = loop.tx2;
+    }
+    void scatterThiran(Loop& loop, std::size_t i) const noexcept
+    {
+        loop.tx1 = tx1[i];
+        loop.tx2 = tx2[i];
+        loop.ty1 = ty1[i];
+        loop.ty2 = ty2[i];
+    }
+
     void gather(Loop* const* loops, int count) noexcept
     {
         int n = 0;
@@ -1276,6 +1284,9 @@ struct LoopFilters
         constantLoss.allActive = bendingLoss.allActive = true;
         for (int i = 0; i < count; ++i)
         {
+            gatherThiran(*loops[i], static_cast<std::size_t>(i));
+            ty1[static_cast<std::size_t>(i)] = loops[i]->ty1;
+            ty2[static_cast<std::size_t>(i)] = loops[i]->ty2;
             constantLoss.gather(loops[i]->constantLoss, static_cast<std::size_t>(i));
             bendingLoss.gather(loops[i]->bendingLoss, static_cast<std::size_t>(i));
         }
@@ -1291,15 +1302,37 @@ struct LoopFilters
         }
         for (int i = 0; i < count; ++i)
         {
+            scatterThiran(*loops[i], static_cast<std::size_t>(i));
             constantLoss.scatter(loops[i]->constantLoss, static_cast<std::size_t>(i));
             bendingLoss.scatter(loops[i]->bendingLoss, static_cast<std::size_t>(i));
         }
     }
 
+    // Loop::setLineDelay while the block holds the loop's section.
+    void setLineDelay(Loop& loop, std::size_t i, double samples) noexcept
+    {
+        scatterThiran(loop, i);
+        loop.setLineDelay(samples);
+        gatherThiran(loop, i);
+    }
+
+    // `count` is even: every string has two planes.
     void read(Loop* const* loops, int count, double* wave) noexcept
     {
         for (int i = 0; i < count; ++i)
-            wave[i] = loops[i]->readLine();
+            wave[i] = loops[i]->readTap();
+        for (int k = 0; k + 1 < count; k += 2)
+        {
+            const auto i = static_cast<std::size_t>(k);
+            const Pair x = *pairs(wave + k);
+            const Pair a1 = *pairs(&thiranA1[i]), a2 = *pairs(&thiranA2[i]);
+            const Pair y = a2 * x + a1 * *pairs(&tx1[i]) + *pairs(&tx2[i]) - a1 * *pairs(&ty1[i]) - a2 * *pairs(&ty2[i]);
+            *pairs(&tx2[i]) = *pairs(&tx1[i]);
+            *pairs(&tx1[i]) = x;
+            *pairs(&ty2[i]) = *pairs(&ty1[i]);
+            *pairs(&ty1[i]) = y;
+            *pairs(wave + k) = y;
+        }
         double sorted[capacity];
         for (int j = 0; j < withStages[0]; ++j)
             sorted[j] = wave[byStages[static_cast<std::size_t>(j)]];
@@ -3581,8 +3614,9 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                 // the pitch bend scales every string alike.
                 const double ratio = (tensionModulation_
                     ? 1.0 + voice.glidePerEnergy * voice.energy() : 1.0) * s.bend;
-                for (Loop* loop : { &voice.normal, &voice.parallel })
-                    loop->setLineDelay(loop->lineDelayAt(ratio));
+                const auto plane = static_cast<std::size_t>(2 * index);
+                filters.setLineDelay(voice.normal, plane, voice.normal.lineDelayAt(ratio));
+                filters.setLineDelay(voice.parallel, plane + 1, voice.parallel.lineDelayAt(ratio));
                 // The mean follows the period the bend and the glide set.
                 const int roundTrip = std::clamp(static_cast<int>(std::lround(sampleRate_ / (voice.frequency * ratio))),
                                                  1, delayCapacity - 1);

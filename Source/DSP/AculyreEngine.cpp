@@ -890,8 +890,48 @@ struct LoopDesign
 // One polarisation of one string: the round trip from the bridge to the yoke
 // and back, holding the velocity wave that will next arrive at the bridge.
 // The yoke's inversion is folded into what the bridge writes.
+// Every sample reads the first 64 bytes of fields, the pairs and the line;
+// the rest only once a control period or a block. Kept together, the hot
+// fields of all 56 loops stay in the L1 cache: spread over the 64 KiB
+// struct they had missed it on most reads.
 struct Loop
 {
+    int write { 0 };
+    int whole { 64 };
+    // How many of the next samples' pending slots a pluck may have written:
+    // past them every slot is zero, and the stream through the array is
+    // skipped (it missed the cache once every sixteen samples, on every loop).
+    int pendingAhead { 0 };
+    // The playing hand resting on the string at one point: the line's two
+    // samples passing it, out to the yoke and back, by age, and the share of
+    // the point's velocity it takes from each (0, no hand).
+    int handOut { 0 }, handBack { 0 };
+    double handShare { 0.0 };
+    double gain { 1.0 };
+    double damping { 1.0 };
+    double dampingStep { 0.0 };
+    // The wave that last arrived at the bridge.
+    double last { 0.0 };
+    double dampingTarget { 1.0 };
+    int dispersionPairs { 0 };
+    std::array<std::array<double, 2>, aculyre::dispersionPairs> pair {};
+    std::array<std::array<double, 2>, aculyre::dispersionPairs> pairState {};
+    double fraction { 2.0 };
+    double thiranA1 { 0.0 }, thiranA2 { 0.0 };
+    double tx1 { 0.0 }, tx2 { 0.0 }, ty1 { 0.0 }, ty2 { 0.0 };
+    int dispersionStages { 0 };
+    double dispersion { 0.0 };
+    double dispersionCents { 0.0 };  // the design's worst partial error
+    std::array<double, maxDispersionStages> dispersionState {};
+    UnitDcSection constantLoss {};
+    UnitDcSection bendingLoss {};
+    LossSectionDesign constantDesign {};
+    LossSectionDesign bendingDesign {};
+    // The line delay at rest (whole + fraction) and the whole loop's delay
+    // at the fundamental, both in samples.
+    double restLineDelay { 68.0 };
+    double loopDelay { 70.0 };
+    std::array<double, bendPoints> lagCycles {};
     std::array<float, delayCapacity> line {};
     // A pluck's first round trip, still to arrive at the bridge, by sample.
     // It enters at the loop's output rather than the line because the loop's
@@ -899,42 +939,6 @@ struct Loop
     // it on a bass string): a wave squeezed into the line alone would leave
     // a gap and pluck at the wrong point.
     std::array<float, delayCapacity> pending {};
-    // How many of the next samples' pending slots a pluck may have written:
-    // past them every slot is zero, and the stream through the array is
-    // skipped (it missed the cache once every sixteen samples, on every loop).
-    int pendingAhead { 0 };
-    int write { 0 };
-    int whole { 64 };
-    double fraction { 2.0 };
-    double thiranA1 { 0.0 }, thiranA2 { 0.0 };
-    double tx1 { 0.0 }, tx2 { 0.0 }, ty1 { 0.0 }, ty2 { 0.0 };
-    // The wave that last arrived at the bridge.
-    double last { 0.0 };
-    int dispersionStages { 0 };
-    double dispersion { 0.0 };
-    double dispersionCents { 0.0 };  // the design's worst partial error
-    std::array<double, maxDispersionStages> dispersionState {};
-    int dispersionPairs { 0 };
-    std::array<std::array<double, 2>, aculyre::dispersionPairs> pair {};
-    std::array<std::array<double, 2>, aculyre::dispersionPairs> pairState {};
-    UnitDcSection constantLoss {};
-    UnitDcSection bendingLoss {};
-    LossSectionDesign constantDesign {};
-    LossSectionDesign bendingDesign {};
-    double gain { 1.0 };
-    double damping { 1.0 };
-    double dampingTarget { 1.0 };
-    double dampingStep { 0.0 };
-    // The playing hand resting on the string at one point: the line's two
-    // samples passing it, out to the yoke and back, by age, and the share of
-    // the point's velocity it takes from each (0, no hand).
-    int handOut { 0 }, handBack { 0 };
-    double handShare { 0.0 };
-    // The line delay at rest (whole + fraction) and the whole loop's delay
-    // at the fundamental, both in samples.
-    double restLineDelay { 68.0 };
-    double loopDelay { 70.0 };
-    std::array<double, bendPoints> lagCycles {};
 
     // Stops the wave and everything still on its way, keeping the pitch and
     // the hand's damping.

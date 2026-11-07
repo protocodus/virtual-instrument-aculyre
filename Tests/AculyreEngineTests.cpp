@@ -119,8 +119,17 @@ int main()
             const double nominal = tuned(*preset, note);
             const double measured = peakNear(audio, settled, 48000, nominal).frequency;
             const double cents = 1200.0 * std::log2(measured / nominal);
-            std::printf("%-16s note %d: %+.2f cents\n", preset->name, note, cents);
+            // The strings are tuned to what sounds a second after the pluck;
+            // late in the decay the plane the body drains least is left
+            // alone, a few cents from the mix (B2 reads -4.5 at 2.5 s).
+            const auto judged = renderNote(*preset, note, 1.4, 64, false, false);
+            const double heard = peakNear(judged, 16800, 48000, nominal).frequency;
+            const double heardCents = 1200.0 * std::log2(heard / nominal);
+            std::printf("%-16s note %d: %+.2f cents at 2.5 s, %+.2f cents at 0.35-1.35 s\n",
+                        preset->name, note, cents, heardCents);
             check(std::abs(cents) < 6.0, "the open string sounds its tuning (within 6 cents)");
+            check(std::abs(heardCents) < 3.0,
+                  "the open string sounds its tuning a second after the pluck (within 3 cents)");
             check(rms(audio, 120000, 4800) < 0.5 * rms(audio, 4800, 4800), "the note decays");
         }
     }

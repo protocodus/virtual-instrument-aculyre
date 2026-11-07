@@ -3,6 +3,38 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-07: strings are tuned to what sounds a second after the pluck (0.11.0)
+
+**What was decided.** Each string's two planes are tuned together so that
+their mix, weighted by the power each puts into the body one second after
+the pluck, sits on the note (`tuneByEar`, AculyreEngine.cpp). This is not a
+listening verdict but an authored convention, recorded here because the
+second is a chosen number: about when a player tuning by ear judges the
+note and a tuner's reading has settled. The physics it stands in for is a
+player's tuning pin, which the model had lacked: the loop was tuned to its
+normal plane's open pitch, and with the one-diameter end correction (0.10.0)
+the parallel plane, 2 to 5 cents flat and the one that sustains in the
+treble once the heave has drained the normal plane, pulled the sounding note
+flat. 0.7.7 had hidden the same flat by cutting the end correction to 0.12
+diameters, at the price of every string's early decay.
+
+**What was measured.** Every string and lever note of the three presets at
+velocities 64 and 127, idle strings held (a resting hand, so no sympathetic
+partial colours the reading), the strongest peak within 60 cents of the note
+over 0.35-1.35 s, rms over the notes in cents (steel / nylon / gut, velocity
+64): before, 1.71 / 2.30 / 1.35; power weighted at one second, 0.80 / 1.44 /
+1.03; amplitude weighted at one second, 0.85 / 1.62 / 1.36; power weighted
+at half a second, 1.01 / 1.58 / 1.04; amplitude at half a second, 1.01 /
+1.67 / 1.34. The first candidate was kept by these numbers. The worst
+strings after it: the steel F#4 lever note 3.0 cents flat, the nylon G#3
+lever note 4.9 sharp (under the 205 Hz air mode), the gut E4 2.3 flat. A
+weighting by the power each plane radiates over the whole note (no time
+constant) was tried first and moved nothing (0.2 cents), since the normal
+plane puts ten times the energy into the body and is gone in a tenth of a
+second: the ear does not tune to it. With the idle strings ringing, their
+partials near the note move the reading by up to 5 cents more (the nylon
+A4 reads +5.7 against the A3's second partial), as a harp's do.
+
 ## 2026-11-07: the lyre harps' top is 3 mm spruce (0.10.0), chosen by ear
 
 **What was decided.** The owner chose, by ear, a 3 mm spruce top for both

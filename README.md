@@ -24,6 +24,36 @@ reference recording below.
 
 ## Version history
 
+- **0.11.0** (prototype, not released): every string is tuned by ear, as a
+  player tunes it, to the pitch the instrument sounds a second after the
+  pluck. With the one-diameter end correction back (0.10.0) the plane
+  parallel to the soundboard sits 2 to 3 cents under the normal one on
+  steel and up to 5 on nylon, and since the heave drains a treble string's
+  normal plane in a tenth of a second (the steel G6's at 47 dB/s), the
+  parallel plane is what sustains: tuned to the normal plane alone the
+  treble sounded flat by that much, which 0.7.7 had hidden by cutting the
+  correction to `0.12` diameters. The design now weights each plane by the
+  power it puts into the body a second after the pluck (the pluck's share
+  of it, the bar's conductance at its port, decayed at the plane's rate)
+  and moves both planes together until that mix sits on the note. Over
+  every string and lever note at velocity 64, idle strings held (the
+  strongest peak over `0.35-1.35 s`), the rms error falls from `1.71` to
+  `0.80` cents on the steel harp, `2.30` to `1.44` on the nylon and `1.35`
+  to `1.03` on the gut lyre, the worst string from `3.6` to `3.0`, `5.0` to
+  `4.9` (the nylon G#3 lever note, pulled by the `205 Hz` air mode) and
+  `4.8` to `2.3`; a second's judgement was kept over half a second and over
+  amplitude weighting by these same numbers. At velocity 127 the wound
+  bass strings still open 5 to 11 cents sharp and settle within a second,
+  the tension glide of a hard pluck; the Lyre Lyre library's loud takes
+  open 5 to 14 cents sharp. Every open string's `0.35-1.35 s` pitch at
+  velocity 64 is otherwise within `3.5` cents with the idle strings held,
+  every lever note within `4.9`; with the idle strings ringing, their
+  partials near the note colour the reading by up to 5 cents more, as a
+  harp's do. The engine test now reads that second on its nine strings
+  and holds it within 3 cents; its reading at `2.5 s` keeps its 6-cent
+  limit, because late in the decay the plane the body drains least rings
+  on alone, a few cents from the mix (the steel B2 reads `-4.5` there,
+  as it did before). No level, touch or body change.
 - **0.10.0** (prototype, not released): two changes to the lyre harps'
   sound. The plane parallel to the soundboard is again one string diameter
   longer at the pins (Woodhouse's measured end correction, as Acustra
@@ -352,9 +382,14 @@ None: this is a source-only prototype.
 
 **Strings.** Each string is two digital waveguides, one per polarisation, each
 holding the round trip from the bridge to the yoke and back. The plane parallel
-to the soundboard is longer by 0.12 of a string diameter so the two planes beat
-gently without pulling the parallel-dominated sustain flat (after Woodhouse, Acta Acustica
-90 (2004)). Steel carries Acustra 1.9.0's string loss laws unchanged: a
+to the soundboard is longer by one string diameter at the pins (Woodhouse's
+measured end correction, Acta Acustica 90 (2004)), so the two planes sound 2
+to 5 cents apart and beat. Each string is then tuned by ear, as a player
+tunes it: not to its open pitch but to what the two planes sound together a
+second after the pluck, each weighted by the power it then puts into the
+body. The heave drains a treble string's normal plane in a tenth of a second,
+so the treble is tuned to its sustaining parallel plane; a bass string's
+normal plane lasts, so the bass is tuned to that. Steel carries Acustra 1.9.0's string loss laws unchanged: a
 constant loss angle for dislocation damping, Valette's and Woodhouse's bending
 loss, and Valette's air damping. A wound steel string takes its maker's
 unit weight for its mass and a smaller core for its stiffness, with
@@ -779,6 +814,12 @@ nothing until the next pluck.
   The recordings point to a loss the model lacks rather than to that path,
   so the stand-in stays. With the 6 g bar it moves some partials by up to
   about 11 cents.
+- Strings under a strong body mode sit a few cents off. Each string is
+  tuned to what it sounds a second after the pluck, but a mode close to a
+  note pulls the sounding pitch as it decays: the nylon harp's G#3 lever
+  note, under the `205 Hz` air mode, reads `4.9` cents sharp over
+  `0.35-1.35 s`, the steel harp's F#4 lever note `3.0` flat; every other
+  string and lever note is within `3` cents (idle strings held, velocity 64).
 - No axial force. A plucked string's stretch pulls on its end at twice each
   partial's frequency, growing as the square of the pluck. A harp's strings
   meet its soundboard at 35 degrees, and there the octave this adds matches

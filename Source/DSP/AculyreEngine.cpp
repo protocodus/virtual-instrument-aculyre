@@ -2064,6 +2064,7 @@ struct AculyreEngine::State
     struct PitchDesign
     {
         std::array<LoopDesign, 2> planes {};  // normal, parallel
+        double note { 0.0 };  // Hz, the pitch the string is tuned to sound (tuneByEar)
         double length { 0.0 };
         double parallelLength { 0.0 };
         double inharmonicity { 0.0 };
@@ -2077,7 +2078,9 @@ struct AculyreEngine::State
         Loop normal {};
         Loop parallel {};
         std::array<PitchDesign, 2> pitch {};  // lever down, lever up
-        // The sounding pitch (pitch[raised ? 1 : 0], or the extension's).
+        // The sounding pitch (pitch[raised ? 1 : 0], or the extension's):
+        // the note it is tuned to, and each plane's own.
+        double note { 0.0 };
         double frequency { 0.0 };
         double parallelFrequency { 0.0 };
         double length { 0.0 };
@@ -2911,6 +2914,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         {
             pitch.length = length;
             const double frequency = waveSpeed / (2.0 * pitch.length);
+            pitch.note = frequency;
             pitch.inharmonicity = pi * pi * modulus * secondMoment
                                 / (voice.tension * pitch.length * pitch.length);
             // The plane parallel to the soundboard is longer by about one
@@ -3113,86 +3117,146 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     for (int index = 0; index < stringCount_; ++index)
     {
         State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+        // The port's admittance with every other port loading the bar, as
+        // Z Y: the string's wave impedance times the bar's admittance at
+        // the plane's port.
+        const auto portLoad = [&] (double frequency, int plane)
+        {
+            const double omega = 2.0 * pi * frequency;
+            const Complex z1 = std::polar(1.0, -omega / fs);
+            const Complex z2 = z1 * z1;
+            // Summed over the modes by real and imaginary part, and only
+            // over the coordinates a mode meets: half of every mode's
+            // participations are exactly zero (the bar is centred), and a
+            // zero term adds nothing, so the sums are the full product's
+            // bit for bit at a quarter of its work.
+            std::array<std::array<double, barCoordinates>, barCoordinates> mobilityRe {}, mobilityIm {};
+            for (int m = 0; m < s.modeCount; ++m)
+            {
+                const Mode& mode = s.modes[static_cast<std::size_t>(m)];
+                const Complex response = mode.b0 * (1.0 - z2)
+                                       / (1.0 + mode.a1 * z1 + mode.a2 * z2);
+                const double responseRe = response.real(), responseIm = response.imag();
+                for (std::size_t i = 0; i < barCoordinates; ++i)
+                {
+                    const double rowWeight = mode.participation[i];
+                    if (rowWeight == 0.0)
+                        continue;
+                    const double leftRe = responseRe * rowWeight, leftIm = responseIm * rowWeight;
+                    for (std::size_t j = 0; j < barCoordinates; ++j)
+                    {
+                        const double pj = mode.participation[j];
+                        if (pj == 0.0)
+                            continue;
+                        mobilityRe[i][j] += leftRe * pj;
+                        mobilityIm[i][j] += leftIm * pj;
+                    }
+                }
+            }
+            std::array<std::array<Complex, barCoordinates>, barCoordinates> plateMobility {};
+            for (std::size_t i = 0; i < barCoordinates; ++i)
+                for (std::size_t j = 0; j < barCoordinates; ++j)
+                    plateMobility[i][j] = Complex(mobilityRe[i][j], mobilityIm[i][j]);
+            std::array<std::array<Complex, barCoordinates>, barCoordinates> others {};
+            for (std::size_t i = 0; i < barCoordinates; ++i)
+                for (std::size_t j = 0; j < barCoordinates; ++j)
+                    others[i][j] = zg.m[i][j];
+            BarVector port {};
+            port[2] = 1.0;
+            if (plane == 0)
+                port = voice.normalPort();
+            for (std::size_t i = 0; i < barCoordinates; ++i)
+                for (std::size_t j = 0; j < barCoordinates; ++j)
+                    others[i][j] -= voice.impedance * port[i] * port[j];
+            for (std::size_t i = 0; i < barCoordinates; ++i)
+                others[i][i] += i < 3 ? s.massImpedance[i] * (1.0 - z1) / (1.0 + z1)
+                                      : (s.massImpedance[i] + s.bendTap1[i] * z1 + s.bendTap2[i] * z2) / (1.0 - z2);
+            // Y_port = e^T (I + Yp W)^-1 Yp e.
+            std::array<std::array<Complex, barCoordinates>, barCoordinates> system {};
+            for (std::size_t i = 0; i < barCoordinates; ++i)
+                for (std::size_t j = 0; j < barCoordinates; ++j)
+                {
+                    Complex sum = i == j ? 1.0 : 0.0;
+                    for (std::size_t k = 0; k < barCoordinates; ++k)
+                        sum += plateMobility[i][k] * others[k][j];
+                    system[i][j] = sum;
+                }
+            const auto inverted = inverse(system);
+            std::array<Complex, barCoordinates> ype {};
+            for (std::size_t i = 0; i < barCoordinates; ++i)
+                for (std::size_t k = 0; k < barCoordinates; ++k)
+                    ype[i] += plateMobility[i][k] * port[k];
+            Complex admittance = 0.0;
+            for (std::size_t i = 0; i < barCoordinates; ++i)
+            {
+                Complex row = 0.0;
+                for (std::size_t k = 0; k < barCoordinates; ++k)
+                    row += inverted[i][k] * ype[k];
+                admittance += port[i] * row;
+            }
+            return voice.impedance * admittance;
+        };
+        // A string is tuned by ear to the pitch the instrument gives back,
+        // not to its own open pitch. Its two planes sound a few cents apart
+        // (parallelLength), and the note is what they sound together a
+        // second after the pluck, about when a player tuning by ear judges
+        // it and a tuner's reading has settled: each plane weighted by the
+        // power it then puts into the body, the pluck's share of it (the
+        // instrument's normal share, how it is played) times the power the
+        // bar takes per unit wave, Re(Z Y) at its port, decayed over that
+        // second at the plane's rate, the bar's (-f0 ln |R|, R its
+        // reflection) and the string's own; the body is taken to radiate
+        // what it receives alike from both. The heave takes a treble
+        // string's normal plane in a tenth of a second (the steel G6 at 47
+        // dB/s), so what sustains there is the parallel plane and the
+        // string is tuned to it; the sway hardly loads any plane, so a bass
+        // string, whose normal plane lasts, is tuned to that. The tuning
+        // pin moves both planes together. At one diameter the parallel
+        // plane sits 2 to 3 cents under the normal one, so tuned to the
+        // normal plane alone the steel treble sounded 2 to 3 cents flat and
+        // the nylon up to 5 (2026-11-07, every key at velocities 64 and
+        // 127, the strongest peak over 0.35-1.35 s). Two passes, since the
+        // loads move a little with the pitch.
+        const auto tuneByEar = [&] (State::PitchDesign& pitch)
+        {
+            LoopDesign& normal = pitch.planes[0];
+            LoopDesign& parallel = pitch.planes[1];
+            const double target = normal.frequency;
+            const double ratio = parallel.frequency / normal.frequency;
+            const double share = std::clamp(instrument.normalShare, 0.0, 1.0);
+            const double ownDecay = 3.0 * std::log(10.0) / std::max(pitch.intrinsicT60, 1.0e-3);
+            constexpr double judged = 1.0;  // s after the pluck
+            const auto heard = [&] (const LoopDesign& loop, int plane)
+            {
+                const Complex zy = portLoad(loop.frequency, plane);
+                const double conductance = std::max(0.0, zy.real());
+                const double reflection = std::abs((1.0 - zy) / (1.0 + zy));
+                const double decay = ownDecay - loop.frequency * std::log(std::clamp(reflection, 1.0e-6, 1.0));
+                return conductance * std::exp(-2.0 * decay * judged);
+            };
+            for (int pass = 0; pass < 2; ++pass)
+            {
+                double weightNormal = share * heard(normal, 0);
+                double weightParallel = (1.0 - share) * heard(parallel, 1);
+                if (!(weightNormal + weightParallel > 0.0))
+                {
+                    weightNormal = share;
+                    weightParallel = 1.0 - share;
+                }
+                const double sounding = (weightNormal + weightParallel * ratio) / (weightNormal + weightParallel);
+                normal.frequency = target / sounding;
+                parallel.frequency = normal.frequency * ratio;
+            }
+            normal.loopDelay = fs / normal.frequency;
+            parallel.loopDelay = fs / parallel.frequency;
+        };
         const auto tune = [&] (LoopDesign& loop, int plane)
         {
             const double f0 = loop.frequency;
-            // The port's admittance with every other port loading the bar.
+            // R = (ZY - 1)/(1 + ZY); the loop carries -R.
             const auto reflectionLead = [&] (double frequency)
             {
-                const double omega = 2.0 * pi * frequency;
-                const Complex z1 = std::polar(1.0, -omega / fs);
-                const Complex z2 = z1 * z1;
-                // Summed over the modes by real and imaginary part, and only
-                // over the coordinates a mode meets: half of every mode's
-                // participations are exactly zero (the bar is centred), and a
-                // zero term adds nothing, so the sums are the full product's
-                // bit for bit at a quarter of its work.
-                std::array<std::array<double, barCoordinates>, barCoordinates> mobilityRe {}, mobilityIm {};
-                for (int m = 0; m < s.modeCount; ++m)
-                {
-                    const Mode& mode = s.modes[static_cast<std::size_t>(m)];
-                    const Complex response = mode.b0 * (1.0 - z2)
-                                           / (1.0 + mode.a1 * z1 + mode.a2 * z2);
-                    const double responseRe = response.real(), responseIm = response.imag();
-                    for (std::size_t i = 0; i < barCoordinates; ++i)
-                    {
-                        const double rowWeight = mode.participation[i];
-                        if (rowWeight == 0.0)
-                            continue;
-                        const double leftRe = responseRe * rowWeight, leftIm = responseIm * rowWeight;
-                        for (std::size_t j = 0; j < barCoordinates; ++j)
-                        {
-                            const double pj = mode.participation[j];
-                            if (pj == 0.0)
-                                continue;
-                            mobilityRe[i][j] += leftRe * pj;
-                            mobilityIm[i][j] += leftIm * pj;
-                        }
-                    }
-                }
-                std::array<std::array<Complex, barCoordinates>, barCoordinates> plateMobility {};
-                for (std::size_t i = 0; i < barCoordinates; ++i)
-                    for (std::size_t j = 0; j < barCoordinates; ++j)
-                        plateMobility[i][j] = Complex(mobilityRe[i][j], mobilityIm[i][j]);
-                std::array<std::array<Complex, barCoordinates>, barCoordinates> others {};
-                for (std::size_t i = 0; i < barCoordinates; ++i)
-                    for (std::size_t j = 0; j < barCoordinates; ++j)
-                        others[i][j] = zg.m[i][j];
-                BarVector port {};
-                port[2] = 1.0;
-                if (plane == 0)
-                    port = voice.normalPort();
-                for (std::size_t i = 0; i < barCoordinates; ++i)
-                    for (std::size_t j = 0; j < barCoordinates; ++j)
-                        others[i][j] -= voice.impedance * port[i] * port[j];
-                for (std::size_t i = 0; i < barCoordinates; ++i)
-                    others[i][i] += i < 3 ? s.massImpedance[i] * (1.0 - z1) / (1.0 + z1)
-                                          : (s.massImpedance[i] + s.bendTap1[i] * z1 + s.bendTap2[i] * z2) / (1.0 - z2);
-                // Y_port = e^T (I + Yp W)^-1 Yp e.
-                std::array<std::array<Complex, barCoordinates>, barCoordinates> system {};
-                for (std::size_t i = 0; i < barCoordinates; ++i)
-                    for (std::size_t j = 0; j < barCoordinates; ++j)
-                    {
-                        Complex sum = i == j ? 1.0 : 0.0;
-                        for (std::size_t k = 0; k < barCoordinates; ++k)
-                            sum += plateMobility[i][k] * others[k][j];
-                        system[i][j] = sum;
-                    }
-                const auto inverted = inverse(system);
-                std::array<Complex, barCoordinates> ype {};
-                for (std::size_t i = 0; i < barCoordinates; ++i)
-                    for (std::size_t k = 0; k < barCoordinates; ++k)
-                        ype[i] += plateMobility[i][k] * port[k];
-                Complex admittance = 0.0;
-                for (std::size_t i = 0; i < barCoordinates; ++i)
-                {
-                    Complex row = 0.0;
-                    for (std::size_t k = 0; k < barCoordinates; ++k)
-                        row += inverted[i][k] * ype[k];
-                    admittance += port[i] * row;
-                }
-                const Complex zy = voice.impedance * admittance;
-                // R = (ZY - 1)/(1 + ZY); the loop carries -R.
+                const Complex zy = portLoad(frequency, plane);
                 return std::arg((1.0 - zy) / (1.0 + zy));
             };
             // The reflection depends on the frequency alone, so each
@@ -3232,13 +3296,18 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                                      - omega * loop.restLineDelay) / (2.0 * pi);
             }
         };
+        for (int raised = 0; raised < 2; ++raised)
+            tuneByEar(voice.pitch[static_cast<std::size_t>(raised)]);
         for (int design = 0; design < 4; ++design)
             tune(voice.pitch[static_cast<std::size_t>(design >> 1)].planes[static_cast<std::size_t>(design & 1)],
                  design & 1);
         for (int key = lowestKey; key <= highestKey; ++key)
             if (s.extensionString[static_cast<std::size_t>(key)] == index)
+            {
+                tuneByEar(s.extension[static_cast<std::size_t>(key)]);
                 for (int plane = 0; plane < 2; ++plane)
                     tune(s.extension[static_cast<std::size_t>(key)].planes[static_cast<std::size_t>(plane)], plane);
+            }
         voice.normal.whole = wholeFor(voice.pitch[0].planes[0].restLineDelay);
         voice.parallel.whole = wholeFor(voice.pitch[0].planes[1].restLineDelay);
         applyPitch(index, false);
@@ -3387,6 +3456,7 @@ void AculyreEngine::applyPitch(int string, bool raised, int extensionKey) noexce
                                                         : voice.pitch[raised ? 1u : 0u];
     voice.raised = raised;
     voice.extensionKey = extensionKey;
+    voice.note = pitch.note;
     voice.frequency = pitch.planes[0].frequency;
     voice.parallelFrequency = pitch.planes[1].frequency;
     voice.length = pitch.length;
@@ -4196,7 +4266,7 @@ AculyreEngine::StringReport AculyreEngine::stringReport(int string) const noexce
     const auto& voice = state_->strings[static_cast<std::size_t>(string)];
     const auto& spec = state_->instrument.strings[static_cast<std::size_t>(string)];
     report.midiNote = voice.midiNote;
-    report.frequency = voice.frequency;
+    report.frequency = voice.note;
     report.tension = voice.tension;
     report.impedance = voice.impedance;
     report.inharmonicity = voice.inharmonicity;

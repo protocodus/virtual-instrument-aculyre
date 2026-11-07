@@ -3,6 +3,34 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-07: pluck strength is not fitted per string to the DR lyre harp's pitch, measured
+
+**What was decided.** The owner chose to fit each steel string's pluck
+strength to how sharp the DR lyre harp's notes start, the pitch glide that
+tension modulation gives a harder pluck, and then to re-even the levels.
+
+**What the measurements said.** Over the recording's three takes of sixteen
+notes (G3-G#5), the fundamental's pitch from 20 to 80 ms against its pitch at
+0.8-1.2 s ranges from -6.1 c (G#3) and -4.1 c (C4) to +14.8 c (G#4), and each
+note repeats its own offset from take to take within 0.32 c (median SD).
+Tension modulation can only start a string sharp, and its glide falls
+monotonically with the string's energy, so offsets of both signs that repeat
+note for note are the pull of the body's and the other strings' modes, not
+the pluck's strength. The model shows the same kind of offset that force does
+not move (G5 -11.5 c at pluck force 2, 4 and 6; A#3 -8.8 c at 2). Its
+force-dependent part is small: from force 2 to 6 the 20-80 ms offset rises
+by 4 c at G3 and C4 and by under 1 c at G4-A#4. Reaching the recording's
++8.1 c at G4 by force alone would take a force near 19 and 20 dB more level,
+and the bass, where the recording never starts sharp, would need less than
+it has. No per-string force is consistent with the recording, so none is
+fitted and nothing ships.
+
+**What it measured but did not license.** The recording's early pitch varies
+from take to take by 0.32 c and the model's by 0.03 c (0.13 c at force 4,
+0.25 c at 6). The recording's level over 30-330 ms rises about 9 dB from bass
+to treble, where the evened model falls about 6 dB; a sample library's
+per-note gain and microphone are unknown, so neither licenses a change.
+
 ## 2026-11-07: a re-pluck plays on the ringing string, and a plectrum tremolo alternates (0.9.0), chosen by default
 
 **What was decided.** The owner asked that repeated plucks and tremolo on

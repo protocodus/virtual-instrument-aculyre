@@ -61,7 +61,10 @@ F#4 between modes +8). The DR lyre harp's 16 notes swing -6 to +6 (and
 -13 at G#5) by the same measure, so the model is no less even than the
 recording. The recording's centroid in the 4th and 5th octaves is 10
 semitones higher than the model's (partials 2 and 3 dominate where the
-model's fundamental does); its pluck point is unknown and the Lyre Lyre
-library disagrees with it, so this was not pursued. Velocity 127 raises
+model's fundamental does); the Lyre Lyre library, by the same measure,
+matches the model within a semitone from G3 to C4 (about 12) and then
+goes the other way, down to 0.5-1 at G4-A4 where the model reads 3-12 and
+the DR harp 13-18. The two recordings bracket the model and neither's
+pluck point is known, so this was not pursued. Velocity 127 raises
 the centroid 1 to 5 semitones over 64, most where the hard pluck's tension
 glide carries partials across a mode.

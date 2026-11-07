@@ -3,6 +3,23 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-07: the player's body loss from Acustra (0.8.1), the owner's choice over the A-Z limit
+
+**What was decided.** The owner pointed at Acustra's held-player body loss
+for Aculyre. Its two strengths and four corners are authored (Acustra
+Docs/decisions.md, 2026-10-22: shipped by ear over the A-Z limit as the
+owner's product decision); the mechanism is supported by Le Carrou, Pate and
+Chomette, JASA 146 (2019), and applies here because woodQ comes from a guitar
+measured free. A letter-coded set (A 0.8.0, B with the loss; the three preset
+demos and the steel single notes; RMS-matched, B trimmed +0.1 to +0.2 dB) was
+sent. The candidate wins by the project's standing rule unless the owner
+objects. On the DR lyre harp's notes the fundamentals' decay moves from 2.03
+to 2.01 (log2 rms), the rest unchanged.
+
+**What it licensed.** `playerLoss` in AculyreEngine.cpp, copied unchanged
+from Acustra's PlayerBodyLoading.h, and the touch evened again. Nothing here
+establishes the coefficients as player or lyre data.
+
 ## 2026-11-07: the box's standing waves, the air's mass, spruce's grain damping and a resting hand at a point (0.8.0), chosen by default
 
 **What was decided.** Whether four changes, each grounded in published

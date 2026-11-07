@@ -1939,6 +1939,23 @@ double woodQ(double frequency) noexcept
 // The air resonance: g21's air-mode group measures Q 16-21.
 constexpr double airQ = 20.0;
 
+// The player holding the instrument: Acustra 1.6.2's fixed torso/back and
+// forearm/top contact loss (PlayerBodyLoading.h), copied unchanged. g21 was
+// measured on a supported guitar with its back free (Mores' archive), so
+// woodQ carries no player. The loss is real (Le Carrou, Pate and Chomette,
+// JASA 146 (2019), measured player-dependent modal damping on a guitar), but
+// its two strengths and four corners are Acustra's authored law, chosen by
+// the owner's ear there (Acustra Docs/decisions.md, 2026-10-22), not a
+// measurement of a player or of a lyre's posture. Independent passive losses
+// add as inverse Q; the envelopes spare the mainly-air band.
+double playerLoss(double frequency) noexcept
+{
+    const double f2 = frequency * frequency;
+    const double torso = 0.004 * f2 / (f2 + 180.0 * 180.0) * (700.0 * 700.0) / (f2 + 700.0 * 700.0);
+    const double forearm = 0.002 * f2 / (f2 + 300.0 * 300.0) * (1800.0 * 1800.0) / (f2 + 1800.0 * 1800.0);
+    return torso + forearm;
+}
+
 // Jacobi eigen-decomposition of a symmetric matrix (setup only).
 template <std::size_t N>
 void jacobiEigen(std::array<std::array<double, N>, N>& a, int n,
@@ -2702,7 +2719,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         Mode mode;
         mode.frequency = frequency;
         const double qWood = woodQ(frequency);
-        mode.q = 1.0 / (airShare / airQ + (1.0 - airShare) / qWood + woodDeparture);
+        mode.q = 1.0 / (airShare / airQ + (1.0 - airShare) / qWood + woodDeparture + playerLoss(frequency));
         mode.participation = participation;
         mode.monopole = monopole;
         mode.airShare = airShare;

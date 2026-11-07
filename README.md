@@ -24,6 +24,13 @@ reference recording below.
 
 ## Version history
 
+- **0.8.1** (prototype, not released): the player holds the instrument.
+  Acustra 1.6.2's fixed torso and forearm contact loss, copied unchanged,
+  damps every soundbox mode, since the body's Qs come from a guitar measured
+  free: the air, back and top modes ring 6 to 8 % shorter below 1 kHz, the
+  demos play 0.1 to 0.2 dB softer and the difference sits 29 to 32 dB under
+  them. Its strengths and bands are authored, the owner's choice by ear in
+  Acustra, not a measurement of a player. Touch is evened again for it.
 - **0.8.0** (prototype, not released): four changes to the body and the
   hand, each from published physics. The air in the box is no longer only a
   Helmholtz plug: its rigid-box standing waves (Morse and Ingard) join the
@@ -412,7 +419,9 @@ air's incompressible mass, rho over its wavenumber, which lowers the first
 top mode about 1 %. Mode
 Qs are authored from the spread of Acustra's measured guitar bridge (16-75
 below 1.5 kHz, 5-36 above 2 kHz): 23 to 1 kHz, its lower quartile, falling
-to 10 at 2 kHz and 9 at 10 kHz, its median, and 20 for the air mode. A spruce plate's modes depart
+to 10 at 2 kHz and 9 at 10 kHz, its median, and 20 for the air mode. The player holding the instrument adds Acustra's
+torso and forearm contact loss to every mode (an authored law, the owner's
+choice by ear there). A spruce plate's modes depart
 from that median by their strain energy along the grain, across it and in
 shear, weighted by Viala, Placet and Cogan's loss factors (J. Cultural
 Heritage, 2020). The
@@ -651,6 +660,8 @@ nothing until the next pluck.
   position, 0.70 of the way up the top, is assumed. Maple has no published
   loss factors in all three directions, so the back and the gut lyre's top
   keep one loss for every mode.
+- The player's body loss is Acustra's guitar posture, authored there: no
+  player's contact with a lyre has been measured.
 - Nylon and gut damping follow one published fit to measured harp strings,
   not strings from these instruments; gut varied most from string to string
   in that study.

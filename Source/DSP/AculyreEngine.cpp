@@ -2944,8 +2944,12 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 + 2.0 * pi * spec.diameter * std::sqrt(pi * airViscosity * airDensity * frequency);
             const double airDecay = material.measuredAirDamping ? airRoot * std::sqrt(frequency)
                                                                 : airResistance / (2.0 * voice.linearMass);
+            // The fundamental's losses: air, the constant (and winding) loss,
+            // the bending loss on its B / (1 + B) share of the energy, the
+            // yoke. The loop gain below holds the round trip to this.
             const double intrinsicDecay = airDecay
                 + pi * frequency * constantLoss
+                + bendingLossRate(1.0, pitch.inharmonicity, bendingLoss, frequency)
                 - std::log(yokeRoundTripGain) * frequency;
             pitch.intrinsicT60 = 3.0 * std::log(10.0) / intrinsicDecay;
             pitch.roundTrip = std::clamp(static_cast<int>(std::lround(fs / frequency)), 1, delayCapacity - 1);
@@ -2960,11 +2964,24 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 LoopDesign& loop = pitch.planes[static_cast<std::size_t>(plane)];
                 const double f0 = plane == 0 ? frequency : frequency * pitch.length / pitch.parallelLength;
                 loop.frequency = f0;
-                loop.gain = std::exp(-airDecay / f0) * yokeRoundTripGain;
                 loop.constantDesign = constantLossSection(constantLoss, airRoot,
                                                           pitch.inharmonicity, f0, fs);
                 loop.bendingDesign = bendingLossSection(bendingLoss,
                                                         pitch.inharmonicity, f0, fs);
+                // The loss sections are fitted from the second partial up,
+                // so what they take at the fundamental is not its designed
+                // loss: half the winding friction on a wound bass string
+                // (0.66 of the designed decay at A0), and on a plain nylon
+                // treble string a bending loss the design once left out
+                // (1.5 times at the top string). As Acustra does, the loop
+                // gain divides the sections' response at the fundamental
+                // out, so its round trip decays exactly as designed; the
+                // sections then shape only the partials above it.
+                const double omega = 2.0 * pi * f0 / fs;
+                const double sectionsAtFundamental
+                    = std::abs(lossSectionResponse(loop.constantDesign, omega))
+                    * std::abs(lossSectionResponse(loop.bendingDesign, omega));
+                loop.gain = std::exp(-intrinsicDecay / f0) / sectionsAtFundamental;
                 // Dispersion (designDispersion), the line then solved so the
                 // fundamental is exact once the junction exists and the
                 // bridge's reflection phase is known (tuning below).

@@ -24,6 +24,24 @@ reference recording below.
 
 ## Version history
 
+- **0.12.0** (prototype, not released): every fundamental now decays at the
+  rate the string's loss laws give it. The loss filters are fitted from the
+  second partial up, and what they took at the fundamental was not its
+  designed loss: half the winding friction on a wound bass string (the
+  stretched A0 decayed at `0.69` of its design, the open B2 at `0.78`),
+  and on a plain nylon or gut string a bending loss on the fundamental's
+  `B / (1 + B)` share of its energy that the design had left out but the
+  filter part-applied (`1.13` times the design at the nylon G6, `1.5` on
+  the gut lyre's top string stretched to its highest key). As in
+  Acustra, the loop gain now divides the filters' response at the
+  fundamental out, so its round trip loses exactly what the laws say and
+  the filters shape only the partials above it; the same at 44.1, 48 and
+  96 kHz, as before. Plucked alone, idle strings held, the steel harp's
+  open fundamentals fall `0.6` to `1.8` dB/s faster (B2 `3.2` to `3.8`,
+  C6 `16.1` to `17.9`), the nylon's `0.3` to `4.6` dB/s slower (A3 `12.3`
+  to `10.9`, G6 `44.3` to `39.7`) and the gut lyre's `1.0` to `2.2` slower.
+  Tuning is unchanged (every rms within `0.1` cent of 0.11.0's; the loud
+  steel glide reads `5.1` cents at worst, from `5.7`).
 - **0.11.0** (prototype, not released): every string is tuned by ear, as a
   player tunes it, to the pitch the instrument sounds a second after the
   pluck. With the one-diameter end correction back (0.10.0) the plane
@@ -391,7 +409,10 @@ body. The heave drains a treble string's normal plane in a tenth of a second,
 so the treble is tuned to its sustaining parallel plane; a bass string's
 normal plane lasts, so the bass is tuned to that. Steel carries Acustra 1.9.0's string loss laws unchanged: a
 constant loss angle for dislocation damping, Valette's and Woodhouse's bending
-loss, and Valette's air damping. A wound steel string takes its maker's
+loss, and Valette's air damping. The two loss filters are fitted to those
+laws from the second partial up; the loop gain holds the fundamental's round
+trip to the laws' own figure, as Acustra does, so the filters shape only the
+partials above it. A wound steel string takes its maker's
 unit weight for its mass and a smaller core for its stiffness, with
 Acustra's wound losses: friction between the turns, a constant loss angle
 on the share of each partial's energy its tension carries, and a bending
@@ -795,8 +816,8 @@ nothing until the next pluck.
   was heard against it and the difference called small; the recordings are
   indifferent to a 4 mm back and mildly against 3 mm.
 - Plucked alone, the model's low strings ring far longer than any recorded
-  lyre harp's: fundamentals B2 to G3 fall 1.8 to 3.5 dB/s on the steel harp
-  (a 60 dB decay in 17 to 33 s) and 3.3 to 11 dB/s on the nylon, and the back
+  lyre harp's: fundamentals B2 to F3 fall 3.8 to 7.9 dB/s on the steel harp
+  (a 60 dB decay in 8 to 16 s) and 6.8 to 10.3 dB/s on the nylon, and the back
   plate leaves them unchanged. The strings' own losses set it (G3's intrinsic
   T60 is 14 s); the DR lyre harp's G3 to A#4 fundamentals fall 7 to 27 dB/s.
   The 3 mm top shortens it and costs the treble elsewhere (see above).

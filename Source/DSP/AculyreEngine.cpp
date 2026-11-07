@@ -2292,9 +2292,9 @@ struct PlateMode
 // plate wave, rho / sqrt(kappa^2 - k^2), at k << kappa). Its factor on the
 // mode's mass; a mode at or above its coincidence radiates its load instead
 // of carrying it. One face only: inside, the box's air is its own modes
-// (setInstrument). It lowers the first mode of the lyre harps' 6 mm spruce
-// top, their 4 mm maple back and the gut lyre's 4 mm maple top by 1.1% each
-// (835 to 826 Hz on the lyre harps' top).
+// (setInstrument). It lowers the first mode of the lyre harps' 3 mm spruce
+// top by 1.8% (442 to 434 Hz) and their 4 mm maple back's and the gut
+// lyre's 4 mm maple top's by 1.1% each.
 double airLoading(double frequency, int m, int n, double a, double b, double surfaceMass) noexcept
 {
     const double kappa = std::hypot(m * pi / a, n * pi / b);
@@ -2913,11 +2913,17 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             const double frequency = waveSpeed / (2.0 * pitch.length);
             pitch.inharmonicity = pi * pi * modulus * secondMoment
                                 / (voice.tension * pitch.length * pitch.length);
-            // The plane parallel to the soundboard is slightly longer at the
-            // bridge and yoke pins (a tenth of a diameter, keeping the
-            // sustained parallel plane within half a cent of the normal
-            // plane's pitch while preserving two-plane beating).
-            pitch.parallelLength = pitch.length + 0.12 * spec.diameter;
+            // The plane parallel to the soundboard is longer by about one
+            // string diameter at the bridge and yoke pins (Woodhouse, Acta
+            // Acustica 90 (2004) 945, Sec. 4.3; Acustra ships the same end
+            // correction). The sustained tone may sit a couple of cents
+            // under the normal plane's pitch, as the real string's does: at
+            // 0.12 diameters, drawn in 0.7.7 only to hold that within half a
+            // cent, the two planes lock together and every string's early
+            // decay (0.08-0.6 s) halves against the DR Plucked Lyre Harp
+            // samples (C5 7.0 dB/s against the recording's 46; at one
+            // diameter 13.6).
+            pitch.parallelLength = pitch.length + spec.diameter;
             // The wooden yoke, tuning pin and soundboard bridge yield in
             // series with the wire's axial stiffness EA / L (a frame stiffness
             // of 25 kN/m), so a stiff steel bass wire does not stretch as if

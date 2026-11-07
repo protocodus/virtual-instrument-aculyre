@@ -3,6 +3,80 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-07: the lyre harps' top is 3 mm spruce (0.10.0), chosen by ear
+
+**What was decided.** The owner chose, by ear, a 3 mm spruce top for both
+lyre harps (`lyreHarpBody`; the gut lyre is unchanged), over the 6 mm top
+that 0.7.2 had chosen by the DR lyre harp's third-octave shape as a
+stand-in for bracing. 3 mm is the thickness the sampled lyre harps are built
+with. Its first top mode falls from 821 to 434 Hz and the air mode from 225
+to 205 Hz (`RenderAculyreDemo --report 0`). Touch is evened again on it and
+the gains re-levelled (the thinner top is louder).
+
+**The listening test.** The steel README demo through the shipping path,
+the same MIDI, seed, block size and controls for every letter,
+level-matched on whole-file RMS to A (B +0.55 dB, C -6.14, D -5.59, E
+-3.75; C to E not evened by touch). A was 0.9.0; B the one-diameter end
+correction alone (the entry below); C B with a 3 mm spruce top; D and E B
+with a 4 and a 5 mm Honduras mahogany top (Wood Handbook values). The owner
+chose C.
+
+**What the measurements said.** They did not settle it. On the DR harp's 16
+strings (fundamentals' decay / partials 2-6, log2 rms; third-octave shape
+over 0-0.3 / 0.3-1.5 s): A 1.63 / 0.75 / 5.0, 5.8 dB; B 0.92 / 0.61 / 4.9,
+4.9; C 0.99 / 0.78 / 5.1, 5.5; D 2.24 / 0.72 / 4.7, 5.5; E 2.01 / 0.71 / 4.3,
+5.7. On the Lyre Lyre's medium layer (eleven naturals G3-C5), partials 2-6
+A 0.84, B 0.68, C 0.71, D 0.40, E 0.39; shape over 0-0.3 s A 10.9, B 10.9, C
+5.6, D 6.5, E 8.7 dB; the sustain's spread over the naturals (the
+recording's 2.5 dB) A 4.6, B 3.9, C 2.3, D 3.0, E 3.3 dB. So C moves the
+body's colour and the evenness toward both recordings and scatters the DR
+harp's per-string decays. D and E drop the top's first mode to 480-610 Hz,
+and the strings near G5 lose their coupling (8 dB/s against the recording's
+60): rejected. After evening, the shipped engine reads 1.02 / 0.81 / 5.1,
+5.5 on the DR harp's 16 strings and 1.76 / 0.69 / 5.0, 5.5 on all 27 (A#4
+rising on a two-plane beat), G3 at 11.2 dB/s against the recording's 8.9.
+
+**What it licensed.** The 3 mm thickness, a dimension of the instrument,
+not a fitted constant. The re-pluck test now reads 5 ms after the re-pluck,
+not 25: the 434 Hz mode sits on A4 and by 25 ms returns the loud note's
+energy to the stopped string (finger 2.45 at 5 ms, 3.54 at 25), which
+measured the body rather than the finger.
+
+## 2026-11-07: the parallel plane's end correction returns to one diameter (0.10.0), measured
+
+**What was decided.** The plane parallel to the soundboard is again one
+string diameter longer at the pins, Woodhouse's measured end correction
+(Acta Acustica 90 (2004) 945, Sec. 4.3) that Acustra also ships. The 0.7.7
+value of 0.12 diameters was drawn only to hold the sustained pitch within
+half a cent of the normal plane's, a tuning target rather than a
+measurement, and is withdrawn. With the planes that nearly degenerate, a
+plucked string's two polarisations locked together and the early decay of
+every string halved.
+
+**What the measurements said.** Against the DR Plucked Lyre Harp on the
+recording's 16 strings (`compare_lyre_harp_samples.py`, `--strings 55,81`),
+decay rms log2(model/recording) of the fundamentals over 0.08-0.6 s was
+0.98 at 0.7.5, 1.89 at 0.7.7 and 1.63 at 0.9.0; one diameter on 0.9.0 gives
+0.92, partials 2-6 0.75 to 0.61, third-octave shape 5.0 / 5.8 to 4.9 / 4.9
+dB. On all 27 strings the fundamentals move from 2.01 to 1.21, partials
+0.72 to 0.58, shape 4.2 / 6.5 to 4.2 / 5.8. Per note (dB/s, recording /
+before / after): G3 8.9 / 3.4 / 4.6, C5 46 / 7.0 / 13.6, F5 50 / 6.8 /
+19.2, G5 60 / 19.6 / 50.7. Tuning still passes (worst 0.76 cents on the
+steel harp, spread 0.36). The owner's Lyre Lyre library (a 10-string lyre
+harp, three dynamic layers, `compare_lyre_lyre_samples.py`) agrees: partials
+2-6 0.84 to 0.68 on the medium layer, and every natural G3-C5 decays faster
+and nearer the recording; its fundamentals' rms is dominated by one note,
+A4, caught rising on a two-plane beat. Ablations rule out the other 0.7.7
+changes (the arched saddle removed: 1.67; the 4.1-cent tuning spread: 1.64)
+and the 0.7.9 and 0.8.0 body changes (no back: 1.75; the soundhole at 0.5:
+1.62). A braced top's lighter mass (a mass thickness of 3.5-4 mm on the 6 mm
+top's stiffness) made it worse (2.66-2.75) and is rejected.
+
+**What it did not license.** A braced top's lighter mass is rejected (above).
+The Lyre Lyre's absolute brightness and level depend on its capture and
+license no change. The top's thickness was left to a listening test (the
+next entry).
+
 ## 2026-11-07: pluck strength is not fitted per string to the DR lyre harp's pitch, measured
 
 **What was decided.** The owner chose to fit each steel string's pluck

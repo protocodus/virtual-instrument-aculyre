@@ -701,9 +701,15 @@ int main()
             engine.noteOn(first, 0.9f);
             engine.process(l.data(), r.data(), 12000);
             engine.noteOn(69, 0.1f);
-            // 25 ms: the energy tracker has settled, and the ringing
-            // instrument has not yet fed much back into the stopped string.
-            engine.process(l.data(), r.data(), 1200);
+            // 5 ms: the energy tracker has settled (one round trip, 2.3 ms)
+            // and the stop is done, and the ringing instrument has not yet
+            // fed much back into the stopped string. Until 0.10.0 this read
+            // at 25 ms; the 3 mm top's first mode (434 Hz, Q 22.5, a 16 ms
+            // time constant) sits on A4 and by then has returned the loud
+            // note's energy to the stopped string (finger 2.45 at 5 ms, 3.54
+            // at 25; the 6 mm top's held 2.65 throughout), which measures
+            // the body, not the finger.
+            engine.process(l.data(), r.data(), 240);
             return engine.stringEnergy(engine.stringForNote(69));
         };
         const double finger = plucked(aculyre::Technique::Finger, 69) / plucked(aculyre::Technique::Finger, 60);

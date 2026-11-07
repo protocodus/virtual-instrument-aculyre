@@ -5,17 +5,23 @@
 //   RenderAculyreNotes <preset 0-2> <output-directory>
 //       [--rate hz] [--velocity 0-1] [--seconds s] [--position p]
 //       [--positions note:p,note:p,...] [--flatten note,note,...]
-//       [--piezo 0-1] [--takes n]
+//       [--piezo 0-1] [--takes n] [--sympathy 0-1] [--strings low,high]
+//       [--normal 0-1]
 //
 // Each note starts from a reset engine 10 ms into its file, at the preset's
 // own controls with the room off. --flatten tunes the named strings a
 // semitone down, the same strings slackened, as a sample set strung for C
 // major but tuned to another scale has them; --positions sets the pluck
 // point note by note, by the note the string sounds; --piezo blends in the
-// piezo as PlayingControls::piezo does. --takes plucks each note n times
-// in a row, one file's length apart, so the takes draw their own scatter
-// (<note>-<k>.wav, k from 1); without it every note takes the first draws,
-// from a reset engine. This is the engine
+// piezo as PlayingControls::piezo does; --sympathy sets the resting hand
+// on the idle strings (1, free, is the default); --strings keeps only the
+// strings from note low to note high, so a 27-string harp can be measured
+// as the 16-string harp a recording was made on (55,81); --normal sets
+// PlayingControls::normalShare, the share of the pluck across the
+// soundboard. --takes plucks each note n times in a row, one file's length
+// apart, so the takes draw their own scatter (<note>-<k>.wav, k from 1);
+// without it every note takes the first draws, from a reset engine. This is
+// the engine
 // alone, without the Performer's output stage or oversampling: what is
 // measured is the strings and the body, not the level guard.
 
@@ -87,14 +93,14 @@ int main(int argc, char** argv)
         {
             std::cerr << "usage: RenderAculyreNotes <preset 0-2> <output-directory> [--rate hz] [--velocity 0-1] "
                          "[--seconds s] [--position p] [--positions note:p,...] [--flatten note,...] "
-                         "[--piezo 0-1] [--takes n]\n";
+                         "[--piezo 0-1] [--takes n] [--sympathy 0-1] [--strings low,high] [--normal 0-1]\n";
             return 2;
         }
         const int preset = std::clamp(std::atoi(argv[1]), 0, 2);
         const std::string output = argv[2];
         int rate = 48000;
-        double velocity = 0.7, seconds = 8.0, position = -1.0, piezo = 0.0;
-        int takes = 0;
+        double velocity = 0.7, seconds = 8.0, position = -1.0, piezo = 0.0, sympathy = 1.0, normalShare = -1.0;
+        int takes = 0, lowString = 0, highString = 127;
         std::map<int, double> positions;
         std::vector<int> flatten;
         for (int i = 3; i < argc; ++i)
@@ -117,6 +123,16 @@ int main(int argc, char** argv)
                 }
             else if (option == "--piezo") piezo = std::atof(value.c_str());
             else if (option == "--takes") takes = std::max(1, std::atoi(value.c_str()));
+            else if (option == "--sympathy") sympathy = std::atof(value.c_str());
+            else if (option == "--normal") normalShare = std::atof(value.c_str());
+            else if (option == "--strings")
+            {
+                const auto range = split(value);
+                if (range.size() != 2)
+                    throw std::runtime_error("--strings takes low,high");
+                lowString = std::atoi(range[0].c_str());
+                highString = std::atoi(range[1].c_str());
+            }
             else if (option == "--flatten")
                 for (const std::string& item : split(value))
                     flatten.push_back(std::atoi(item.c_str()));
@@ -125,6 +141,16 @@ int main(int argc, char** argv)
         }
 
         aculyre::InstrumentSpec spec = *aculyre::presets[static_cast<std::size_t>(preset)];
+        {
+            int kept = 0;
+            for (int index = 0; index < spec.stringCount; ++index)
+            {
+                const int note = spec.strings[static_cast<std::size_t>(index)].midiNote;
+                if (note >= lowString && note <= highString)
+                    spec.strings[static_cast<std::size_t>(kept++)] = spec.strings[static_cast<std::size_t>(index)];
+            }
+            spec.stringCount = kept;
+        }
         for (int index = 0; index < spec.stringCount; ++index)
         {
             int& note = spec.strings[static_cast<std::size_t>(index)].midiNote;
@@ -137,8 +163,11 @@ int main(int argc, char** argv)
         aculyre::PlayingControls controls = aculyre::Performer::defaultControls(preset);
         controls.room = 0.0;
         controls.piezo = piezo;
+        controls.sympathy = sympathy;
         if (position > 0.0)
             controls.pluckPosition = position;
+        if (normalShare >= 0.0)
+            controls.normalShare = normalShare;
 
         const auto frames = static_cast<std::size_t>(seconds * rate);
         const auto start = static_cast<std::size_t>(0.01 * rate);

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <utility>
@@ -1055,6 +1056,40 @@ struct Loop
         write = (write + 1) & (delayCapacity - 1);
     }
 
+    // One sample of the loop alone, as LoopFilters::read and process() run
+    // it, with the bridge held still: what arrives is written back
+    // unchanged (both ends' inversions folded in). No hand: setup of a
+    // re-pluck's contact on a copy of the loop, never the playing loop.
+    double freeStep() noexcept
+    {
+        const double x = readTap();
+        double y = thiranA2 * x + thiranA1 * tx1 + tx2 - thiranA1 * ty1 - thiranA2 * ty2;
+        tx2 = tx1;
+        tx1 = x;
+        ty2 = ty1;
+        ty1 = y;
+        for (int stage = 0; stage < dispersionStages; ++stage)
+        {
+            double& state = dispersionState[static_cast<std::size_t>(stage)];
+            const double out = dispersion * y + state;
+            state = y - dispersion * out;
+            y = out;
+        }
+        for (int k = 0; k < dispersionPairs; ++k)
+        {
+            auto& st = pairState[static_cast<std::size_t>(k)];
+            const auto& c = pair[static_cast<std::size_t>(k)];
+            const double out = c[1] * y + st[0];
+            st[0] = c[0] * (y - out) + st[1];
+            st[1] = y - c[1] * out;
+            y = out;
+        }
+        y = bendingLoss.process(constantLoss.process(y));
+        y = finishRead(y);
+        writeSample(y);
+        return y;
+    }
+
     // A dashpot at the hand's point. The line holds the outgoing wave with
     // the bridge's inversion folded in, so the string's velocity there is
     // the returning sample less the outgoing one; the dashpot's force takes
@@ -2081,6 +2116,8 @@ struct AculyreEngine::State
         int midiNote { -1 };      // its own note, lever down
         int ownerNote { -1 };     // the note that last plucked it
         double handPoint { restingHandPoint };  // where the playing hand last plucked it
+        std::int64_t lastOnset { 0 };
+        bool upStroke { false };  // a plectrum's last stroke on it went up
 
         // How the bar's coordinates move the string's end normal to the top:
         // the heave, the rock at its lever, no sway, and each bend where it
@@ -2175,6 +2212,14 @@ struct AculyreEngine::State
     int controlCountdown { 0 };
     BarVector lastGeneralizedVelocity {};
     std::array<double, delayCapacity> pluckWave {};
+    // A re-pluck's working space: a copy of the ringing loop, the period it
+    // would bring to the bridge, and that period after the contact.
+    Loop contactLoop {};
+    std::array<double, delayCapacity> contactWave {};
+    std::array<double, delayCapacity> contactKept {};
+    // Samples processed since prepare() or reset(); when a string was last
+    // plucked, on it.
+    std::int64_t clock { 0 };
 
     // PlayingControls as the signal path uses them. The hands' damping as
     // decay rates (1/s, they add); the output gains glide to their targets
@@ -3268,8 +3313,11 @@ void AculyreEngine::reset() noexcept
         voice.keyDown = voice.sustained = voice.plucked = false;
         voice.ownerNote = -1;
         voice.handPoint = restingHandPoint;
+        voice.lastOnset = 0;
+        voice.upStroke = false;
         voice.dampingDirty = true;
     }
+    s.clock = 0;
     s.bank.s1.fill(0.0);
     s.bank.s2.fill(0.0);
     s.modalPast = {};
@@ -3454,41 +3502,31 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     const PlayingControls& controls = controls_;
     const double v = std::clamp(static_cast<double>(velocity), 0.0, 1.0);
 
-    // A finger meeting a sounding string stops it before it lets go: a
-    // harpist's finger holds the string 56 to 431 ms (Chadefaux et al., JASA
-    // 131 (2012) 844, Table II), several times the 10 ms in which a finger's
-    // contact silences a plucked string (Laurson et al., CMJ 25(3) 2001). A
-    // plectrum glances off and stops most of it (Acustra's picking-hand
-    // contact, as one step). The finger's 10 ms are slow against the body's
-    // periods, so the body takes the force the stopped wave leaves as the
-    // held force below: preloaded, without the click of a step.
+    // A finger meeting a sounding string holds it at one point before it
+    // lets go: a harpist's finger holds the string 56 to 431 ms (Chadefaux
+    // et al., JASA 131 (2012) 844, Table II), and a finger's contact
+    // silences a plucked string in about 10 ms (Laurson et al., CMJ 25(3)
+    // 2001), here the amplitude time constant averaged over the partials. A
+    // contact at x damps partial n as sin^2(n pi x / L), as the hand's
+    // dashpot does (Loop::setHand), so over a hold T partial n keeps
+    // exp(-(T / 10 ms) 2 sin^2): the partials with a node near the finger
+    // ring on through the new pluck, and which they are follows where this
+    // pluck lands and what the string was doing. The hold is the shortest
+    // Chadefaux measured, shorter still when the string was plucked less
+    // than 56 ms ago (a finger cannot hold a string longer than since it
+    // last let go of it). A plectrum glances off and stops most of it:
+    // Acustra's picking-hand contact kept 0.3 of the wave, here the same
+    // mean over the partials at the pick's point, a hold of 2.15 time
+    // constants (e^-a I0(a) = 0.3). The stopped wave's force on the bridge
+    // is preloaded into the body, as the held force below: the finger's
+    // 10 ms are slow against the body's periods, so without the click of a
+    // step. A lever moved for this note retunes the string under the finger;
+    // there the whole wave stops, as before 0.9.0.
     BarVector preload {};
     const BarVector port = voice.normalPort();
     const bool pitchChanged = voice.raised != raise || voice.extensionKey != extensionKey;
-    const bool keepPartialWave = controls.technique == Technique::Plectrum && !pitchChanged;
-    if (voice.keyDown || voice.sustained || voice.energy() > silentEnergy)
-    {
-        const double stopped = keepPartialWave ? 0.7 : 1.0;
-        const double normalForce = 2.0 * voice.impedance * stopped * voice.normal.last;
-        for (std::size_t c = 0; c < barCoordinates; ++c)
-            preload[c] -= normalForce * port[c];
-        preload[2] -= 2.0 * voice.impedance * stopped * voice.parallel.last;
-        for (Loop* loop : { &voice.normal, &voice.parallel })
-            if (keepPartialWave)
-                loop->scale(0.3);
-            else
-                loop->silence();
-    }
-    if (voice.keyDown || voice.sustained || voice.energy() > silentEnergy)
-    {
-        const float kept = keepPartialWave ? 0.09f : 0.0f;
-        for (float& square : voice.squares)
-            square *= kept;
-    }
-    // The other hand sets the lever before the pluck.
-    if (pitchChanged)
-        applyPitch(index, raise, extensionKey);
-
+    const bool plectrum = controls.technique == Technique::Plectrum;
+    const bool sounding = voice.keyDown || voice.sustained || voice.energy() > silentEnergy;
     // Each pluck differs as a harpist's do (Chadefaux et al., JASA 131 (2012)
     // 844). Where the finger meets the string: Fig. 7's spread of the pluck
     // point over the string's length, 0.012 on a 17.6 cm string to 0.022 on
@@ -3506,11 +3544,120 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // default 27 %, its 3rd to 6th partials stand 11 dB higher against the
     // fundamental than the finger's (AculyreEngineTests). The clamp lets it
     // reach 2 % from the bridge, where POSITION's 6 % sends it.
-    const double reach = controls.technique == Technique::Plectrum ? 0.40 : 1.0;
+    // Drawn before the contact, which happens there.
+    const double reach = plectrum ? 0.40 : 1.0;
     const double positionSpread = std::clamp(0.012 + 0.010 * (voice.length - 0.176) / (0.975 - 0.176),
                                              0.012, 0.022);
     const double position = std::clamp(reach * controls.pluckPosition + positionSpread * s.random.gaussian(),
                                        0.02, 0.7);
+    // The contact on one plane: the period the loop would bring to the
+    // bridge next, each partial n scaled by exp(-hold (1 - cos 2 pi n x)),
+    // which over a period is a sum of circular shifts by k x of it weighted
+    // by e^-hold I_k(hold) (the Bessel expansion of exp(hold cos)); the loop
+    // is stopped and that period arrives instead, as a pluck's first round
+    // trip does. Returns the share of the wave's amplitude kept.
+    const auto contact = [&] (Loop& loop, double hold, double& oldEnergy, double& keptEnergy)
+    {
+        const int count = std::clamp(static_cast<int>(std::ceil(loop.loopDelay)), 2, delayCapacity);
+        std::array<double, delayCapacity>& wave = s.contactWave;
+        std::array<double, delayCapacity>& kept = s.contactKept;
+        s.contactLoop = loop;
+        double before = 0.0;
+        for (int k = 0; k < count; ++k)
+        {
+            wave[static_cast<std::size_t>(k)] = s.contactLoop.freeStep();
+            before += wave[static_cast<std::size_t>(k)] * wave[static_cast<std::size_t>(k)];
+        }
+        // e^-a I_k(a) by Miller's backward recurrence, I_(k-1) = I_(k+1) +
+        // (2k / a) I_k, normalised by e^a = I_0 + 2 sum I_k.
+        constexpr int maxTerms = 64;
+        std::array<double, maxTerms + 2> weight {};
+        double next = 0.0, current = 1.0e-30, sum = 0.0;
+        for (int k = maxTerms; k >= 1; --k)
+        {
+            const double previous = next + 2.0 * k / hold * current;
+            next = current;
+            current = previous;
+            weight[static_cast<std::size_t>(k - 1)] = current;
+            if (current > 1.0e250)
+            {
+                for (int j = k - 1; j <= maxTerms; ++j)
+                    weight[static_cast<std::size_t>(j)] *= 1.0e-250;
+                current *= 1.0e-250;
+                next *= 1.0e-250;
+            }
+        }
+        sum = weight[0];
+        for (int k = 1; k <= maxTerms; ++k)
+            sum += 2.0 * weight[static_cast<std::size_t>(k)];
+        const double shift = position * count;
+        const auto at = [&] (double t)
+        {
+            // Catmull-Rom over the circular period.
+            t -= count * std::floor(t / count);
+            const int i = static_cast<int>(t);
+            const double f = t - i;
+            const auto w = [&] (int j) { return wave[static_cast<std::size_t>(((j % count) + count) % count)]; };
+            const double y0 = w(i - 1), y1 = w(i), y2 = w(i + 1), y3 = w(i + 2);
+            return y1 + 0.5 * f * (y2 - y0 + f * (2.0 * y0 - 5.0 * y1 + 4.0 * y2 - y3 + f * (3.0 * (y1 - y2) + y3 - y0)));
+        };
+        double after = 0.0;
+        for (int j = 0; j < count; ++j)
+        {
+            double value = weight[0] / sum * wave[static_cast<std::size_t>(j)];
+            for (int k = 1; k <= maxTerms; ++k)
+            {
+                const double w = weight[static_cast<std::size_t>(k)] / sum;
+                if (w < 1.0e-9)
+                    break;
+                value += w * (at(j - k * shift) + at(j + k * shift));
+            }
+            kept[static_cast<std::size_t>(j)] = value;
+            after += value * value;
+        }
+        loop.silence();
+        for (int k = 0; k < count; ++k)
+            loop.pending[static_cast<std::size_t>((loop.write + k) & (delayCapacity - 1))]
+                += static_cast<float>(kept[static_cast<std::size_t>(k)]);
+        loop.pendingAhead = count;
+        oldEnergy += before;
+        keptEnergy += after;
+        return before > 0.0 ? std::sqrt(after / before) : 0.0;
+    };
+    if (sounding)
+    {
+        const double held = std::min(0.056, static_cast<double>(s.clock - voice.lastOnset) / sampleRate_);
+        const double hold = plectrum ? 2.15 : held / 0.010;
+        double oldEnergy = 0.0, keptEnergy = 0.0;
+        for (Loop* loop : { &voice.normal, &voice.parallel })
+        {
+            const double last = loop->last;
+            const double share = pitchChanged || !(hold > 0.0) ? 0.0 : contact(*loop, hold, oldEnergy, keptEnergy);
+            if (share == 0.0)
+                loop->silence();
+            const double stopped = 2.0 * voice.impedance * (1.0 - share) * last;
+            if (loop == &voice.normal)
+                for (std::size_t c = 0; c < barCoordinates; ++c)
+                    preload[c] -= stopped * port[c];
+            else
+                preload[2] -= stopped;
+        }
+        const float ratio = oldEnergy > 0.0 ? static_cast<float>(keptEnergy / oldEnergy) : 0.0f;
+        for (float& square : voice.squares)
+            square *= ratio;
+    }
+    voice.lastOnset = s.clock;
+    // A plectrum re-striking a string that still sounds is a tremolo, played
+    // in alternate strokes: the upstroke drags the string the other way
+    // along the top, so its parallel plane starts with the opposite sign,
+    // as Acustra's strummed upstroke does (strumParallelSign_). A string
+    // struck fresh starts down.
+    voice.upStroke = plectrum && sounding && !voice.upStroke;
+    const double strokeSign = voice.upStroke ? -1.0 : 1.0;
+    // The other hand sets the lever before the pluck.
+    if (pitchChanged)
+        applyPitch(index, raise, extensionKey);
+
     // The player evens the scale by what is heard: the microphones, the
     // piezo, or between the two as the blend sets.
     const StringSpec& string = instrument.strings[static_cast<std::size_t>(index)];
@@ -3615,7 +3762,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         const double pluckPoint = position * length;
         // The displacement the held force sets, A = F x (L - x) / (T L).
         const double amplitude = force * pluckPoint * (length - pluckPoint) / (voice.tension * length)
-                               * std::sqrt(plane == 0 ? normalShare : 1.0 - normalShare);
+                               * (plane == 0 ? std::sqrt(normalShare) : strokeSign * std::sqrt(1.0 - normalShare));
         const double kink = amplitude * (1.0 / pluckPoint + 1.0 / (length - pluckPoint));
         // The released shape, a triangle.
         const auto shape = [&] (double x)
@@ -3777,6 +3924,7 @@ bool AculyreEngine::idle() const noexcept { return state_->idle; }
 void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
 {
     State& s = *state_;
+    s.clock += numSamples;
     if (s.idle)
     {
         std::fill(left, left + numSamples, 0.0f);

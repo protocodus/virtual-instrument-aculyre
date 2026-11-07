@@ -24,6 +24,17 @@ reference recording below.
 
 ## Version history
 
+- **0.9.0** (prototype, not released): a re-pluck plays on the string that
+  is still ringing. The finger or plectrum touches it at the point it
+  plucks, so the partials with a node there ring on into the new note while
+  the rest stop: a finger holds the string for up to 56 ms (the shortest
+  hold harpists were measured with) at the 10 ms a finger takes to silence
+  a string, a plectrum stops the same 0.3 of the wave on average it did
+  before. Which partials survive follows where each pluck lands and what
+  the string was doing, so no two re-plucks match. A plectrum re-striking a
+  sounding string alternates down and up strokes. A steel plectrum tremolo
+  differs from 0.8.1 by a signal 10 to 12 dB under it, a finger tremolo by
+  22 to 31 dB; first plucks are unchanged.
 - **0.8.1** (prototype, not released): the player holds the instrument.
   Acustra 1.6.2's fixed torso and forearm contact loss, copied unchanged,
   damps every soundbox mode, since the body's Qs come from a guitar measured
@@ -288,7 +299,7 @@ reference recording below.
 - **0.4.0** (prototype, not released): the instruments run at 1x, 2x or 4x
   the host rate (1x by default). Nylon and gut strings are damped as
   measured harp strings are. Plucks scatter in point, force, angle and slip
-  as harpists' do. A finger stops a sounding string before re-plucking it.
+  as harpists' do. A finger stops a sounding string before re-plucking it (from 0.9.0, all but the partials with a node at its point).
   Each string is tuned by hand, a few cents off its note. The soundbox runs
   about 30% faster, and a silent instance sleeps.
 - **0.3.0** (prototype, not released): the pluck's held force unloads
@@ -380,10 +391,17 @@ control. The release follows each pluck's own displacement through the
 1.2th-power law, and scatters by 40% on its own besides, twice what the
 harpist's spread leaves once the displacement is taken out (25% against
 14%), at the owner's request that each pluck sound different. A finger meeting a sounding string
-stops it first, as a harpist's finger holds the string 56 to 431 ms before
-letting go (Chadefaux et al., Table II); a plectrum glances off and stops most
-of it. A finger's contact silences a string in about 10 ms (Laurson et al.,
-CMJ 25(3) 2001), slow against the body's periods, so the body takes the
+holds it at the point it plucks, as a harpist's finger holds the string 56 to 431 ms before
+letting go (Chadefaux et al., Table II), and a finger's contact silences a
+string in about 10 ms (Laurson et al., CMJ 25(3) 2001): over the hold, the
+shortest measured or less when the string was plucked less than 56 ms ago,
+it damps partial n as sin^2(n pi x / L), as the hand's dashpot does, so the
+partials with a node near the finger ring on into the new pluck, and which
+they are follows where this pluck lands. A plectrum glances off and stops
+most of it, the same way at its own point (0.3 of the wave on average, as
+Acustra's picking contact keeps), and re-striking a sounding string it
+alternates down and up strokes, the upstroke dragging the string the other
+way along the top. The finger's 10 ms are slow against the body's periods, so the body takes the
 force the stopped wave leaves as it takes the held force, without the click
 of a step. Tension modulation raises the pitch of a hard pluck
 for its first moments. The touch is even, a voicing rather than a

@@ -3,6 +3,31 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-07: a re-pluck plays on the ringing string, and a plectrum tremolo alternates (0.9.0), chosen by default
+
+**What was decided.** The owner asked that repeated plucks and tremolo on
+one string sound natural and never repeat, respecting the instrument's
+physics. A re-pluck had stopped the whole wave (finger, nail) or kept 0.3 of
+it everywhere (plectrum). Now the contact acts at the pluck point, as the
+hand's dashpot does: partial n keeps exp(-hold (1 - cos 2 pi n x)), the hold
+for a finger the shortest Chadefaux et al. measured (56 ms, less when the
+string was plucked more recently) in units of Laurson et al.'s 10 ms, for a
+plectrum 2.15, which keeps Acustra's 0.3 on average. A plectrum re-striking a
+sounding string alternates strokes, its upstroke's parallel plane flipped
+as Acustra's strummed upstroke is. A letter-coded set (A 0.8.1, B 0.9.0;
+steel finger and plectrum, gut finger and nylon nail tremolos on one string;
+RMS-matched) was sent; B ships by the project's standing rule unless the
+owner prefers A. The engine test's finger limit (1.5 times a fresh pluck)
+assumed the whole wave stopped and now compares the finger with the plectrum.
+
+**What it measured but did not license.** Over the DR lyre harp's three
+takes of eight notes, the share of each attack's first 50 ms that does not
+repeat from take to take is 0.19 at 3-8 kHz and 0.73 at 8-16 kHz, where the
+model's fresh plucks give 0.07 and 0.52 (1-3 kHz 0.061 against 0.025, below 1 kHz 0.008 against 0.003). The
+takes' pluck points scatter by 0.009 of the length (median), as the model's
+do, so the gap is not where the finger lands. A finger's contact noise could
+fill it, but no measurement gives its spectrum or level, so nothing ships.
+
 ## 2026-11-07: the player's body loss from Acustra (0.8.1), the owner's choice over the A-Z limit
 
 **What was decided.** The owner pointed at Acustra's held-player body loss

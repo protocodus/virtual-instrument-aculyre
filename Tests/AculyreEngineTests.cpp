@@ -680,9 +680,14 @@ int main()
         check(energy[1] > 1000.0 * energy[0], "release lets a let-go string ring");
     }
 
-    // A finger re-plucking a sounding string stops it first; a plectrum
-    // leaves some of the old note ringing. The reference plucks another
-    // string first, so the second pluck takes the same random draws.
+    // A finger re-plucking a sounding string stops all of it but the
+    // partials with a node near its point (0.9.0: until then it stopped the
+    // whole wave, and this limit was 1.5 times a fresh pluck); a plectrum's
+    // brief contact leaves much more of the old note ringing. A soft
+    // re-pluck of a loud A4 at 0.27 keeps the 4th partial at about -6 dB,
+    // under 1 % of the loud note's energy but twice the soft pluck's own.
+    // The reference plucks another string first, so the second pluck takes
+    // the same random draws.
     {
         const auto plucked = [] (aculyre::Technique technique, int first)
         {
@@ -705,7 +710,7 @@ int main()
         const double plectrum = plucked(aculyre::Technique::Plectrum, 69) / plucked(aculyre::Technique::Plectrum, 60);
         std::printf("soft re-pluck of a loud A4, string energy re a fresh pluck: finger %.2f, plectrum %.2f\n",
                     finger, plectrum);
-        check(finger < 1.5, "a finger stops the string it re-plucks");
+        check(finger < 0.25 * plectrum, "a finger stops more of the string it re-plucks than a plectrum");
         check(plectrum > 2.0, "a plectrum leaves some of the old note");
     }
 

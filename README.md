@@ -24,6 +24,21 @@ reference recording below.
 
 ## Version history
 
+- **0.8.0** (prototype, not released): four changes to the body and the
+  hand, each from published physics. The air in the box is no longer only a
+  Helmholtz plug: its rigid-box standing waves (Morse and Ingard) join the
+  top's and the back's modes in the coupled eigenproblem, so the gut lyre,
+  which has no soundhole, gains cavity-coupled modes at `397` and `586 Hz`.
+  The outside air's mass loads each plate mode below its coincidence, which
+  lowers the lyre harps' first top mode from `835` to `821 Hz` and the back's
+  from `507` to `498`. Spruce damps by grain direction, from Viala, Placet
+  and Cogan's thirty tonewood samples (0.73 % along, 1.7 % across, 1.2 % in
+  shear), so modes bending across the grain ring shorter than those along
+  it. The hand that keeps idle strings still now touches each at a point,
+  as the playing hand does, so partials with a node there ring on briefly.
+  On the DR lyre harp the fundamentals' decay moves from `2.11` to `2.03`
+  (log2 rms) and partials 2-6 from `0.84` to `0.73`; the third-octave shape
+  from `4.2 / 6.7` to `4.3 / 6.5` dB rms. Touch is evened again for it.
 - **0.7.10** (prototype, not released): the same sound for about 15 % less
   CPU while playing (the three demos at 48 kHz, 39.0 % to 33.3 % of a core
   in the Rack's code generation; 13 % less at 96 and 192 kHz), every sample
@@ -386,14 +401,21 @@ with it, so each string drives the modes beneath its own place instead of
 an average along the bar. The bar stands on a modal
 soundbox: an orthotropic plate (Warburton's clamped-plate frequencies,
 simply-supported shapes for the bar's participation), coupled through the
-cavity's stiffness to a Helmholtz air plug when the box has a soundhole, and
+cavity's stiffness to a Helmholtz air plug when the box has a soundhole and
+to the box's own standing waves (a rigid rectangular cavity, Morse and
+Ingard; the plug keeps only the mass they leave), and
 on the lyre harps to a 4 mm maple back, a clamped plate of its own whose
 modes with a net volume join the top's in the same eigenproblem below 4 kHz
 and radiate only that volume (the box stands between its edges and the
-microphones). Mode
+microphones). Below its coincidence each plate mode carries the outside
+air's incompressible mass, rho over its wavenumber, which lowers the first
+top mode about 1 %. Mode
 Qs are authored from the spread of Acustra's measured guitar bridge (16-75
 below 1.5 kHz, 5-36 above 2 kHz): 23 to 1 kHz, its lower quartile, falling
-to 10 at 2 kHz and 9 at 10 kHz, its median, and 20 for the air mode. The
+to 10 at 2 kHz and 9 at 10 kHz, its median, and 20 for the air mode. A spruce plate's modes depart
+from that median by their strain energy along the grain, across it and in
+shear, weighted by Viala, Placet and Cogan's loss factors (J. Cultural
+Heritage, 2020). The
 junction is solved implicitly every sample, so it is passive and every string, played or idle, is coupled to every other.
 
 **Radiation and room.** Each mode radiates its net volume change as a
@@ -540,7 +562,7 @@ it, a dashpot at that point: partial n is damped as sin^2(n pi x / L), so
 the partials with a node near the touch ring on for a moment, the
 flageolet a light touch makes, where a fade had taken every partial alike;
 mute rests a palm across every string; sympathy rests a hand on the strings
-nobody plucked. With the sharping levers on, a note a semitone above a
+nobody plucked, touching each at a point as the playing hand does. With the sharping levers on, a note a semitone above a
 string's own raises that string's lever, which shortens its speaking length
 by a semitone, and the string's own note lowers it again, as a lyre harp
 player sets the levers by hand. Keys past the strings, down to A0 and up
@@ -607,7 +629,7 @@ nothing until the next pluck.
 - No body is measured: every soundbox is a plate-and-air model with assumed
   dimensions, so where its modes fall against the strings is a guess, and that
   sets which notes are loud, which are dead and how fast they decay. The
-  lyre harps' first top mode, 835 Hz on the 6 mm top, drains the treble:
+  lyre harps' first top mode, 821 Hz on the 6 mm top, drains the treble:
   plucked alone at velocity 0.7, the steel A5's fundamental falls 38 dB
   from 0.12 to 0.7 s and G5's 23, where D5 to F5 fall 8 to 15 and the
   strings below 3 to 8. The DR lyre harp's G5 falls as fast (60 dB/s), but
@@ -624,6 +646,11 @@ nothing until the next pluck.
   harp's range; the 3 mm top before 0.7.2 ran -44 to -53 and peaked at
   -25 dB at 455 Hz. How much a lyre harp's small top couples, no
   measurement says.
+- The box's air is a rigid rectangular cavity, its interior mass on the
+  plates left out (the outside's is kept), and the lyre harp's soundhole
+  position, 0.70 of the way up the top, is assumed. Maple has no published
+  loss factors in all three directions, so the back and the gut lyre's top
+  keep one loss for every mode.
 - Nylon and gut damping follow one published fit to measured harp strings,
   not strings from these instruments; gut varied most from string to string
   in that study.

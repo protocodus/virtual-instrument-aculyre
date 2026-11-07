@@ -73,6 +73,13 @@ struct WoodSpec
     double eAcross;      // Pa
     double shear;        // Pa, G_LR
     double poisson;      // nu_LR
+    // Material loss factors along the grain, across it and in shear (LR),
+    // where a measurement gives them; 0 where none does, and the body's mode
+    // damping is then the wooden-box statistics alone (AculyreEngine.cpp,
+    // woodQ).
+    double lossAlong { 0.0 };
+    double lossAcross { 0.0 };
+    double lossShear { 0.0 };
 };
 
 struct BodySpec
@@ -93,6 +100,10 @@ struct BodySpec
     WoodSpec bridgeWood;
     double backThickness;  // m; 0 for a back too thick to move (a carved box)
     WoodSpec backWood;
+    // The soundhole's centre, along the top from its lower edge (a fraction
+    // of topLength), centred across the width: where the box's standing
+    // waves press on the air in the hole.
+    double holeAlong { 0.5 };
 };
 
 enum class Technique

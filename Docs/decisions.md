@@ -3,6 +3,30 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-07: the box's standing waves, the air's mass, spruce's grain damping and a resting hand at a point (0.8.0), chosen by default
+
+**What was decided.** Whether four changes, each grounded in published
+physics rather than a fitted number, should ship: the cavity's standing
+waves coupled to the plates (Morse and Ingard's rigid rectangular box), the
+outside air's accession to inertia on each plate mode below coincidence,
+spruce's loss by grain direction (Viala, Placet and Cogan, Journal of
+Cultural Heritage 2020: 0.73 % along, 1.7 % across, 1.2 % shear, Picea
+abies), and the sympathy hand as a dashpot at a point. A letter-coded set
+(A 0.7.10, B the candidate; the three preset demos and the steel single
+notes; RMS-matched, B trimmed -1.0 to +0.5 dB) was sent to the owner. The
+project's standing rule takes the candidate unless the owner says otherwise,
+so B ships by default, not by ear. On the DR lyre harp's notes the
+fundamentals' decay moves from 2.11 to 2.03 (log2 rms, model over
+recording), partials 2-6 from 0.84 to 0.73, the third-octave shape from
+4.2 / 6.7 to 4.3 / 6.5 dB rms (first 0.3 s / after).
+
+**What it licensed.** `WoodSpec` loss factors for spruce only (maple has
+none published in all three directions), `BodySpec::holeAlong` (assumed
+0.70 on the lyre harps), the cavity modes up to 4 kHz in the coupled
+system, and the touch evened again. Nothing else: the candidates without a
+measured number (a palm's width, the yoke's and the player's body's
+damping, gauges inferred from the samples) were left out.
+
 ## 2026-11-03: the lyre harps' back is a vibrating 4 mm plate (0.7.9), chosen by ear
 
 **What was decided.** Whether the lyre harps' soundbox back, rigid until now,

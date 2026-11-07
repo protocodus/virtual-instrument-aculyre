@@ -39,6 +39,9 @@ constexpr int lowestKey = 21;
 constexpr int highestKey = 108;
 constexpr int controlPeriod = 16;
 constexpr int maxDispersionStages = 8;
+// The soundbox's coupled eigenproblem: top and back modes, the air in the
+// hole and the box's standing waves below 4 kHz (setInstrument).
+constexpr std::size_t coupledCapacity = 192;
 constexpr int dispersionPairs = 4;
 
 // ---------------------------------------------------------------------------
@@ -2087,6 +2090,9 @@ struct AculyreEngine::State
 
     std::array<Mode, maxModes> modes {};
     int modeCount { 0 };
+    // setInstrument()'s working space for the soundbox's coupled modes.
+    std::array<std::array<double, coupledCapacity>, coupledCapacity> coupledSystem {}, coupledVectors {},
+        coupledOverlaps {};
     ModeBank bank {};
     // The modes' state at the bridge, sum(pull s1): process() sums it as it
     // updates them, noteOn's preload makes it stale.
@@ -2211,7 +2217,37 @@ struct PlateMode
     BarVector participation {};
     double multipoleLeft { 0.0 };
     double multipoleRight { 0.0 };
+    // The outside air's mass on the mode, as a factor on its own
+    // (airLoading), and its wood's loss factor (0 where the wood has none).
+    double loading { 1.0 };
+    double loss { 0.0 };
 };
+
+// The air outside a plate rides on each of its modes below their own
+// coincidence: an incompressible fluid's accession to inertia, rho / kappa
+// per unit area of a pattern of wavenumber kappa (Fahy and Gardonio, Sound
+// and Structural Vibration, 2nd ed. 2007, ch. 4: the fluid-loading mass of a
+// plate wave, rho / sqrt(kappa^2 - k^2), at k << kappa). Its factor on the
+// mode's mass; a mode at or above its coincidence radiates its load instead
+// of carrying it. One face only: inside, the box's air is its own modes
+// (setInstrument). It lowers the first mode of the lyre harps' 6 mm spruce
+// top, their 4 mm maple back and the gut lyre's 4 mm maple top by 1.1% each
+// (835 to 826 Hz on the lyre harps' top).
+double airLoading(double frequency, int m, int n, double a, double b, double surfaceMass) noexcept
+{
+    const double kappa = std::hypot(m * pi / a, n * pi / b);
+    const double k = 2.0 * pi * frequency / soundSpeed;
+    return k < kappa ? 1.0 + airDensity / (kappa * surfaceMass) : 1.0;
+}
+
+// integral_0^L sin(m pi x / L) cos(p pi x / L) dx: how a plate mode's shape
+// along one side meets a standing wave of the box's air along it.
+double sineCosineOverlap(int m, int p, double length) noexcept
+{
+    if (m == p || (m + p) % 2 == 0)
+        return 0.0;
+    return length / pi * 2.0 * m / static_cast<double>(m * m - p * p);
+}
 
 } // namespace
 
@@ -2247,21 +2283,36 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     int plateCount = 0;
     Random modeRandom;
     modeRandom.seed(0xa1c0ffee12345ull);
+    const bool woodLosses = wood.lossAlong > 0.0;
     for (int m = 1; m <= 60; ++m)
         for (int n = 1; n <= 60; ++n)
         {
             const double gm = warburtonG(m), gn = warburtonG(n);
-            const double stiffness = dAlong * std::pow(gm / a, 4.0)
-                + 2.0 * dCross * warburtonH(m) * warburtonH(n) / (a * a * b * b)
-                + dAcross * std::pow(gn / b, 4.0);
+            const double along = dAlong * std::pow(gm / a, 4.0);
+            const double across = dAcross * std::pow(gn / b, 4.0);
+            const double crossCommon = 2.0 * warburtonH(m) * warburtonH(n) / (a * a * b * b);
+            const double stiffness = along + crossCommon * dCross + across;
             double frequency = 0.5 * pi * std::sqrt(stiffness / surfaceMass);
             // A real soundboard is no perfect rectangle: modes past the first
             // few scatter about the ideal plate's (a seeded, fixed draw).
             const double scatter = modeRandom.bipolar();
             if (m + n > 3)
                 frequency *= std::exp(0.05 * scatter);
+            const double loading = airLoading(frequency, m, n, a, b, surfaceMass);
+            frequency /= std::sqrt(loading);
             if (frequency >= topFrequencyLimit)
                 continue;
+            // The wood's own loss, by where the mode keeps its strain energy:
+            // bending along the grain, across it, twisting (LR shear) and the
+            // Poisson coupling of the two bendings, which strains both
+            // directions and takes their mean. Each term of the plate's
+            // stiffness is that share.
+            const double loss = woodLosses
+                ? (wood.lossAlong * along + wood.lossAcross * across
+                   + crossCommon * (2.0 * dTwist * wood.lossShear
+                                    + wood.poisson * dAcross * 0.5 * (wood.lossAlong + wood.lossAcross)))
+                  / stiffness
+                : 0.0;
             if (plateCount >= maxModes - 1)
             {
                 // Keep the lowest modes.
@@ -2276,12 +2327,16 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 plate[static_cast<std::size_t>(highest)].m = m;
                 plate[static_cast<std::size_t>(highest)].n = n;
                 plate[static_cast<std::size_t>(highest)].frequency = frequency;
+                plate[static_cast<std::size_t>(highest)].loading = loading;
+                plate[static_cast<std::size_t>(highest)].loss = loss;
                 continue;
             }
             PlateMode mode;
             mode.m = m;
             mode.n = n;
             mode.frequency = frequency;
+            mode.loading = loading;
+            mode.loss = loss;
             plate[static_cast<std::size_t>(plateCount++)] = mode;
         }
     std::sort(plate.begin(), plate.begin() + plateCount,
@@ -2354,7 +2409,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 meanBentSine[static_cast<std::size_t>(bend)]
                     += barShapes[static_cast<std::size_t>(bend)][static_cast<std::size_t>(point)] * sineX * sine / points;
         }
-        mode.mass = 0.25 * plateMass;
+        mode.mass = 0.25 * plateMass * mode.loading;
         mode.participation[0] = meanSine;
         mode.participation[1] = 3.0 * meanLeveredSine;
         mode.participation[2] = body.bridgeHeight * kx * meanSwaySine;
@@ -2410,25 +2465,59 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                             * (0.7 + 0.3 * std::abs(modeRandom.bipolar()));
     }
 
-    // The air in the soundhole couples to every plate mode with a net volume
-    // through the cavity's stiffness rho c^2 / V (a Helmholtz resonator on a
-    // flexible wall: Christensen and Vistisen, JASA 68(3), 1980, generalised
-    // to many plate modes). Solved as one symmetric eigenproblem.
-    constexpr std::size_t coupledCapacity = 48;
+    // The wood's own loss enters each top mode's damping as its departure
+    // from the top's median mode: the mode Qs (woodQ) are a whole box's,
+    // measured on a guitar, so they hold a typical mode's wood loss among
+    // the box's other losses; a mode bending mostly across the grain loses
+    // more than that, one along it less.
+    double referenceLoss = 0.0;
+    if (woodLosses && plateCount > 0)
+    {
+        std::array<double, maxModes> losses {};
+        for (int index = 0; index < plateCount; ++index)
+            losses[static_cast<std::size_t>(index)] = plate[static_cast<std::size_t>(index)].loss;
+        std::nth_element(losses.begin(), losses.begin() + plateCount / 2, losses.begin() + plateCount);
+        referenceLoss = losses[static_cast<std::size_t>(plateCount / 2)];
+    }
+    const auto lossDeparture = [&] (const PlateMode& mode) { return woodLosses ? mode.loss - referenceLoss : 0.0; };
+
+    // The box's air. Its uniform compression couples every wall mode with a
+    // net volume through the cavity's stiffness rho c^2 / V, and the air in
+    // the soundhole rides on it as a Helmholtz resonator on flexible walls
+    // (Christensen and Vistisen, JASA 68(3), 1980, generalised to many plate
+    // modes). Its standing waves couple the walls too: a rigid rectangular
+    // box's acoustic modes cos(p pi x / a) cos(q pi y / b) cos(r pi z / d)
+    // at c/2 sqrt((p/a)^2 + (q/b)^2 + (r/d)^2) (Morse and Ingard, Theoretical
+    // Acoustics, 1968, Sec. 9.4), each pressed by every wall mode whose shape
+    // overlaps its own (S_ic) and pressing on the air in the hole where the
+    // hole sits. A guitar's box shows them as its A1 and A2 air modes, which
+    // couple its top and back modes (Jansson, Acustica 37 (1977) 211; Ezcurra,
+    // Elejabarrieta and Santamaria, JASA 2005). On the lyre harp's 20 x 30 x 4.3 cm
+    // box the first fall at 572 Hz (across the strings), 858 Hz (along
+    // them) and 1031 Hz, through the bass strings' upper partials and the
+    // treble's fundamentals; on the gut lyre's closed box at 476 and 953 Hz.
+    // With p_c the pressure in standing wave c, beta_c = rho c^2 / (V
+    // Lambda_c) and Lambda_c its mean square shape, the walls feel S p and
+    // the air obeys p_c'' + w_c^2 p_c = -beta_c sum S_ic w_i''; with q_c =
+    // p_c + beta_c sum S_ic w_i the system is symmetric: each standing wave
+    // a coordinate of mass 1 / (beta_c w_c^2) and stiffness 1 / beta_c, -S_ic
+    // its coupling, and beta_c S_ic S_jc added to the walls' stiffness (the
+    // uniform compression is the w_c = 0 term). Every top and back mode below
+    // 4 kHz and every standing wave below it join one symmetric eigenproblem.
+    // The standing waves take the air's damping (airQ) by their share of each
+    // coupled mode's energy, as the air in the hole does.
+    constexpr double coupledLimit = 4000.0;
     std::array<int, coupledCapacity> coupledIndex {};
     int coupledCount = 0;
     const bool hasHole = body.holeRadius > 0.0;
-    for (int index = 0; index < plateCount && coupledCount < static_cast<int>(coupledCapacity) - 1; ++index)
-        if (plate[static_cast<std::size_t>(index)].volume != 0.0
-            && plate[static_cast<std::size_t>(index)].frequency < 4000.0)
+    for (int index = 0; index < plateCount && coupledCount < static_cast<int>(coupledCapacity) / 3; ++index)
+        if (plate[static_cast<std::size_t>(index)].frequency < coupledLimit)
             coupledIndex[static_cast<std::size_t>(coupledCount++)] = index;
     // The back: a clamped plate of its own wood on the top's footprint, which
-    // the strings reach only through the air in the box. Its modes with a
-    // net volume move the cavity as the top's do, so they join the same
-    // eigenproblem below 4 kHz; the rest are never driven. It radiates its
-    // net volume only: the box stands between its edges and the
-    // microphones.
+    // the strings reach only through the air in the box. It radiates its net
+    // volume only: the box stands between its edges and the microphones.
     std::array<double, coupledCapacity> backFrequency {}, backMass {}, backVolume {};
+    std::array<int, coupledCapacity> backM {}, backN {};
     int backCount = 0;
     if (body.backThickness > 0.0)
     {
@@ -2440,25 +2529,32 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         const double backAlong = backWood.eAlong * backCommon;
         const double backAcross = backWood.eAcross * backCommon;
         const double backCross = backWood.poisson * backAcross + 2.0 * backWood.shear * hb * hb * hb / 12.0;
-        Random backRandom;
+        Random backRandom, backEvenRandom;
         backRandom.seed(0xba0cba0cba0cull);
-        for (int m = 1; m <= 59; m += 2)
-            for (int n = 1; n <= 59; n += 2)
+        backEvenRandom.seed(0xba0cba0cba0dull);
+        for (int m = 1; m <= 59; ++m)
+            for (int n = 1; n <= 59; ++n)
             {
                 const double gm = warburtonG(m), gn = warburtonG(n);
                 const double stiffness = backAlong * std::pow(gm / a, 4.0)
                     + 2.0 * backCross * warburtonH(m) * warburtonH(n) / (a * a * b * b)
                     + backAcross * std::pow(gn / b, 4.0);
                 double frequency = 0.5 * pi * std::sqrt(stiffness / backSurfaceMass);
-                const double scatter = backRandom.bipolar();
+                // The odd-odd modes keep the draws they had when only they
+                // met the air (before 0.8.0); the rest draw from their own.
+                const double scatter = (m % 2 == 1 && n % 2 == 1) ? backRandom.bipolar() : backEvenRandom.bipolar();
                 if (m + n > 3)
                     frequency *= std::exp(0.05 * scatter);
-                if (frequency >= 4000.0 || coupledCount + backCount >= static_cast<int>(coupledCapacity) - 1)
+                const double loading = airLoading(frequency, m, n, a, b, backSurfaceMass);
+                frequency /= std::sqrt(loading);
+                if (frequency >= coupledLimit || backCount >= static_cast<int>(coupledCapacity) / 3)
                     continue;
                 const auto k = static_cast<std::size_t>(backCount++);
                 backFrequency[k] = frequency;
-                backMass[k] = 0.25 * backSurfaceMass * a * b;
-                backVolume[k] = 4.0 * a * b / (m * n * pi * pi);
+                backMass[k] = 0.25 * backSurfaceMass * a * b * loading;
+                backVolume[k] = (m % 2 == 1 && n % 2 == 1) ? 4.0 * a * b / (m * n * pi * pi) : 0.0;
+                backM[k] = m;
+                backN[k] = n;
             }
     }
     const int wallCount = coupledCount + backCount;
@@ -2467,33 +2563,111 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     // End corrections of a hole in a thin wall, flanged both sides.
     const double neckLength = h + 1.7 * body.holeRadius;
     const double plugMass = airDensity * holeArea * neckLength;
-    const double cavityStiffness = airDensity * soundSpeed * soundSpeed / body.cavityVolume;
-    const int systemSize = wallCount + (hasHole ? 1 : 0);
+    const double depth = body.cavityVolume / (a * b);
+    const double compression = airDensity * soundSpeed * soundSpeed / body.cavityVolume;
+    const int airIndex = wallCount + (hasHole ? 1 : 0);
 
-    std::array<std::array<double, coupledCapacity>, coupledCapacity> system {};
+    // The standing waves below the coupled limit.
+    struct StandingWave
+    {
+        int p, q, r;
+        double omega, beta;
+    };
+    std::array<StandingWave, coupledCapacity> waves {};
+    int waveCount = 0;
+    for (int r = 0; r <= 4; ++r)
+        for (int p = 0; p <= 40; ++p)
+            for (int q = 0; q <= 40; ++q)
+            {
+                if (p + q + r == 0)
+                    continue;
+                const double frequency = 0.5 * soundSpeed * std::sqrt(std::pow(p / a, 2.0) + std::pow(q / b, 2.0)
+                                                                      + std::pow(r / depth, 2.0));
+                if (frequency >= coupledLimit || airIndex + waveCount >= static_cast<int>(coupledCapacity))
+                    continue;
+                const double lambda = (p > 0 ? 0.5 : 1.0) * (q > 0 ? 0.5 : 1.0) * (r > 0 ? 0.5 : 1.0);
+                waves[static_cast<std::size_t>(waveCount++)]
+                    = { p, q, r, 2.0 * pi * frequency, compression / lambda };
+            }
+    const int systemSize = airIndex + waveCount;
+
+    // Each coordinate's overlap with the uniform compression and with each
+    // standing wave: the top at z = d, the back at z = 0, the hole on the top.
+    const auto overlap = [&] (int i, int wave) -> double
+    {
+        if (wave < 0)
+        {
+            if (i < coupledCount)
+                return plate[static_cast<std::size_t>(coupledIndex[static_cast<std::size_t>(i)])].volume;
+            if (i < wallCount)
+                return backVolume[static_cast<std::size_t>(i - coupledCount)];
+            return holeArea;
+        }
+        const StandingWave& w = waves[static_cast<std::size_t>(wave)];
+        const double top = (w.r % 2 == 0) ? 1.0 : -1.0;
+        if (i < coupledCount)
+        {
+            const PlateMode& mode = plate[static_cast<std::size_t>(coupledIndex[static_cast<std::size_t>(i)])];
+            return top * sineCosineOverlap(mode.m, w.p, a) * sineCosineOverlap(mode.n, w.q, b);
+        }
+        if (i < wallCount)
+        {
+            const auto k = static_cast<std::size_t>(i - coupledCount);
+            return sineCosineOverlap(backM[k], w.p, a) * sineCosineOverlap(backN[k], w.q, b);
+        }
+        // The hole is centred across the width, on the nodal line of every
+        // standing wave odd across it: exactly zero there, so the symmetry
+        // the bar's centring gives the modes survives (process()).
+        if (w.q % 2 == 1)
+            return 0.0;
+        return top * holeArea * std::cos(w.p * pi * body.holeAlong) * (w.q % 4 == 0 ? 1.0 : -1.0);
+    };
+
+    auto& system = s.coupledSystem;
+    auto& vectors = s.coupledVectors;
     std::array<double, coupledCapacity> masses {};
-    std::array<double, coupledCapacity> volumes {};
+    std::array<double, coupledCapacity> values {};
     for (int i = 0; i < coupledCount; ++i)
-    {
-        const PlateMode& mode = plate[static_cast<std::size_t>(coupledIndex[static_cast<std::size_t>(i)])];
-        masses[static_cast<std::size_t>(i)] = mode.mass;
-        volumes[static_cast<std::size_t>(i)] = mode.volume;
-    }
+        masses[static_cast<std::size_t>(i)] = plate[static_cast<std::size_t>(coupledIndex[static_cast<std::size_t>(i)])].mass;
     for (int i = 0; i < backCount; ++i)
-    {
         masses[static_cast<std::size_t>(coupledCount + i)] = backMass[static_cast<std::size_t>(i)];
-        volumes[static_cast<std::size_t>(coupledCount + i)] = backVolume[static_cast<std::size_t>(i)];
+    // The hole's end corrections already hold the inertia of the air the plug
+    // drags inside the box, which is what the standing waves resolve: their
+    // static share, sum beta_c S_hc^2 / w_c^2, comes off the plug's mass, so
+    // below the first standing wave the plug weighs what the end corrections
+    // say and above it the box's own waves take over (a truncated modal sum's
+    // residual).
+    double plugResidual = plugMass;
+    for (int c = 0; c < waveCount; ++c)
+    {
+        const StandingWave& w = waves[static_cast<std::size_t>(c)];
+        const double sh = hasHole ? overlap(wallCount, c) : 0.0;
+        plugResidual -= w.beta * sh * sh / (w.omega * w.omega);
     }
     if (hasHole)
+        masses[static_cast<std::size_t>(wallCount)] = plugResidual;
+    for (int c = 0; c < waveCount; ++c)
     {
-        masses[static_cast<std::size_t>(wallCount)] = plugMass;
-        volumes[static_cast<std::size_t>(wallCount)] = holeArea;
+        const StandingWave& w = waves[static_cast<std::size_t>(c)];
+        masses[static_cast<std::size_t>(airIndex + c)] = 1.0 / (w.beta * w.omega * w.omega);
     }
+    auto& overlaps = s.coupledOverlaps;
+    for (int i = 0; i < airIndex; ++i)
+        for (int c = -1; c < waveCount; ++c)
+            overlaps[static_cast<std::size_t>(i)][static_cast<std::size_t>(c + 1)] = overlap(i, c);
     for (int i = 0; i < systemSize; ++i)
         for (int j = 0; j < systemSize; ++j)
+            system[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = 0.0;
+    for (int i = 0; i < airIndex; ++i)
+    {
+        const auto si = static_cast<std::size_t>(i);
+        for (int j = 0; j < airIndex; ++j)
         {
-            const auto si = static_cast<std::size_t>(i), sj = static_cast<std::size_t>(j);
-            double stiffness = cavityStiffness * volumes[si] * volumes[sj];
+            const auto sj = static_cast<std::size_t>(j);
+            double stiffness = compression * overlaps[si][0] * overlaps[sj][0];
+            for (int c = 0; c < waveCount; ++c)
+                stiffness += waves[static_cast<std::size_t>(c)].beta * overlaps[si][static_cast<std::size_t>(c + 1)]
+                           * overlaps[sj][static_cast<std::size_t>(c + 1)];
             if (i == j && i < wallCount)
             {
                 const double omega = 2.0 * pi * (i < coupledCount
@@ -2503,13 +2677,23 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             }
             system[si][sj] = stiffness / std::sqrt(masses[si] * masses[sj]);
         }
-    std::array<std::array<double, coupledCapacity>, coupledCapacity> vectors {};
-    std::array<double, coupledCapacity> values {};
+        for (int c = 0; c < waveCount; ++c)
+        {
+            const auto sc = static_cast<std::size_t>(airIndex + c);
+            const double coupling = -overlaps[si][static_cast<std::size_t>(c + 1)] / std::sqrt(masses[si] * masses[sc]);
+            system[si][sc] = system[sc][si] = coupling;
+        }
+    }
+    for (int c = 0; c < waveCount; ++c)
+    {
+        const auto sc = static_cast<std::size_t>(airIndex + c);
+        system[sc][sc] = waves[static_cast<std::size_t>(c)].omega * waves[static_cast<std::size_t>(c)].omega;
+    }
     if (systemSize > 0)
         jacobiEigen(system, systemSize, vectors, values);
 
     s.modeCount = 0;
-    const auto addMode = [&] (double frequency, double airShare,
+    const auto addMode = [&] (double frequency, double airShare, double woodDeparture,
                               const BarVector& participation,
                               double monopole, double left, double right)
     {
@@ -2518,7 +2702,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         Mode mode;
         mode.frequency = frequency;
         const double qWood = woodQ(frequency);
-        mode.q = 1.0 / (airShare / airQ + (1.0 - airShare) / qWood);
+        mode.q = 1.0 / (airShare / airQ + (1.0 - airShare) / qWood + woodDeparture);
         mode.participation = participation;
         mode.monopole = monopole;
         mode.airShare = airShare;
@@ -2539,7 +2723,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         const auto sj = static_cast<std::size_t>(j);
         const double frequency = std::sqrt(std::max(0.0, values[sj])) / (2.0 * pi);
         BarVector participation {};
-        double monopole = 0.0, left = 0.0, right = 0.0;
+        double monopole = 0.0, left = 0.0, right = 0.0, woodDeparture = 0.0;
         for (int i = 0; i < coupledCount; ++i)
         {
             const auto si = static_cast<std::size_t>(i);
@@ -2550,11 +2734,12 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             monopole += psi * mode.volume;
             left += psi * mode.multipoleLeft;
             right += psi * mode.multipoleRight;
+            woodDeparture += vectors[si][sj] * vectors[si][sj] * lossDeparture(mode);
         }
         for (int i = coupledCount; i < wallCount; ++i)
         {
             const auto si = static_cast<std::size_t>(i);
-            monopole += vectors[si][sj] / std::sqrt(masses[si]) * volumes[si];
+            monopole += vectors[si][sj] / std::sqrt(masses[si]) * backVolume[static_cast<std::size_t>(i - coupledCount)];
         }
         double airShare = 0.0;
         if (hasHole)
@@ -2562,9 +2747,11 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             const auto sa = static_cast<std::size_t>(wallCount);
             const double chi = vectors[sa][sj];
             airShare = chi * chi;
-            monopole += chi / std::sqrt(plugMass) * holeArea;
+            monopole += chi / std::sqrt(masses[sa]) * holeArea;
         }
-        addMode(frequency, airShare, participation, monopole, left, right);
+        for (int c = airIndex; c < systemSize; ++c)
+            airShare += vectors[static_cast<std::size_t>(c)][sj] * vectors[static_cast<std::size_t>(c)][sj];
+        addMode(frequency, std::min(1.0, airShare), woodDeparture, participation, monopole, left, right);
     }
     for (int index = 0; index < plateCount; ++index)
     {
@@ -2579,7 +2766,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         BarVector participation = mode.participation;
         for (double& value : participation)
             value *= scale;
-        addMode(mode.frequency, 0.0, participation,
+        addMode(mode.frequency, 0.0, lossDeparture(mode), participation,
                 mode.volume * scale, mode.multipoleLeft * scale, mode.multipoleRight * scale);
     }
     std::sort(s.modes.begin(), s.modes.begin() + s.modeCount,
@@ -3146,11 +3333,13 @@ void AculyreEngine::applyPitch(int string, bool raised, int extensionKey) noexce
     voice.dampingDirty = true;
 }
 
-// Every hand on the string: the palm on all strings and, on an idle string
-// nobody holds, the resting hand, each one loss per round trip reached over
-// a round trip; on a plucked string let go, the playing hand, a dashpot at
-// the point where it plucked (authored: the finger comes back to where it
-// played). A hand stops a string by touching it at a place, so the partials
+// Every hand on the string: the palm on all strings, one loss per round
+// trip reached over a round trip; on a plucked string let go, the playing
+// hand, a dashpot at the point where it plucked (authored: the finger comes
+// back to where it played); on an idle string nobody holds, the resting
+// hand, a dashpot where the hand last played it, as a hand laid on the
+// strings touches each at one place (it had been a loss spread over the
+// loop, the palm's). A hand stops a string by touching it at a place, so the partials
 // with a node near it ring on for a moment, the flageolet a light touch
 // makes; a loss spread over the loop had faded every partial alike, a fade
 // rather than a stop. On average over the partials it damps at the same
@@ -3164,10 +3353,7 @@ void AculyreEngine::updateDamping(int string) noexcept
     double hand = 0.0;
     if (!voice.keyDown && !voice.sustained)
     {
-        if (voice.plucked)
-            hand = s.releaseRate;
-        else
-            rate += s.sympathyRate;
+        hand = voice.plucked ? s.releaseRate : s.sympathyRate;
     }
     voice.normal.setDamping(rate > 0.0 ? std::exp(-rate / voice.frequency) : 1.0);
     voice.parallel.setDamping(rate > 0.0 ? std::exp(-rate / voice.parallelFrequency) : 1.0);

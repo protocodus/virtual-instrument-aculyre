@@ -37,7 +37,17 @@ inline constexpr StringMaterial naturalGut { "gut", 1320.0, 6.0e9, 0.0, 0.0, 0.2
 
 // Quarter-cut representative tops at 12% moisture, from the USDA Wood
 // Handbook as Acustra tabulates them (AcustraEngine.cpp, woodSpecs).
-inline constexpr WoodSpec sitkaSpruce { 448.0, 11.88e9, 11.88e9 * 0.078, 11.88e9 * 0.064, 0.372 };
+//
+// Spruce's loss factors are Viala, Placet and Cogan's means over thirty
+// tonewood samples ("Simultaneous non-destructive identification of
+// multiple elastic and damping properties of spruce tonewood to improve
+// grading", Journal of Cultural Heritage, 2020; Table 2 of the preprint): 0.73% along the grain, 1.7%
+// across it and 1.2% in LR shear. They measured European spruce (Picea
+// abies), a sibling of the Sitka whose stiffness the top takes; its moduli
+// (12.8 and 1.01 GPa, 0.81 GPa shear) sit beside the Handbook's. No source
+// gives maple's in all three directions, so it has none.
+inline constexpr WoodSpec sitkaSpruce { 448.0, 11.88e9, 11.88e9 * 0.078, 11.88e9 * 0.064, 0.372,
+                                        0.0073, 0.017, 0.012 };
 inline constexpr WoodSpec hardMaple { 705.6, 13.86e9, 13.86e9 * 0.132, 13.86e9 * 0.111, 0.424 };
 
 namespace detail
@@ -88,22 +98,22 @@ constexpr double inch = 0.0254;
 // or the body.
 constexpr double poundPerInch = 17.857967;  // kg/m
 constexpr std::array<StringSpec, maxStrings> lyreHarpSteel {{
-    { 47, 0.513, 0.032 * inch, 1.00, 0.67, 0.00019347 * poundPerInch, 0.412e-3 },
-    { 48, 0.499, 0.030 * inch, 0.84, 0.67, 0.00017236 * poundPerInch, 0.404e-3 },
-    { 50, 0.484, 0.028 * inch, 0.84, 0.67, 0.00014666 * poundPerInch, 0.396e-3 },
-    { 52, 0.469, 0.024 * inch, 0.61, 0.67, 0.00010857 * poundPerInch, 0.38e-3 },
-    { 53, 0.455, 0.024 * inch, 0.63, 0.67, 0.00010857 * poundPerInch, 0.38e-3 },
-    { 55, 0.440, 0.024 * inch, 0.96, 0.66, 0.00010857 * poundPerInch, 0.38e-3 }, { 57, 0.425, 0.020 * inch, 0.70, 0.63 },
-    { 59, 0.411, 0.019 * inch, 0.49, 0.61 }, { 60, 0.396, 0.018 * inch, 0.41, 0.63 },
-    { 62, 0.381, 0.017 * inch, 0.38, 0.62 }, { 64, 0.367, 0.016 * inch, 0.43, 0.60 },
-    { 65, 0.352, 0.015 * inch, 0.39, 0.62 }, { 67, 0.337, 0.014 * inch, 0.18, 0.60 },
-    { 69, 0.323, 0.014 * inch, 0.19, 0.70 }, { 71, 0.308, 0.013 * inch, 0.32, 0.65 },
-    { 72, 0.293, 0.012 * inch, 0.36, 0.65 }, { 74, 0.279, 0.012 * inch, 0.63, 0.63 },
-    { 76, 0.264, 0.011 * inch, 0.42, 0.61 }, { 77, 0.249, 0.011 * inch, 0.33, 0.60 },
-    { 79, 0.235, 0.010 * inch, 0.12, 0.77 }, { 81, 0.220, 0.010 * inch, 0.12, 1.00 },
-    { 83, 0.205, 0.0095 * inch, 0.28, 0.83 }, { 84, 0.191, 0.0095 * inch, 0.23, 0.89 },
-    { 86, 0.176, 0.009 * inch, 0.31, 0.93 }, { 88, 0.161, 0.009 * inch, 0.35, 0.94 },
-    { 89, 0.147, 0.009 * inch, 0.35, 0.92 }, { 91, 0.132, 0.009 * inch, 0.31, 0.87 }
+    { 47, 0.513, 0.032 * inch, 0.99, 0.69, 0.00019347 * poundPerInch, 0.412e-3 },
+    { 48, 0.499, 0.030 * inch, 0.80, 0.69, 0.00017236 * poundPerInch, 0.404e-3 },
+    { 50, 0.484, 0.028 * inch, 0.81, 0.68, 0.00014666 * poundPerInch, 0.396e-3 },
+    { 52, 0.469, 0.024 * inch, 0.88, 0.69, 0.00010857 * poundPerInch, 0.38e-3 },
+    { 53, 0.455, 0.024 * inch, 0.64, 0.69, 0.00010857 * poundPerInch, 0.38e-3 },
+    { 55, 0.440, 0.024 * inch, 1.00, 0.67, 0.00010857 * poundPerInch, 0.38e-3 }, { 57, 0.425, 0.020 * inch, 0.73, 0.64 },
+    { 59, 0.411, 0.019 * inch, 0.48, 0.63 }, { 60, 0.396, 0.018 * inch, 0.43, 0.65 },
+    { 62, 0.381, 0.017 * inch, 0.45, 0.64 }, { 64, 0.367, 0.016 * inch, 0.48, 0.62 },
+    { 65, 0.352, 0.015 * inch, 0.39, 0.64 }, { 67, 0.337, 0.014 * inch, 0.20, 0.66 },
+    { 69, 0.323, 0.014 * inch, 0.22, 0.71 }, { 71, 0.308, 0.013 * inch, 0.29, 0.66 },
+    { 72, 0.293, 0.012 * inch, 0.37, 0.67 }, { 74, 0.279, 0.012 * inch, 0.69, 0.63 },
+    { 76, 0.264, 0.011 * inch, 0.49, 0.62 }, { 77, 0.249, 0.011 * inch, 0.34, 0.62 },
+    { 79, 0.235, 0.010 * inch, 0.14, 0.85 }, { 81, 0.220, 0.010 * inch, 0.13, 1.00 },
+    { 83, 0.205, 0.0095 * inch, 0.24, 0.82 }, { 84, 0.191, 0.0095 * inch, 0.20, 0.94 },
+    { 86, 0.176, 0.009 * inch, 0.26, 0.95 }, { 88, 0.161, 0.009 * inch, 0.37, 0.96 },
+    { 89, 0.147, 0.009 * inch, 0.42, 0.95 }, { 91, 0.132, 0.009 * inch, 0.41, 0.88 }
 }};
 
 // The same frame strung with nylon at 45 N in the bass falling to 23 N at
@@ -116,26 +126,27 @@ constexpr std::array<StringSpec, maxStrings> lyreHarpSteel {{
 // wrap that brings them to 45 N (mu = 45 / (2 L f)^2), about 1.1 mm over
 // the wrap.
 constexpr std::array<StringSpec, maxStrings> lyreHarpNylon {{
-    { 47, 0.513, 1.13e-3, 0.72, 0.77, 2.804e-3, 1.0e-3 },
-    { 48, 0.499, 1.12e-3, 0.57, 0.77, 2.640e-3, 1.0e-3 },
-    { 50, 0.484, 1.09e-3, 0.58, 0.76, 2.228e-3, 1.0e-3 },
-    { 52, 0.469, 1.46e-3, 1.00, 0.82 },
-    { 53, 0.455, 1.42e-3, 0.83, 0.82 },
-    { 55, 0.440, 1.30e-3, 0.87, 0.80 }, { 57, 0.425, 1.18e-3, 0.64, 0.78 },
-    { 59, 0.411, 1.08e-3, 0.43, 0.75 }, { 60, 0.396, 1.05e-3, 0.26, 0.75 },
-    { 62, 0.381, 0.96e-3, 0.33, 0.75 }, { 64, 0.367, 0.87e-3, 0.34, 0.72 },
-    { 65, 0.352, 0.85e-3, 0.30, 0.73 }, { 67, 0.337, 0.78e-3, 0.11, 0.67 },
-    { 69, 0.323, 0.72e-3, 0.16, 0.82 }, { 71, 0.308, 0.66e-3, 0.27, 0.77 },
-    { 72, 0.293, 0.64e-3, 0.23, 0.77 }, { 74, 0.279, 0.60e-3, 0.55, 0.72 },
-    { 76, 0.264, 0.55e-3, 0.35, 0.68 }, { 77, 0.249, 0.54e-3, 0.26, 0.68 },
-    { 79, 0.235, 0.51e-3, 0.08, 0.66 }, { 81, 0.220, 0.47e-3, 0.07, 1.00 },
-    { 83, 0.205, 0.44e-3, 0.22, 0.81 }, { 84, 0.191, 0.44e-3, 0.14, 0.82 },
-    { 86, 0.176, 0.42e-3, 0.22, 0.94 }, { 88, 0.161, 0.40e-3, 0.26, 0.90 },
-    { 89, 0.147, 0.40e-3, 0.26, 0.87 }, { 91, 0.132, 0.39e-3, 0.24, 0.84 }
+    { 47, 0.513, 1.13e-3, 0.64, 0.80, 2.804e-3, 1.0e-3 },
+    { 48, 0.499, 1.12e-3, 0.48, 0.80, 2.640e-3, 1.0e-3 },
+    { 50, 0.484, 1.09e-3, 0.50, 0.79, 2.228e-3, 1.0e-3 },
+    { 52, 0.469, 1.46e-3, 1.00, 0.85 },
+    { 53, 0.455, 1.42e-3, 0.75, 0.85 },
+    { 55, 0.440, 1.30e-3, 0.80, 0.83 }, { 57, 0.425, 1.18e-3, 0.60, 0.81 },
+    { 59, 0.411, 1.08e-3, 0.37, 0.78 }, { 60, 0.396, 1.05e-3, 0.24, 0.78 },
+    { 62, 0.381, 0.96e-3, 0.35, 0.78 }, { 64, 0.367, 0.87e-3, 0.34, 0.75 },
+    { 65, 0.352, 0.85e-3, 0.27, 0.75 }, { 67, 0.337, 0.78e-3, 0.10, 0.73 },
+    { 69, 0.323, 0.72e-3, 0.16, 0.85 }, { 71, 0.308, 0.66e-3, 0.21, 0.80 },
+    { 72, 0.293, 0.64e-3, 0.21, 0.78 }, { 74, 0.279, 0.60e-3, 0.51, 0.74 },
+    { 76, 0.264, 0.55e-3, 0.36, 0.70 }, { 77, 0.249, 0.54e-3, 0.24, 0.70 },
+    { 79, 0.235, 0.51e-3, 0.07, 0.75 }, { 81, 0.220, 0.47e-3, 0.07, 1.00 },
+    { 83, 0.205, 0.44e-3, 0.15, 0.80 }, { 84, 0.191, 0.44e-3, 0.11, 0.89 },
+    { 86, 0.176, 0.42e-3, 0.17, 0.96 }, { 88, 0.161, 0.40e-3, 0.24, 0.92 },
+    { 89, 0.147, 0.40e-3, 0.27, 0.91 }, { 91, 0.132, 0.39e-3, 0.29, 0.86 }
 }};
 
 // The lyre harp's soundbox: a 20 x 30 cm top of 6 mm spruce on a box 5 cm
-// deep, one 6 cm soundhole, a 6 g maple bridge bar a centimetre high a
+// deep, one 6 cm soundhole centred 0.70 of the way up the top (assumed), a
+// 6 g maple bridge bar a centimetre high a
 // third of the way up the top. Early Music Shop's 16-string lyre has a solid
 // spruce top on a beech body; Larkin in the Morning's has a birch ply top on
 // sheesham (their listings). The dimensions are assumed, typical of the
@@ -151,7 +162,7 @@ constexpr BodySpec lyreHarpBody {
     0.20, 0.30, 0.006, sitkaSpruce,
     0.20 * 0.30 * 0.05 * 0.85, 0.03,
     0.30, 0.10, 0.90, 0.010, 0.006, hardMaple,
-    0.004, hardMaple
+    0.004, hardMaple, 0.70
 };
 
 // A gut lyre after the Anglo-Saxon instruments (the Sutton Hoo and
@@ -167,12 +178,12 @@ constexpr BodySpec lyreHarpBody {
 // 30 N at E5 as a harp's treble does. Sixteen strings share the six's 9 cm
 // bridge bar, 6 mm apart.
 constexpr std::array<StringSpec, maxStrings> gutLyreStrings {{
-    { 50, 0.500, 1.29e-3, 0.45, 0.84 }, { 52, 0.500, 1.15e-3, 0.24, 0.89 }, { 54, 0.500, 1.02e-3, 0.37, 0.86 },
-    { 55, 0.500, 0.96e-3, 0.50, 0.81 }, { 57, 0.500, 0.86e-3, 0.57, 0.77 }, { 59, 0.500, 0.76e-3, 0.36, 0.85 },
-    { 60, 0.500, 0.72e-3, 0.35, 0.82 }, { 62, 0.500, 0.64e-3, 0.50, 0.82 }, { 64, 0.445, 0.64e-3, 0.35, 0.74 },
-    { 66, 0.397, 0.63e-3, 0.61, 0.77 }, { 67, 0.375, 0.62e-3, 0.72, 0.74 }, { 69, 0.334, 0.61e-3, 0.52, 0.77 },
-    { 71, 0.297, 0.60e-3, 0.41, 0.99 }, { 72, 0.281, 0.60e-3, 0.43, 1.00 }, { 74, 0.250, 0.59e-3, 1.00, 0.85 },
-    { 76, 0.223, 0.58e-3, 0.64, 0.77 }
+    { 50, 0.500, 1.29e-3, 0.39, 0.88 }, { 52, 0.500, 1.15e-3, 0.34, 0.86 }, { 54, 0.500, 1.02e-3, 0.65, 0.81 },
+    { 55, 0.500, 0.96e-3, 0.43, 1.00 }, { 57, 0.500, 0.86e-3, 0.62, 0.84 }, { 59, 0.500, 0.76e-3, 0.82, 0.79 },
+    { 60, 0.500, 0.72e-3, 0.64, 0.84 }, { 62, 0.500, 0.64e-3, 0.46, 0.85 }, { 64, 0.445, 0.64e-3, 0.35, 0.84 },
+    { 66, 0.397, 0.63e-3, 0.76, 0.79 }, { 67, 0.375, 0.62e-3, 0.49, 0.98 }, { 69, 0.334, 0.61e-3, 0.72, 0.94 },
+    { 71, 0.297, 0.60e-3, 1.00, 0.83 }, { 72, 0.281, 0.60e-3, 0.76, 0.81 }, { 74, 0.250, 0.59e-3, 0.60, 0.91 },
+    { 76, 0.223, 0.58e-3, 0.84, 0.88 }
 }};
 // The carved back is too thick to move (backThickness 0).
 constexpr BodySpec gutLyreBody {
@@ -205,17 +216,17 @@ constexpr BodySpec gutLyreBody {
 // README Level).
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 27, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 3.418, 0.376
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 3.227, 0.363
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {
     "Nylon Lyre Harp", nylonMonofilament, 27, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 5.021, 0.399
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 5.380, 0.381
 };
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 16, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.771, 0.436
+    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.413, 0.441
 };
 
 inline constexpr std::array<const InstrumentSpec*, 3> presets {{

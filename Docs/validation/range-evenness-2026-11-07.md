@@ -47,3 +47,21 @@ aside). The strings' own losses give 2.7 (B2) to 22.5 dB/s (G6) on the
 steel harp, 3.3 to 37.9 on the nylon, 6.9 to 18.1 on the gut lyre; the body
 adds up to 21 dB/s where a string sits on a strong mode (steel G3 on the air
 mode, nylon B4-D5 on the 488-533 Hz modes), 0 to 7 elsewhere.
+
+## Tone
+
+Spectral centroid over the attack (50-400 ms, idle strings held), in
+semitones above the note: on the harps it falls from about 24 at B2 (the
+body radiates nothing at 123 Hz, so partials 2 and 3 carry the note; the
+4th partial is missing, the pluck point) to about 1 at G6, and swings
+up to ±5 semitones against the neighbouring keys where a fundamental lands
+on or between body modes (steel G4 -6, G#4 and A4 +5, C5 -4); the gut
+lyre, with three modes below 600 Hz, swings ±8 (E4 on the 337 Hz mode -7,
+F#4 between modes +8). The DR lyre harp's 16 notes swing -6 to +6 (and
+-13 at G#5) by the same measure, so the model is no less even than the
+recording. The recording's centroid in the 4th and 5th octaves is 10
+semitones higher than the model's (partials 2 and 3 dominate where the
+model's fundamental does); its pluck point is unknown and the Lyre Lyre
+library disagrees with it, so this was not pursued. Velocity 127 raises
+the centroid 1 to 5 semitones over 64, most where the hard pluck's tension
+glide carries partials across a mode.

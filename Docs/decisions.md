@@ -3,6 +3,21 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-08 — owner accepts the physical-model review candidates
+
+The owner instructed: “use all candidates” after receiving the private
+20-pair A/B review for Acustra, Aculele, Aculyre and Acukoto. This accepts
+the B mechanisms in that review, including the combined physical/circuit,
+output-calibration and stability fixes. It is the owner's selection, not an
+inferred listening score or a claim of complete physical-model accuracy.
+
+For this instrument the accepted combined DSP snapshot is `e793ef52de6450c7c97a55da46945937fd03ae9a`.
+Existing isolated A/B files and their separate keys remain frozen. Earlier
+integration clips do not roll the engine back to their intermediate pins.
+The rejected axial-FIR prototypes and analytical ADAA alternative were never
+part of the listening candidates. Full axial-source anti-aliasing is a new
+investigation; its numerical accuracy and runtime still require validation.
+
 ## 2026-11-08: final digital output reserve (0.12.5 candidate)
 
 The owner requested ordinary output levels without final overload. The

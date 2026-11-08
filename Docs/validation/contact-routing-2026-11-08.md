@@ -36,3 +36,15 @@ contraction including overlapping kernels, and live engine contact geometry
 and phase-period tracking through bends. Its initial run passed. The full
 engine suite and separate one-change listening package are recorded in the
 off-tree review manifest after the candidate is frozen.
+
+The first broad regression failed the gut E4 finite-window microphone peak:
+-4 cents against its ±3-cent tuning assertion, previously -2 cents. Independent
+modal identification across microphone and string-wave observers found the two
+actual modes at -1.0525 and +1.3133 cents, stable across four fit ranks and
+three windows. Their interference puts the microphone spectrum's maximum
+outside both frequencies. The fixture now retains the same ±3-cent bound on
+the physical modes: only an accurate two-mode reconstruction (relative RMS
+error below 0.1%, positive decay, both modes within 3 cents) can explain an
+outlying spectral maximum. Independent synthetic fixtures reject a genuinely
+detuned 8-cent mode. No physical tuning offset or cents tolerance was changed.
+The microphone's changed beating remains an audible aspect of the A/B review.

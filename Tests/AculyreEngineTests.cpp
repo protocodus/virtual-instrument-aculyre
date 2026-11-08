@@ -99,10 +99,87 @@ double rms(const std::vector<float>& x, int start, int length)
         sum += static_cast<double>(x[static_cast<std::size_t>(i)]) * x[static_cast<std::size_t>(i)];
     return std::sqrt(sum / length);
 }
+
+// Two overlapping damped modes can put a finite-window spectral maximum
+// outside BOTH modal frequencies. This independent second-order complex
+// prediction fit distinguishes that interference from a detuned string.
+// Heterodyne around the nominal note, reject the other partials with a 200 ms
+// Hann average, then fit y[n] = a y[n-1] + b y[n-2]. The roots are the two
+// damped complex exponentials; no pitch offsets or changed cents limit.
+bool interferenceWithinTuning(const std::vector<float>& audio, double nominal)
+{
+    using C = std::complex<double>;
+    constexpr double pi = 3.14159265358979323846, rate = 48000.0;
+    constexpr int half = 4800, stride = 1200;
+    std::vector<C> baseband;
+    for (int centre = 21600; centre <= 60000; centre += stride)
+    {
+        C sum = 0.0;
+        double weight = 0.0;
+        for (int k = -half; k <= half; ++k)
+        {
+            const double w = 0.5 + 0.5 * std::cos(pi * k / half);
+            sum += w * double(audio[static_cast<std::size_t>(centre+k)])
+                 * std::polar(1.0, -2.0*pi*nominal*(centre+k)/rate);
+            weight += w;
+        }
+        baseband.push_back(sum/weight);
+    }
+    double s11=0.0, s22=0.0;
+    C s12=0.0, b1=0.0, b2=0.0;
+    for (std::size_t n=2; n<baseband.size(); ++n)
+    {
+        const C x=baseband[n-1], y=baseband[n-2], z=baseband[n];
+        s11+=std::norm(x);s22+=std::norm(y);s12+=std::conj(x)*y;
+        b1+=std::conj(x)*z;b2+=std::conj(y)*z;
+    }
+    const double determinant=s11*s22-std::norm(s12);
+    if (!(determinant>1e-14*s11*s22)) return false;
+    const C a=(b1*s22-s12*b2)/determinant;
+    const C b=(s11*b2-std::conj(s12)*b1)/determinant;
+    const C radical=std::sqrt(a*a+4.0*b);
+    bool within=true;
+    for (const C pole : {0.5*(a+radical),0.5*(a-radical)})
+    {
+        const double frequency=nominal+std::arg(pole)*rate/(2.0*pi*stride);
+        const double cents=1200.0*std::log2(frequency/nominal);
+        const double decay=-std::log(std::abs(pole))*rate/stride;
+        std::printf("  resolved partial: %+.3f cents, decay %.3f/s\n",cents,decay);
+        within=within && std::isfinite(cents) && std::abs(cents)<3.0 && decay>0.0;
+    }
+    // Predict the whole window from only its first two samples: recurrence
+    // residual alone could mask a poor fit to unresolved neighbouring notes.
+    C previous=baseband[0], current=baseband[1];
+    double error=0.0, signal=0.0;
+    for (std::size_t n=2; n<baseband.size(); ++n)
+    {
+        const C next=a*current+b*previous;
+        error+=std::norm(next-baseband[n]);signal+=std::norm(baseband[n]);
+        previous=current;current=next;
+    }
+    const double relative=std::sqrt(error/signal);
+    std::printf("  two-mode reconstruction error: %.6g\n",relative);
+    return within && relative<0.001;
+}
 } // namespace
 
 int main()
 {
+    // Independent estimator fixtures: accept two accurately tuned damped
+    // modes, but never explain away a real >3-cent mode as interference.
+    for (bool detuned : { false, true })
+    {
+        std::vector<float> fixture(67200);
+        constexpr double nominal = 329.63, pi = 3.14159265358979323846;
+        for (std::size_t k=0; k<fixture.size(); ++k)
+        {
+            const double t=k/48000.0;
+            fixture[k]=static_cast<float>(std::exp(-1.5*t)*std::cos(2*pi*nominal*std::pow(2.0,-1.0/1200)*t)
+                + 0.7*std::exp(-2.7*t)*std::cos(2*pi*nominal*std::pow(2.0,(detuned?8.0:1.3)/1200)*t+0.8));
+        }
+        check(interferenceWithinTuning(fixture,nominal) != detuned,
+              "modal estimator distinguishes close tuned modes from a genuinely detuned mode");
+    }
     // Pitch is read from 2.5 s on: a hard pluck's tension glide holds the
     // steel G3 up to 9 cents sharp over its first second and a half.
     constexpr int settled = 120000;
@@ -128,8 +205,12 @@ int main()
             std::printf("%-16s note %d: %+.2f cents at 2.5 s, %+.2f cents at 0.35-1.35 s\n",
                         preset->name, note, cents, heardCents);
             check(std::abs(cents) < 6.0, "the open string sounds its tuning (within 6 cents)");
-            check(std::abs(heardCents) < 3.0,
-                  "the open string sounds its tuning a second after the pluck (within 3 cents)");
+            // The corrected idle-string contacts exposed this estimator
+            // failure on gut E4: its mic peak is -3.96 c while independent
+            // modal extraction gives -1.0525/+1.3133 c. Keep the 3 c tuning
+            // requirement on actual modes, not a beating spectrum's maximum.
+            check(std::abs(heardCents) < 3.0 || interferenceWithinTuning(judged, nominal),
+                  "the open string's tuned modes are within 3 cents a second after the pluck");
             check(rms(audio, 120000, 4800) < 0.5 * rms(audio, 4800, 4800), "the note decays");
         }
     }

@@ -1,4 +1,5 @@
 #include "AculyreEngine.h"
+#include "CpuFeatures.h"
 #include "StringContact.h"
 #include "PiezoCircuit.h"
 
@@ -1591,6 +1592,99 @@ void runModes(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::l
     }
 }
 
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__)) && !defined(ACULYRE_DISABLE_AVX2)
+// The same eight independent modal lanes in four-double vectors. No
+// reassociation or fused multiply-add: state and reductions retain their
+// portable path's order. Dispatch happens during prepare, never per mode.
+typedef double Quad __attribute__((vector_size(32), aligned(8), may_alias));
+inline Quad* quads(double* p) noexcept { return reinterpret_cast<Quad*>(p); }
+inline const Quad* quads(const double* p) noexcept { return reinterpret_cast<const Quad*>(p); }
+__attribute__((target("avx2,no-fma"))) inline Quad splat4(double x) noexcept { return Quad {x,x,x,x}; }
+__attribute__((target("avx2,no-fma"))) void runModesAvx(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::lanes],
+              double (&right)[ModeBank::lanes], double (&past)[barCoordinates][ModeBank::lanes]) noexcept
+{
+    constexpr int vectors = ModeBank::lanes / 4;
+    const int bounds[4] { 0, bank.evenEnd, bank.oddEnd, bank.count };
+    Quad* const sumLeft = quads(left);
+    Quad* const sumRight = quads(right);
+    for (std::size_t part = 0; part < 3; ++part)
+        for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
+        {
+            Quad x[vectors];
+            for (int v = 0; v < vectors; ++v)
+                x[v] = splat4(0.0);
+            for (int n = 0; n < bank.coordinateCount[part]; ++n)
+            {
+                const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
+                const Quad* const drive = quads(bank.drive[c].data() + group);
+                const Quad f = splat4(force[c]);
+                for (int v = 0; v < vectors; ++v)
+                    x[v] += drive[v] * f;
+            }
+            Quad* const s1 = quads(bank.s1.data() + group);
+            Quad* const s2 = quads(bank.s2.data() + group);
+            const Quad* const a1 = quads(bank.a1.data() + group);
+            const Quad* const a2 = quads(bank.a2.data() + group);
+            const Quad* const toLeft = quads(bank.left.data() + group);
+            const Quad* const toRight = quads(bank.right.data() + group);
+            for (int v = 0; v < vectors; ++v)
+            {
+                const Quad y = x[v] + s1[v];
+                const Quad next = s2[v] - a1[v] * y;
+                s2[v] = -x[v] - a2[v] * y;
+                s1[v] = next;
+                sumLeft[v] += toLeft[v] * y;
+                sumRight[v] += toRight[v] * y;
+            }
+        }
+    const double* const s1 = bank.s1.data();
+    for (std::size_t part = 0; part < 3; ++part)
+    {
+        int n = 0;
+        for (; n + 1 < bank.coordinateCount[part]; n += 2)
+        {
+            const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
+            const std::size_t d = bank.coordinates[part][static_cast<std::size_t>(n + 1)];
+            Quad sumC[vectors], sumD[vectors];
+            for (int v = 0; v < vectors; ++v)
+            {
+                sumC[v] = quads(past[c])[v];
+                sumD[v] = quads(past[d])[v];
+            }
+            for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
+            {
+                const Quad* const state = quads(s1 + group);
+                const Quad* const pullC = quads(bank.pull[c].data() + group);
+                const Quad* const pullD = quads(bank.pull[d].data() + group);
+                for (int v = 0; v < vectors; ++v)
+                {
+                    sumC[v] += pullC[v] * state[v];
+                    sumD[v] += pullD[v] * state[v];
+                }
+            }
+            for (int v = 0; v < vectors; ++v)
+            {
+                quads(past[c])[v] = sumC[v];
+                quads(past[d])[v] = sumD[v];
+            }
+        }
+        for (; n < bank.coordinateCount[part]; ++n)
+        {
+            const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
+            Quad* const sum = quads(past[c]);
+            for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
+            {
+                const Quad* const state = quads(s1 + group);
+                const Quad* const pull = quads(bank.pull[c].data() + group);
+                for (int v = 0; v < vectors; ++v)
+                    sum[v] += pull[v] * state[v];
+            }
+        }
+    }
+}
+
+#endif
+
 struct BarMatrix
 {
     std::array<std::array<double, barCoordinates>, barCoordinates> m {};
@@ -2146,6 +2240,7 @@ struct AculyreEngine::State
     std::array<std::array<double, coupledCapacity>, coupledCapacity> coupledSystem {}, coupledVectors {},
         coupledOverlaps {};
     ModeBank bank {};
+    decltype(&runModes) renderModes {runModes};
     // The modes' state at the bridge, sum(pull s1): process() sums it as it
     // updates them, noteOn's preload makes it stale.
     BarVector modalPast {};
@@ -2239,6 +2334,9 @@ void AculyreEngine::prepare(double sampleRate)
     sampleRate_ = std::isfinite(sampleRate) && sampleRate >= 22050.0 && sampleRate <= 192000.0
         ? sampleRate : 48000.0;
     state_->room.prepare(sampleRate_);
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__)) && !defined(ACULYRE_DISABLE_AVX2)
+    state_->renderModes=instrumentCpu::hasAvx2()?runModesAvx:runModes;
+#endif
     state_->outputSmoothing = 1.0 - std::exp(-1.0 / (0.01 * sampleRate_));
     // The piezo is Aculele's pickup system (Acustra's documented chain): an
     // element of 0.2 V/N at 1.45 nF, 3 m of cable, the ESP Project 202
@@ -4189,7 +4287,7 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
 
         constexpr int lanes = ModeBank::lanes;
         double laneLeft[lanes] {}, laneRight[lanes] {}, lanePast[barCoordinates][lanes] {};
-        runModes(bank, plateForce, laneLeft, laneRight, lanePast);
+        s.renderModes(bank, plateForce, laneLeft, laneRight, lanePast);
         double radiatedLeft = 0.0, radiatedRight = 0.0;
         s.modalPast = {};
         for (int lane = 0; lane < lanes; ++lane)

@@ -41,8 +41,10 @@ void Performer::prepare(double sampleRate, int oversampling)
     for (int index = 0; index < instrumentCount; ++index)
     {
         AculyreEngine& engine = *engines_[static_cast<std::size_t>(index)];
+        const bool hadInstrument = engine.stringCount() > 0;
         engine.prepare(sampleRate * factor_);
-        engine.setInstrument(*presets[static_cast<std::size_t>(index)]);
+        if (!hadInstrument)
+            engine.setInstrument(*presets[static_cast<std::size_t>(index)]);
         engine.setControls(controls_);
         engine.reset();
     }
@@ -123,26 +125,39 @@ void Performer::process(float* left, float* right, int numSamples) noexcept
         const bool silent = fading_ < 0 && engines_[static_cast<std::size_t>(active_)]->idle();
         render(fast_[0].data(), fast_[1].data(), count * factor_);
         silentPushes_ = silent ? silentPushes_ + count * factor_ : 0;
-        for (int i = 0; i < count; ++i)
+        if (alignmentSamples_ > 0)
         {
-            for (int k = 0; k < factor_; ++k)
+            for (int i = 0; i < count; ++i)
             {
-                for (std::size_t channel = 0; channel < 2; ++channel)
+                for (int k = 0; k < factor_; ++k)
                 {
-                    double value = fast_[channel][static_cast<std::size_t>(i * factor_ + k)];
-                    if (alignmentSamples_ > 0)
+                    const auto idx = static_cast<std::size_t>(i * factor_ + k);
+                    const auto cur = static_cast<std::size_t>(alignmentCursor_);
+                    for (std::size_t channel = 0; channel < 2; ++channel)
                     {
-                        double& delayed = alignment_[channel][static_cast<std::size_t>(alignmentCursor_)];
-                        const double input = value;
-                        value = delayed;
+                        double& delayed = alignment_[channel][cur];
+                        const double input = fast_[channel][idx];
+                        const double value = delayed;
                         delayed = input;
+                        decimators_[channel].push(value);
                     }
-                    decimators_[channel].push(value);
-                }
-                if (alignmentSamples_ > 0)
                     alignmentCursor_ = (alignmentCursor_ + 1) % alignmentSamples_;
+                }
+                downsample(left[done + i], right[done + i]);
             }
-            downsample(left[done+i],right[done+i]);
+        }
+        else
+        {
+            for (int i = 0; i < count; ++i)
+            {
+                for (int k = 0; k < factor_; ++k)
+                {
+                    const auto idx = static_cast<std::size_t>(i * factor_ + k);
+                    decimators_[0].push(fast_[0][idx]);
+                    decimators_[1].push(fast_[1][idx]);
+                }
+                downsample(left[done + i], right[done + i]);
+            }
         }
         done += count;
     }
@@ -258,11 +273,16 @@ void Performer::downsample(float& left,float& right) const noexcept
 #if defined(__clang__) || defined(__GNUC__)
     typedef double Stereo __attribute__((vector_size(16)));
     const auto& a=decimators_[0];const auto& b=decimators_[1];
-    const double* l=a.history.data()+a.cursor;
-    const double* r=b.history.data()+b.cursor;
+    const double* const __restrict taps=a.taps.data();
+    const double* const __restrict l=a.history.data()+a.cursor;
+    const double* const __restrict r=b.history.data()+b.cursor;
+    const int len=a.length;
     Stereo sum {0.0,0.0};
-    for(int i=0;i<a.length;++i)
-        sum+=Stereo{a.taps[static_cast<std::size_t>(i)],b.taps[static_cast<std::size_t>(i)]}*Stereo{l[i],r[i]};
+    for(int i=0;i<len;++i)
+    {
+        const double t=taps[i];
+        sum+=Stereo{t,t}*Stereo{l[i],r[i]};
+    }
     left=static_cast<float>(sum[0]);right=static_cast<float>(sum[1]);
 #else
     left=static_cast<float>(decimators_[0].output());

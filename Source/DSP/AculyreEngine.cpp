@@ -1134,6 +1134,11 @@ struct Loop
         const auto k = static_cast<std::size_t>(
             std::upper_bound(bendRatios.begin() + 1, bendRatios.end() - 1, ratio) - bendRatios.begin() - 1);
         const double t = (ratio - bendRatios[k]) / (bendRatios[k + 1] - bendRatios[k]);
+        return lineDelayAt(ratio, k, t);
+    }
+
+    double lineDelayAt(double ratio, std::size_t k, double t) const noexcept
+    {
         const double lag = lagCycles[k] + t * (lagCycles[k + 1] - lagCycles[k]);
         return (1.0 - lag) * loopDelay / ratio;
     }
@@ -1215,8 +1220,14 @@ struct LoopFilters
         std::array<double, capacity> c0 {}, c1 {}, a1 {}, a2 {};
         std::array<double, capacity> previousInput {}, previousDifference {}, u1 {}, u2 {};
         std::array<bool, capacity> active {};
-        bool allActive { false };
+        int activePrefix { 0 };
+        bool prefixOnly { true };
 
+        void resetGather() noexcept
+        {
+            activePrefix = 0;
+            prefixOnly = true;
+        }
         void gather(const UnitDcSection& section, std::size_t i) noexcept
         {
             c0[i] = section.c0;
@@ -1228,7 +1239,13 @@ struct LoopFilters
             u1[i] = section.u1;
             u2[i] = section.u2;
             active[i] = section.active;
-            allActive = allActive && section.active;
+            if (section.active)
+            {
+                if (prefixOnly && static_cast<int>(i) == activePrefix)
+                    ++activePrefix;
+                else
+                    prefixOnly = false;
+            }
         }
         void scatter(UnitDcSection& section, std::size_t i) const noexcept
         {
@@ -1241,34 +1258,36 @@ struct LoopFilters
         // input and keeps its state.
         void process(double* wave, int count) noexcept
         {
+            const int fastCount = prefixOnly ? activePrefix : 0;
             int k = 0;
-            if (allActive)
-                for (; k + 1 < count; k += 2)
-                {
-                    const auto i = static_cast<std::size_t>(k);
-                    const Pair x = *pairs(wave + k);
-                    const Pair difference = x - *pairs(&previousInput[i]);
-                    const Pair w = *pairs(&c0[i]) * difference + *pairs(&c1[i]) * *pairs(&previousDifference[i]);
-                    const Pair u = w - *pairs(&a1[i]) * *pairs(&u1[i]) - *pairs(&a2[i]) * *pairs(&u2[i]);
-                    *pairs(&previousInput[i]) = x;
-                    *pairs(&previousDifference[i]) = difference;
-                    *pairs(&u2[i]) = *pairs(&u1[i]);
-                    *pairs(&u1[i]) = u;
-                    *pairs(wave + k) = x - u;
-                }
-            for (; k < count; ++k)
+            for (; k + 1 < fastCount; k += 2)
             {
                 const auto i = static_cast<std::size_t>(k);
+                const Pair x = *pairs(wave + k);
+                const Pair difference = x - *pairs(&previousInput[i]);
+                const Pair w = *pairs(&c0[i]) * difference + *pairs(&c1[i]) * *pairs(&previousDifference[i]);
+                const Pair u = w - *pairs(&a1[i]) * *pairs(&u1[i]) - *pairs(&a2[i]) * *pairs(&u2[i]);
+                *pairs(&previousInput[i]) = x;
+                *pairs(&previousDifference[i]) = difference;
+                *pairs(&u2[i]) = *pairs(&u1[i]);
+                *pairs(&u1[i]) = u;
+                *pairs(wave + k) = x - u;
+            }
+            const int end = prefixOnly ? activePrefix : count;
+            for (; k < end; ++k)
+            {
+                const auto i = static_cast<std::size_t>(k);
+                if (!active[i])
+                    continue;
                 const double x = wave[k];
                 const double difference = x - previousInput[i];
                 const double w = c0[i] * difference + c1[i] * previousDifference[i];
                 const double u = w - a1[i] * u1[i] - a2[i] * u2[i];
-                const bool on = active[i];
-                previousInput[i] = on ? x : previousInput[i];
-                previousDifference[i] = on ? difference : previousDifference[i];
-                u2[i] = on ? u1[i] : u2[i];
-                u1[i] = on ? u : u1[i];
-                wave[k] = on ? x - u : x;
+                previousInput[i] = x;
+                previousDifference[i] = difference;
+                u2[i] = u1[i];
+                u1[i] = u;
+                wave[k] = x - u;
             }
         }
     };
@@ -1323,7 +1342,8 @@ struct LoopFilters
                 }
             withPairs[static_cast<std::size_t>(pairs - 1)] = n;
         }
-        constantLoss.allActive = bendingLoss.allActive = true;
+        constantLoss.resetGather();
+        bendingLoss.resetGather();
         for (int i = 0; i < count; ++i)
         {
             gatherThiran(*loops[i], static_cast<std::size_t>(i));
@@ -1386,9 +1406,12 @@ struct LoopFilters
             sorted[j] = wave[byStages[static_cast<std::size_t>(j)]];
         for (std::size_t stage = 0; stage < maxDispersionStages; ++stage)
         {
+            const int loopsWithStage = withStages[stage];
+            if (loopsWithStage == 0)
+                break;
             double* const state = stageState[stage].data();
             int j = 0;
-            for (; j + 1 < withStages[stage]; j += 2)
+            for (; j + 1 < loopsWithStage; j += 2)
             {
                 const Pair y = *pairs(sorted + j);
                 const Pair d = *pairs(&dispersion[static_cast<std::size_t>(j)]);
@@ -1396,7 +1419,7 @@ struct LoopFilters
                 *pairs(state + j) = y - d * out;
                 *pairs(sorted + j) = out;
             }
-            for (; j < withStages[stage]; ++j)
+            for (; j < loopsWithStage; ++j)
             {
                 const double y = sorted[j];
                 const double out = dispersion[static_cast<std::size_t>(j)] * y + state[j];
@@ -1406,39 +1429,42 @@ struct LoopFilters
         }
         for (int j = 0; j < withStages[0]; ++j)
             wave[byStages[static_cast<std::size_t>(j)]] = sorted[j];
-        for (int j = 0; j < withPairs[0]; ++j)
-            sorted[j] = wave[byPairs[static_cast<std::size_t>(j)]];
-        for (std::size_t k = 0; k < dispersionPairs; ++k)
+        if (withPairs[0] > 0)
         {
-            double* const c1 = pairC1[k].data();
-            double* const c2 = pairC2[k].data();
-            double* const s0 = pairS0[k].data();
-            double* const s1 = pairS1[k].data();
-            const int loopsWithPair = withPairs[k];
-            int j = 0;
-            for (; j + 1 < loopsWithPair; j += 2)
+            for (int j = 0; j < withPairs[0]; ++j)
+                sorted[j] = wave[byPairs[static_cast<std::size_t>(j)]];
+            for (std::size_t k = 0; k < dispersionPairs; ++k)
             {
-                const Pair y = *pairs(sorted + j);
-                const Pair out = *pairs(c2 + j) * y + *pairs(s0 + j);
-                *pairs(s0 + j) = *pairs(c1 + j) * (y - out) + *pairs(s1 + j);
-                *pairs(s1 + j) = y - *pairs(c2 + j) * out;
-                *pairs(sorted + j) = out;
+                const int loopsWithPair = withPairs[k];
+                if (loopsWithPair == 0)
+                    break;
+                double* const c1 = pairC1[k].data();
+                double* const c2 = pairC2[k].data();
+                double* const s0 = pairS0[k].data();
+                double* const s1 = pairS1[k].data();
+                int j = 0;
+                for (; j + 1 < loopsWithPair; j += 2)
+                {
+                    const Pair y = *pairs(sorted + j);
+                    const Pair out = *pairs(c2 + j) * y + *pairs(s0 + j);
+                    *pairs(s0 + j) = *pairs(c1 + j) * (y - out) + *pairs(s1 + j);
+                    *pairs(s1 + j) = y - *pairs(c2 + j) * out;
+                    *pairs(sorted + j) = out;
+                }
+                for (; j < loopsWithPair; ++j)
+                {
+                    const double y = sorted[j];
+                    const double out = c2[j] * y + s0[j];
+                    s0[j] = c1[j] * (y - out) + s1[j];
+                    s1[j] = y - c2[j] * out;
+                    sorted[j] = out;
+                }
             }
-            for (; j < loopsWithPair; ++j)
-            {
-                const double y = sorted[j];
-                const double out = c2[j] * y + s0[j];
-                s0[j] = c1[j] * (y - out) + s1[j];
-                s1[j] = y - c2[j] * out;
-                sorted[j] = out;
-            }
+            for (int j = 0; j < withPairs[0]; ++j)
+                wave[byPairs[static_cast<std::size_t>(j)]] = sorted[j];
         }
-        for (int j = 0; j < withPairs[0]; ++j)
-            wave[byPairs[static_cast<std::size_t>(j)]] = sorted[j];
         constantLoss.process(wave, count);
         bendingLoss.process(wave, count);
-        for (int i = 0; i < count; ++i)
-            wave[i] = loops[i]->finishRead(wave[i]);
     }
 };
 
@@ -1514,15 +1540,25 @@ void runModes(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::l
 {
     constexpr int vectors = ModeBank::lanes / 2;
     const int bounds[4] { 0, bank.evenEnd, bank.oddEnd, bank.count };
-    Pair* const sumLeft = pairs(left);
-    Pair* const sumRight = pairs(right);
+    Pair accLeft[vectors] { splat(0.0), splat(0.0), splat(0.0), splat(0.0) };
+    Pair accRight[vectors] { splat(0.0), splat(0.0), splat(0.0), splat(0.0) };
     for (std::size_t part = 0; part < 3; ++part)
         for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
         {
-            Pair x[vectors];
-            for (int v = 0; v < vectors; ++v)
-                x[v] = splat(0.0);
-            for (int n = 0; n < bank.coordinateCount[part]; ++n)
+            Pair x[vectors] { splat(0.0), splat(0.0), splat(0.0), splat(0.0) };
+            int n = 0;
+            for (; n + 1 < bank.coordinateCount[part]; n += 2)
+            {
+                const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
+                const std::size_t d = bank.coordinates[part][static_cast<std::size_t>(n + 1)];
+                const Pair* const driveC = pairs(bank.drive[c].data() + group);
+                const Pair* const driveD = pairs(bank.drive[d].data() + group);
+                const Pair fc = splat(force[c]);
+                const Pair fd = splat(force[d]);
+                for (int v = 0; v < vectors; ++v)
+                    x[v] = (x[v] + driveC[v] * fc) + driveD[v] * fd;
+            }
+            for (; n < bank.coordinateCount[part]; ++n)
             {
                 const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
                 const Pair* const drive = pairs(bank.drive[c].data() + group);
@@ -1542,23 +1578,43 @@ void runModes(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::l
                 const Pair next = s2[v] - a1[v] * y;
                 s2[v] = -x[v] - a2[v] * y;
                 s1[v] = next;
-                sumLeft[v] += toLeft[v] * y;
-                sumRight[v] += toRight[v] * y;
+                accLeft[v] += toLeft[v] * y;
+                accRight[v] += toRight[v] * y;
             }
         }
+    Pair* const sumLeft = pairs(left);
+    Pair* const sumRight = pairs(right);
+    for (int v = 0; v < vectors; ++v)
+    {
+        sumLeft[v] = accLeft[v];
+        sumRight[v] = accRight[v];
+    }
     const double* const s1 = bank.s1.data();
     for (std::size_t part = 0; part < 3; ++part)
     {
+        if (bounds[part] == bounds[part + 1])
+            continue;
         int n = 0;
         for (; n + 1 < bank.coordinateCount[part]; n += 2)
         {
             const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
             const std::size_t d = bank.coordinates[part][static_cast<std::size_t>(n + 1)];
             Pair sumC[vectors], sumD[vectors];
-            for (int v = 0; v < vectors; ++v)
+            if (part < 2)
             {
-                sumC[v] = pairs(past[c])[v];
-                sumD[v] = pairs(past[d])[v];
+                for (int v = 0; v < vectors; ++v)
+                {
+                    sumC[v] = splat(0.0);
+                    sumD[v] = splat(0.0);
+                }
+            }
+            else
+            {
+                for (int v = 0; v < vectors; ++v)
+                {
+                    sumC[v] = pairs(past[c])[v];
+                    sumD[v] = pairs(past[d])[v];
+                }
             }
             for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
             {
@@ -1580,14 +1636,26 @@ void runModes(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::l
         for (; n < bank.coordinateCount[part]; ++n)
         {
             const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-            Pair* const sum = pairs(past[c]);
+            Pair sumC[vectors];
+            if (part < 2)
+            {
+                for (int v = 0; v < vectors; ++v)
+                    sumC[v] = splat(0.0);
+            }
+            else
+            {
+                for (int v = 0; v < vectors; ++v)
+                    sumC[v] = pairs(past[c])[v];
+            }
             for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
             {
                 const Pair* const state = pairs(s1 + group);
                 const Pair* const pull = pairs(bank.pull[c].data() + group);
                 for (int v = 0; v < vectors; ++v)
-                    sum[v] += pull[v] * state[v];
+                    sumC[v] += pull[v] * state[v];
             }
+            for (int v = 0; v < vectors; ++v)
+                pairs(past[c])[v] = sumC[v];
         }
     }
 }
@@ -1720,16 +1788,25 @@ struct BarMatrix
 // column order, as row by row.
 BarVector applyColumns(const BarMatrix& columns, const BarVector& v) noexcept
 {
-    static_assert(barCoordinates % 2 == 0, "the rows pair up");
-    BarVector r {};
-    Pair* const rows = pairs(r.data());
+    static_assert(barCoordinates == 10, "the rows pair up");
+    Pair r0 = splat(0.0), r1 = splat(0.0), r2 = splat(0.0), r3 = splat(0.0), r4 = splat(0.0);
     for (std::size_t j = 0; j < barCoordinates; ++j)
     {
         const Pair* const column = pairs(columns.m[j].data());
         const Pair x = splat(v[j]);
-        for (std::size_t p = 0; p < barCoordinates / 2; ++p)
-            rows[p] += column[p] * x;
+        r0 += column[0] * x;
+        r1 += column[1] * x;
+        r2 += column[2] * x;
+        r3 += column[3] * x;
+        r4 += column[4] * x;
     }
+    alignas(16) BarVector r;
+    Pair* const rows = pairs(r.data());
+    rows[0] = r0;
+    rows[1] = r1;
+    rows[2] = r2;
+    rows[3] = r3;
+    rows[4] = r4;
     return r;
 }
 
@@ -1914,25 +1991,35 @@ struct Room
         }
         diffuserPosition = (diffuserPosition + 1) & (diffuserCapacity - 1);
 
-        std::array<double, lineCount> outputs {};
-        double sum = 0.0;
+        const int pos = positions[0];
+        std::array<double, lineCount> values {};
         for (std::size_t index = 0; index < lineCount; ++index)
         {
-            const int readPosition = positions[index] - lengths[index];
-            const double value = lines[index][static_cast<std::size_t>(
-                (readPosition + capacity) % capacity)];
-            filterStates[index] = (1.0 - poles[index]) * value + poles[index] * filterStates[index];
-            outputs[index] = gains[index] * filterStates[index];
-            sum += outputs[index];
+            const int readPosition = pos - lengths[index];
+            values[index] = lines[index][static_cast<std::size_t>(
+                readPosition & (capacity - 1))];
         }
+        std::array<double, lineCount> outputs {};
+        for (std::size_t index = 0; index < lineCount; index += 2)
+        {
+            const Pair v = *pairs(&values[index]);
+            const Pair p = *pairs(&poles[index]);
+            const Pair fs = (splat(1.0) - p) * v + p * *pairs(&filterStates[index]);
+            *pairs(&filterStates[index]) = fs;
+            *pairs(&outputs[index]) = *pairs(&gains[index]) * fs;
+        }
+        double sum = 0.0;
+        for (std::size_t index = 0; index < lineCount; ++index)
+            sum += outputs[index];
         const double householder = 2.0 / lineCount * sum;
+        const double inputShare = 0.35 * delayed;
+        const auto writePos = static_cast<std::size_t>(pos);
+        for (std::size_t index = 0; index < lineCount; ++index)
+            lines[index][writePos] = static_cast<float>((outputs[index] - householder) + inputShare);
+        positions[0] = (pos + 1) & (capacity - 1);
         double lateLeft = 0.0, lateRight = 0.0;
         for (std::size_t index = 0; index < lineCount; ++index)
         {
-            const double feedback = outputs[index] - householder;
-            lines[index][static_cast<std::size_t>(positions[index])]
-                = static_cast<float>(feedback + 0.35 * delayed);
-            positions[index] = (positions[index] + 1) % capacity;
             lateLeft += (index & 1u) ? -outputs[index] : outputs[index];
             lateRight += (index & 2u) ? -outputs[index] : outputs[index];
         }
@@ -1992,16 +2079,19 @@ double wallaceEfficiency(double k, double a, double b, int m, int n) noexcept
 {
     constexpr int points = 48;
     constexpr double step = 0.5 * pi / points;
+    std::array<double, points> sines {}, cosines {};
+    for (int i = 0; i < points; ++i)
+        sines[static_cast<std::size_t>(i)] = std::sin((i + 0.5) * step);
+    for (int j = 0; j < points; ++j)
+        cosines[static_cast<std::size_t>(j)] = std::cos((j + 0.5) * step);
     double sum = 0.0;
     for (int i = 0; i < points; ++i)
     {
-        const double theta = (i + 0.5) * step;
-        const double sine = std::sin(theta);
+        const double sine = sines[static_cast<std::size_t>(i)];
         for (int j = 0; j < points; ++j)
         {
-            const double phi = (j + 0.5) * step;
-            const double term = wallaceFactor(k * a * sine * std::cos(phi), m)
-                              * wallaceFactor(k * b * sine * std::sin(phi), n);
+            const double term = wallaceFactor(k * a * sine * cosines[static_cast<std::size_t>(j)], m)
+                              * wallaceFactor(k * b * sine * sines[static_cast<std::size_t>(j)], n);
             sum += term * term * sine;
         }
     }
@@ -2324,6 +2414,17 @@ struct AculyreEngine::State
     std::array<double, 6> output {};
     double outputSmoothing { 0.0 };
     double bendSmoothing { 0.0 };
+
+    // Non-repeating tribological stick-slip / winding-scrape bridge transient
+    // during the initial slip release (realismEnhancements_).
+    int slipSamplesRemaining { 0 };
+    double slipEnv { 0.0 };
+    double slipDecay { 0.0 };
+    double slipPole { 0.0 };
+    double slipPrev { 0.0 };
+    double slipLowpass { 0.0 };
+    Random slipRng {};
+    alignas(16) BarVector slipCoupling {};
 };
 
 AculyreEngine::AculyreEngine() : state_(std::make_unique<State>()) {}
@@ -3220,6 +3321,17 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     s.solve.m = inverse(junction.m);
 
     // ---- Tuning: each port's reflection phase from the continuous model --
+    std::array<std::array<std::size_t, barCoordinates>, maxModes> modeCoords {};
+    std::array<int, maxModes> modeCoordCount {};
+    for (int m = 0; m < s.modeCount; ++m)
+    {
+        const Mode& mode = s.modes[static_cast<std::size_t>(m)];
+        int count = 0;
+        for (std::size_t c = 0; c < barCoordinates; ++c)
+            if (mode.participation[c] != 0.0)
+                modeCoords[static_cast<std::size_t>(m)][static_cast<std::size_t>(count++)] = c;
+        modeCoordCount[static_cast<std::size_t>(m)] = count;
+    }
     for (int index = 0; index < stringCount_; ++index)
     {
         State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
@@ -3239,21 +3351,22 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             std::array<std::array<double, barCoordinates>, barCoordinates> mobilityRe {}, mobilityIm {};
             for (int m = 0; m < s.modeCount; ++m)
             {
-                const Mode& mode = s.modes[static_cast<std::size_t>(m)];
+                const auto sm = static_cast<std::size_t>(m);
+                const Mode& mode = s.modes[sm];
                 const Complex response = mode.b0 * (1.0 - z2)
                                        / (1.0 + mode.a1 * z1 + mode.a2 * z2);
                 const double responseRe = response.real(), responseIm = response.imag();
-                for (std::size_t i = 0; i < barCoordinates; ++i)
+                const int coordCount = modeCoordCount[sm];
+                const auto& coords = modeCoords[sm];
+                for (int a = 0; a < coordCount; ++a)
                 {
+                    const std::size_t i = coords[static_cast<std::size_t>(a)];
                     const double rowWeight = mode.participation[i];
-                    if (rowWeight == 0.0)
-                        continue;
                     const double leftRe = responseRe * rowWeight, leftIm = responseIm * rowWeight;
-                    for (std::size_t j = 0; j < barCoordinates; ++j)
+                    for (int b = 0; b < coordCount; ++b)
                     {
+                        const std::size_t j = coords[static_cast<std::size_t>(b)];
                         const double pj = mode.participation[j];
-                        if (pj == 0.0)
-                            continue;
                         mobilityRe[i][j] += leftRe * pj;
                         mobilityIm[i][j] += leftIm * pj;
                     }
@@ -3377,15 +3490,17 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 thiranCoefficients(fraction, t1, t2);
                 return omega * whole + allpassLag(2, t1, t2, omega) + filter - lead;
             };
+            double lead0 = 0.0;
+            double filter0 = 0.0;
             const auto solveLine = [&] (double omega, double cycles)
             {
-                const double lead = reflectionLead(omega * fs / (2.0 * pi));
-                const double filter = loop.filterLag(omega);
+                lead0 = reflectionLead(omega * fs / (2.0 * pi));
+                filter0 = loop.filterLag(omega);
                 double lower = 6.0, upper = delayCapacity - 16.0;
                 for (int iteration = 0; iteration < 60; ++iteration)
                 {
                     const double middle = 0.5 * (lower + upper);
-                    if (lagAt(omega, middle, filter, lead) < 2.0 * pi * cycles)
+                    if (lagAt(omega, middle, filter0, lead0) < 2.0 * pi * cycles)
                         lower = middle;
                     else
                         upper = middle;
@@ -3397,8 +3512,9 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             for (std::size_t k = 0; k < bendRatios.size(); ++k)
             {
                 const double omega = omega0 * bendRatios[k];
-                loop.lagCycles[k] = (lagAt(omega, loop.restLineDelay, loop.filterLag(omega),
-                                           reflectionLead(omega * fs / (2.0 * pi)))
+                const double filter = k == bendPoints / 2 ? filter0 : loop.filterLag(omega);
+                const double lead = k == bendPoints / 2 ? lead0 : reflectionLead(omega * fs / (2.0 * pi));
+                loop.lagCycles[k] = (lagAt(omega, loop.restLineDelay, filter, lead)
                                      - omega * loop.restLineDelay) / (2.0 * pi);
             }
         };
@@ -3520,6 +3636,14 @@ void AculyreEngine::reset() noexcept
     s.random.seed(0x5eed1ac0ffeeull);
     s.bend = s.bendTarget;
     s.output = s.outputTarget;
+    s.slipSamplesRemaining = 0;
+    s.slipEnv = 0.0;
+    s.slipDecay = 0.0;
+    s.slipPole = 0.0;
+    s.slipPrev = 0.0;
+    s.slipLowpass = 0.0;
+    s.slipRng.seed(0x9e3779b97f4a7c15ull);
+    s.slipCoupling = {};
 }
 
 const InstrumentSpec& AculyreEngine::instrument() const noexcept { return state_->instrument; }
@@ -3602,7 +3726,26 @@ void AculyreEngine::updateDamping(int string) noexcept
     double hand = 0.0;
     if (!voice.keyDown && !voice.sustained)
     {
-        hand = voice.plucked ? s.releaseRate : s.sympathyRate;
+        if (voice.plucked)
+        {
+            if (realismEnhancements_)
+            {
+                // A fingertip pad (~8-12 mm wide, Chadefaux et al., JASA 131
+                // (2012) 844) combines localized point damping at handPoint
+                // with distributed pad-width skin-shear absorption so nodal
+                // harmonics do not ring forever as synthetic whistles.
+                hand = 0.88 * s.releaseRate;
+                rate += 0.12 * s.releaseRate;
+            }
+            else
+            {
+                hand = s.releaseRate;
+            }
+        }
+        else
+        {
+            hand = s.sympathyRate;
+        }
     }
     voice.normal.setDamping(rate > 0.0 ? std::exp(-rate / voice.frequency) : 1.0);
     voice.parallel.setDamping(rate > 0.0 ? std::exp(-rate / voice.parallelFrequency) : 1.0);
@@ -4007,7 +4150,17 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         // 1.25 to 5 kHz, the exponential 7.6 dB). Each kink reaching the
         // bridge arrives smoothed by that one-pole; over the loop's period it
         // runs circularly, starting from its steady state at the period's end.
-        const double pole = release > 0.0 ? std::exp(-1.0 / (release * sampleRate_)) : 0.0;
+        // With realismEnhancements_, fingertip pulp compression under higher
+        // forces (Serina et al., J. Biomech. 30 (1997) 1035; Chadefaux et al.,
+        // JASA 133 (2013) 2444) sharpens the normal-plane edge breakaway at
+        // high velocity while keeping soft plucks round, and the parallel
+        // plane unloads slightly slower along the pulp ramp.
+        const double pulpCompression = 1.06 - 0.20 * v * v;
+        const double planeRelease = realismEnhancements_
+            ? (release > 0.0 ? release * (plane == 0 ? pulpCompression : 1.16)
+                             : (plane == 1 ? 0.008e-3 : 0.0))
+            : release;
+        const double pole = planeRelease > 0.0 ? std::exp(-1.0 / (planeRelease * sampleRate_)) : 0.0;
         double weighted = 0.0, weight = 1.0;
         for (int k = count - 1; k >= 0; --k)
         {
@@ -4049,6 +4202,30 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         {
             preload[2] += heldForce;
         }
+    }
+    if (realismEnhancements_)
+    {
+        // Non-repeating tribological stick-slip and winding-scrape micro-transient
+        // transmitted to the bridge bar during the initial 8-11 ms slip release.
+        const double slipDuration = plectrum ? 0.0075
+                                             : (controls.technique == Technique::Nail ? 0.0085 : 0.0110);
+        const int totalSamples = std::max(8, static_cast<int>(std::lround(slipDuration * sampleRate_)));
+        s.slipSamplesRemaining = totalSamples;
+        const double slipCornerHz = plectrum ? 8500.0
+                                             : (controls.technique == Technique::Nail ? 7500.0 : 5500.0);
+        s.slipPole = std::exp(-2.0 * pi * slipCornerHz / sampleRate_);
+        const double techRoughness = plectrum ? 0.0044
+                                              : (controls.technique == Technique::Nail ? 0.0038 : 0.0026);
+        const double windingBoost = string.coreDiameter > 0.0 ? 1.45 : 1.0;
+        s.slipEnv = force * (v * v) * techRoughness * windingBoost;
+        s.slipDecay = std::exp(-3.5 / totalSamples);
+        s.slipPrev = 0.0;
+        s.slipLowpass = 0.0;
+        const auto forceBits = static_cast<std::uint64_t>(std::abs(forceDraw) * 1.0e12) + 1ull;
+        s.slipRng.seed((forceBits * 0x9e3779b97f4a7c15ull)
+                       ^ static_cast<std::uint64_t>((midiNote + 1) * 2654435761u + (index + 1) * 40503u));
+        for (std::size_t c = 0; c < barCoordinates; ++c)
+            s.slipCoupling[c] = c == 2 ? 0.35 : port[c];
     }
     voice.squaresSum = 0.0;
     for (int k = 1; k <= voice.roundTrip; ++k)
@@ -4127,6 +4304,7 @@ void AculyreEngine::sleep() noexcept
     s.microphoneCursor = 0;
     s.piezoMountZ1 = s.piezoMountZ2 = 0.0;
     s.room.reset();
+    s.slipSamplesRemaining = 0;
     s.idle = true;
 }
 
@@ -4170,6 +4348,9 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
     static_assert(barCoordinates % 2 == 0 && maxStrings % 2 == 0, "the coordinates and the strings pair up");
     alignas(16) std::array<BarVector, maxStrings> coupling;
     alignas(16) double port[barCoordinates][maxStrings] {};
+    double invRoundTrip[maxStrings] {};
+    double axialScale[maxStrings] {};
+    double saddleCross[maxStrings] {};
     for (int index = 0; index < count; ++index)
     {
         const State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
@@ -4184,6 +4365,9 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             c[3 + bend] = twiceZ * voice.bend[bend];
             port[3 + bend][index] = voice.bend[bend];
         }
+        invRoundTrip[index] = 1.0 / voice.roundTrip;
+        axialScale[index] = 0.35 * voice.glidePerEnergy;
+        saddleCross[index] = 0.0018 * voice.lever;
     }
 
     for (int sample = 0; sample < numSamples; ++sample)
@@ -4214,8 +4398,19 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                 const double ratio = (tensionModulation_
                     ? 1.0 + voice.glidePerEnergy * voice.energy() : 1.0) * s.bend;
                 const auto plane = static_cast<std::size_t>(2 * index);
-                filters.setLineDelay(voice.normal, plane, voice.normal.lineDelayAt(ratio));
-                filters.setLineDelay(voice.parallel, plane + 1, voice.parallel.lineDelayAt(ratio));
+                if (ratio == 1.0)
+                {
+                    filters.setLineDelay(voice.normal, plane, voice.normal.restLineDelay);
+                    filters.setLineDelay(voice.parallel, plane + 1, voice.parallel.restLineDelay);
+                }
+                else
+                {
+                    const auto k = static_cast<std::size_t>(
+                        std::upper_bound(bendRatios.begin() + 1, bendRatios.end() - 1, ratio) - bendRatios.begin() - 1);
+                    const double t = (ratio - bendRatios[k]) / (bendRatios[k + 1] - bendRatios[k]);
+                    filters.setLineDelay(voice.normal, plane, voice.normal.lineDelayAt(ratio, k, t));
+                    filters.setLineDelay(voice.parallel, plane + 1, voice.parallel.lineDelayAt(ratio, k, t));
+                }
                 // A bend/glide changes both the live storage interval and
                 // the phase period. Keep the point contact in that interval,
                 // including on idle strings being damped against sympathy.
@@ -4237,25 +4432,19 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                                                                  & (delayCapacity - 1))]);
                     --voice.roundTrip;
                 }
+                invRoundTrip[index] = 1.0 / voice.roundTrip;
             }
         }
 
         filters.read(loops.data(), 2 * count, wave.data());
-        alignas(16) BarVector drive {};
+        Pair d0 = splat(0.0), d1 = splat(0.0), d2 = splat(0.0), d3 = splat(0.0), d4 = splat(0.0);
         for (int index = 0; index < count; ++index)
         {
             State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
-            const double vn = wave[static_cast<std::size_t>(2 * index)];
-            const double vp = wave[static_cast<std::size_t>(2 * index + 1)];
+            const double vn = voice.normal.finishRead(wave[static_cast<std::size_t>(2 * index)]);
+            const double vp = voice.parallel.finishRead(wave[static_cast<std::size_t>(2 * index + 1)]);
             normalIn[static_cast<std::size_t>(index)] = vn;
             parallelIn[static_cast<std::size_t>(index)] = vp;
-            const Pair* const c = pairs(coupling[static_cast<std::size_t>(index)].data());
-            Pair* const d = pairs(drive.data());
-            const Pair n = splat(vn);
-            d[0] += c[0] * n;
-            d[1] += c[1] * Pair { vp, vn };
-            for (std::size_t p = 2; p < barCoordinates / 2; ++p)
-                d[p] += c[p] * n;
             // The loop's mean squared velocity over a round trip; both
             // directions' slopes count, hence the factor in glidePerEnergy.
             const float square = static_cast<float>(vn * vn + vp * vp);
@@ -4265,7 +4454,49 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             voice.squaresSum = std::max(0.0, voice.squaresSum + static_cast<double>(square) - leaving);
             slot = square;
             voice.squaresIndex = (voice.squaresIndex + 1) & (delayCapacity - 1);
-                }
+            double vnDrive = vn;
+            double vpDrive = vp;
+            if (realismEnhancements_)
+            {
+                // Transverse-to-longitudinal (2 f_n) AC axial tension pull at
+                // the bridge saddle and curved/fanned saddle notch coupling.
+                const double acSquare = static_cast<double>(square) - voice.squaresSum * invRoundTrip[index];
+                const double cross = saddleCross[index];
+                vnDrive += axialScale[index] * acSquare + cross * vp;
+                vpDrive -= cross * vn;
+            }
+            const Pair* const c = pairs(coupling[static_cast<std::size_t>(index)].data());
+            const Pair n = splat(vnDrive);
+            d0 += c[0] * n;
+            d1 += c[1] * Pair { vpDrive, vnDrive };
+            d2 += c[2] * n;
+            d3 += c[3] * n;
+            d4 += c[4] * n;
+        }
+        if (realismEnhancements_ && s.slipSamplesRemaining > 0)
+        {
+            --s.slipSamplesRemaining;
+            const double raw = s.slipRng.bipolar();
+            const double hp = raw - s.slipPrev;
+            s.slipPrev = raw;
+            s.slipLowpass = s.slipPole * s.slipLowpass + (1.0 - s.slipPole) * hp;
+            const double rubForce = s.slipEnv * s.slipLowpass;
+            s.slipEnv *= s.slipDecay;
+            const Pair* const sc = pairs(s.slipCoupling.data());
+            const Pair rf = splat(rubForce);
+            d0 += sc[0] * rf;
+            d1 += sc[1] * rf;
+            d2 += sc[2] * rf;
+            d3 += sc[3] * rf;
+            d4 += sc[4] * rf;
+        }
+        alignas(16) BarVector drive;
+        Pair* const d = pairs(drive.data());
+        d[0] = d0;
+        d[1] = d1;
+        d[2] = d2;
+        d[3] = d3;
+        d[4] = d4;
 
         ModeBank& bank = s.bank;
         if (s.modalPastStale)

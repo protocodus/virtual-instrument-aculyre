@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Aculyre VERSION 0.12.6 LANGUAGES CXX)
+project(Aculyre VERSION 0.12.7 LANGUAGES CXX)
 
 # An experimental prototype: the DSP and its Performer, no plug-in yet.
 option(BUILD_TESTING "Build the tests" ON)
@@ -32,6 +32,10 @@ target_link_libraries(RenderAculyreNotes PRIVATE AculyreDSP)
 
 add_executable(MeasureAculyreDesign Tools/MeasureDesign.cpp)
 target_link_libraries(MeasureAculyreDesign PRIVATE AculyreDSP)
+
+add_executable(AculyreCpuProbe Tools/MeasureCpu.cpp)
+target_include_directories(AculyreCpuProbe PRIVATE Source)
+target_link_libraries(AculyreCpuProbe PRIVATE AculyreDSP)
 
 if(BUILD_TESTING)
     enable_testing()

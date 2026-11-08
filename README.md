@@ -24,6 +24,8 @@ reference recording below.
 
 ## Version history
 
+- **0.12.6** (local candidate): lower native CPU through an exact AVX2 modal bank and paired stereo output FIRs. All tested oversampling settings preserve the sample sequence and calibrated levels. [Measurements and limits](Docs/benchmarks/cpu-oversampling-2026-11-08.md).
+
 - **0.12.5** (candidate, not released): a final 0.6 dB output reserve covers
   a measured low-rate intersample peak, lowering the sample ceiling to
   -2.1 dBFS. Reciprocal digital calibration before the unchanged shared stage

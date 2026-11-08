@@ -96,6 +96,15 @@ constexpr double inch = 0.0254;
 // AculyreEngineTests holds every string within 1 dB of the line by each
 // pickup and reports the touch each would need after a change to the strings
 // or the body.
+//
+// Each instrument's lever touches are the same voicing for the lever notes,
+// a string raised a semitone (2026-11-08): on its string's touch a lever note
+// that lands on a body mode stood up to 5.5 dB off the strings' line (steel
+// G#4 +5.3, nylon A#5 +5.5, piezo C#6 -4.2). Each puts its note on the line
+// the strings are evened onto, fitted as their touches are; a note that
+// would want more than the full touch is played at 1, which leaves it at
+// most 1.7 dB under (nylon C#5 by the piezo), so no note is plucked harder than
+// pluckForce either.
 constexpr double poundPerInch = 17.857967;  // kg/m
 constexpr std::array<StringSpec, maxStrings> lyreHarpSteel {{
     { 47, 0.513, 0.032 * inch, 0.86, 0.59, 0.00019347 * poundPerInch, 0.412e-3 },
@@ -219,17 +228,26 @@ constexpr BodySpec gutLyreBody {
 // README Level).
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 27, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.182, 0.484
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.182, 0.484,
+    // leverTouch, leverPiezoTouch (above)
+    {{ 0, 0.83, 0.92, 0, 0.57, 0.29, 0.48, 0, 0.30, 0.41, 0, 0.25, 0.16, 0.26, 0, 0.11, 0.25, 0, 0.27, 0.32, 0.37, 0, 0.20, 0.20, 0, 0.35, 0.23 }},
+    {{ 0, 0.58, 0.56, 0, 0.58, 0.72, 0.59, 0, 0.54, 0.49, 0, 0.48, 0.56, 0.76, 0, 1.00, 0.70, 0, 0.64, 0.67, 0.66, 0, 1.00, 1.00, 0, 0.87, 0.83 }}
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {
     "Nylon Lyre Harp", nylonMonofilament, 27, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.459, 0.443
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.459, 0.443,
+    // leverTouch, leverPiezoTouch (above)
+    {{ 0, 0.78, 0.89, 0, 0.58, 0.27, 0.54, 0, 0.32, 0.45, 0, 0.25, 0.14, 0.25, 0, 0.10, 0.23, 0, 0.27, 0.30, 0.35, 0, 0.17, 0.14, 0, 0.29, 0.23 }},
+    {{ 0, 0.69, 0.67, 0, 0.73, 0.84, 0.77, 0, 0.70, 0.63, 0, 0.59, 0.61, 0.86, 0, 1.00, 0.79, 0, 0.72, 0.71, 0.66, 0, 1.00, 1.00, 0, 0.86, 0.78 }}
 };
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 16, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.498, 0.441
+    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.498, 0.441,
+    // leverTouch, leverPiezoTouch (above)
+    {{ 0.50, 0.42, 0, 0.51, 0.86, 0, 0.58, 0.46, 0.45, 0, 0.52, 0.82, 0, 0.81, 0.61, 1.00 }},
+    {{ 0.86, 0.84, 0, 0.89, 0.78, 0, 0.78, 0.78, 0.83, 0, 0.85, 0.83, 0, 0.80, 0.81, 0.83 }}
 };
 
 inline constexpr std::array<const InstrumentSpec*, 3> presets {{

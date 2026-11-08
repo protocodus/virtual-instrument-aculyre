@@ -361,6 +361,50 @@ int main()
         std::printf("%-16s even touch (%s): every string within %.2f dB of the register's line (%+.2f dB per semitone)\n",
                     preset->name, piezo ? "piezo" : "mics", worst, slope);
         check(worst < 1.0, "an even touch keeps every string within 1 dB of the register's line");
+
+        // The lever notes on the same line by their own touches; one that
+        // wants more than the full touch is played at 1 and may sit under it.
+        double leverWorst = 0.0;
+        bool leverOnLine = true;
+        for (int index = 0; index < count; ++index)
+        {
+            const double leverTouch = piezo ? preset->leverPiezoTouch[static_cast<std::size_t>(index)]
+                                            : preset->leverTouch[static_cast<std::size_t>(index)];
+            if (!(leverTouch > 0.0))
+                continue;
+            const int note = preset->strings[static_cast<std::size_t>(index)].midiNote + 1;
+            auto engine = std::make_unique<aculyre::AculyreEngine>();
+            engine->prepare(48000.0);
+            engine->setInstrument(*preset);
+            aculyre::PlayingControls controls = engine->controls();
+            controls.room = 0.0;
+            controls.piezo = piezo ? 1.0 : 0.0;
+            controls.levers = true;
+            engine->setControls(controls);
+            std::vector<float> l(14400), r(14400);
+            engine->process(l.data(), r.data(), 64);
+            engine->noteOn(note, 90.0f / 127.0f);
+            for (int position = 0; position < 14400; position += 64)
+                engine->process(l.data() + position, r.data() + position, 64);
+            double sum = 0.0;
+            for (std::size_t i = 0; i < l.size(); ++i)
+            {
+                const double mid = 0.5 * (static_cast<double>(l[i]) + r[i]);
+                sum += mid * mid;
+            }
+            const double off = 10.0 * std::log10(sum / 14400.0) - (meanLevel + slope * (note - meanNote));
+            leverWorst = std::max(leverWorst, std::abs(off));
+            const bool fine = std::abs(off) <= 1.0 || (leverTouch >= 1.0 && off < 0.0 && off > -2.0);
+            if (!fine)
+            {
+                leverOnLine = false;
+                std::printf("%-16s lever note %d: %+.2f dB off the line, wants %s %.2f\n", preset->name, note, off,
+                            piezo ? "leverPiezoTouch" : "leverTouch", leverTouch * std::pow(10.0, -off / 20.0));
+            }
+        }
+        std::printf("%-16s even touch (%s): every lever note within %.2f dB of the register's line\n",
+                    preset->name, piezo ? "piezo" : "mics", leverWorst);
+        check(leverOnLine, "an even touch keeps every lever note within 1 dB of the register's line");
     }
 
     // The steel lyre harp's pluck a quarter of the way from the bridge leaves

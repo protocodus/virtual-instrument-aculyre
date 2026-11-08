@@ -24,6 +24,16 @@ reference recording below.
 
 ## Version history
 
+- **0.12.1** (prototype, not released): the lever notes are evened as the
+  strings are. Each string's touch puts it on one line with the others, but
+  a lever note took its string's touch, so the ones that land on a body
+  mode stood out: steel G#4 `+5.3` dB, nylon A#5 `+5.5`, steel C#6 by the
+  piezo `-4.2` (velocity 90, first 300 ms, against the strings' line). Each
+  lever note now has a touch of its own by the microphones and by the
+  piezo, fitted the same way, and sits within `0.9` dB of the line; a few
+  piezo notes that would need more than the full touch are played at it
+  and sit up to `1.7` dB under. Strings and the levers-down instrument are
+  unchanged. Acukoto's pressed keys had the same gap (Acukoto 0.23.0).
 - **0.12.0** (prototype, not released): every fundamental now decays at the
   rate the string's loss laws give it. The loss filters are fitted from the
   second partial up, and what they took at the fundamental was not its

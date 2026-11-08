@@ -3745,8 +3745,10 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     if (pitchChanged)
         applyPitch(index, raise, extensionKey);
 
-    // The player evens the scale by what is heard: the microphones, the
-    // piezo, or between the two as the blend sets.
+    // The player evens the scale using the microphone-baseline touch.
+    // Capture selection is an observer: switching a pickup must not change
+    // the force, string energy, glide or sympathetic excitation. The piezo
+    // has one fixed output gain, not a different player on every string.
     // A lever note has a touch of its own: on the string's, the lever notes
     // that land on a body mode stood up to 5.5 dB off the line every string
     // is evened onto (2026-11-08), as a koto's pressed keys did (Acukoto
@@ -3754,10 +3756,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     const StringSpec& string = instrument.strings[static_cast<std::size_t>(index)];
     const std::size_t at = static_cast<std::size_t>(index);
     const bool lever = raise && instrument.leverTouch[at] > 0.0;
-    const double micTouch = lever ? instrument.leverTouch[at] : string.touch;
-    const double pickupTouch = lever && instrument.leverPiezoTouch[at] > 0.0 ? instrument.leverPiezoTouch[at]
-                                                                             : string.piezoTouch;
-    const double touch = std::pow(micTouch, 1.0 - controls.piezo) * std::pow(pickupTouch, controls.piezo);
+    const double touch = lever ? instrument.leverTouch[at] : string.touch;
     const double forceDraw = s.random.gaussian();
     const double force = instrument.pluckForce * touch * std::pow(v, 1.4) * std::exp(0.14 * forceDraw);
     const double angle = std::asin(std::sqrt(std::clamp(controls.normalShare, 0.0, 1.0)))

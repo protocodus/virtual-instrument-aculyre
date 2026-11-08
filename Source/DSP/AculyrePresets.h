@@ -85,7 +85,8 @@ constexpr double inch = 0.0254;
 // G4 9.3 over and D5 9.0 under, and the gut lyre's E3 5.6 over and D5 7.4
 // under (0.7.2).
 //
-// The fifth value is the same touch by the piezo, with the piezo alone. The
+// The fifth value is LEGACY metadata since 0.12.3; it no longer changes
+// excitation. The following describes how that old table was obtained. The
 // piezo hears the force on the bridge bar rather than what the soundbox
 // radiates, so it favours other strings: the microphones' touch would leave
 // the piezo's worst string 10.2 dB off its line on steel, 9.6 on nylon and
@@ -94,8 +95,9 @@ constexpr double inch = 0.0254;
 // is 1, so no string is plucked harder than pluckForce.
 //
 // AculyreEngineTests holds every string within 1 dB of the line by each
-// pickup and reports the touch each would need after a change to the strings
-// or the body.
+// microphone pickup and reports the touch each would need after a change to
+// the strings or the body. The piezo now observes that same performance,
+// including its natural note-to-note level differences.
 //
 // Each instrument's lever touches are the same voicing for the lever notes,
 // a string raised a semitone (2026-11-08): on its string's touch a lever note
@@ -226,9 +228,15 @@ constexpr BodySpec gutLyreBody {
 // playing at a median of -9 on Reason's VU meter at its own controls, and
 // piezoGain puts the piezo alone within 1 dB of that (AculyreEngineTests,
 // README Level).
+// 2026-11-08: the fixed pickup gains were rebalanced after removing capture
+// from excitation, on the same public test protocol: median 300 ms VU over
+// individual strings and native thirds/sevenths, velocities 70/90/110, 48
+// kHz, shipping Performer. Raw piezo medians with the old gains were
+// -12.929/-14.377/-10.749 VU against mic -9.191/-8.704/-8.901. These are
+// digital output trims, not physical body or per-string force calibration.
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 27, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.182, 0.484,
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.182, 0.744327071,
     // leverTouch, leverPiezoTouch (above)
     {{ 0, 0.83, 0.92, 0, 0.57, 0.29, 0.48, 0, 0.30, 0.41, 0, 0.25, 0.16, 0.26, 0, 0.11, 0.25, 0, 0.27, 0.32, 0.37, 0, 0.20, 0.20, 0, 0.35, 0.23 }},
     {{ 0, 0.58, 0.56, 0, 0.58, 0.72, 0.59, 0, 0.54, 0.49, 0, 0.48, 0.56, 0.76, 0, 1.00, 0.70, 0, 0.64, 0.67, 0.66, 0, 1.00, 1.00, 0, 0.87, 0.83 }}
@@ -236,7 +244,7 @@ inline constexpr InstrumentSpec lyreHarpSteel {
 
 inline constexpr InstrumentSpec lyreHarpNylon {
     "Nylon Lyre Harp", nylonMonofilament, 27, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.459, 0.443,
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.459, 0.851306602,
     // leverTouch, leverPiezoTouch (above)
     {{ 0, 0.78, 0.89, 0, 0.58, 0.27, 0.54, 0, 0.32, 0.45, 0, 0.25, 0.14, 0.25, 0, 0.10, 0.23, 0, 0.27, 0.30, 0.35, 0, 0.17, 0.14, 0, 0.29, 0.23 }},
     {{ 0, 0.69, 0.67, 0, 0.73, 0.84, 0.77, 0, 0.70, 0.63, 0, 0.59, 0.61, 0.86, 0, 1.00, 0.79, 0, 0.72, 0.71, 0.66, 0, 1.00, 1.00, 0, 0.86, 0.78 }}
@@ -244,7 +252,7 @@ inline constexpr InstrumentSpec lyreHarpNylon {
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 16, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.498, 0.441,
+    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.498, 0.545578595,
     // leverTouch, leverPiezoTouch (above)
     {{ 0.50, 0.42, 0, 0.51, 0.86, 0, 0.58, 0.46, 0.45, 0, 0.52, 0.82, 0, 0.81, 0.61, 1.00 }},
     {{ 0.86, 0.84, 0, 0.89, 0.78, 0, 0.78, 0.78, 0.83, 0, 0.85, 0.83, 0, 0.80, 0.81, 0.83 }}

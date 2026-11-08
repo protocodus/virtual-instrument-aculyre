@@ -301,9 +301,10 @@ int main()
     // An even touch: at velocity 90 each string's level over its first
     // 300 ms (the instrument's own controls, without the room) lies within
     // 1 dB of the straight line through every string's level, by the
-    // microphones and by the piezo alone.
+    // microphones. Pickup selection now preserves this physical touch;
+    // a separate capture-invariance suite replaces the old per-pickup
+    // force-table contract. A pickup need not flatten the body response.
     for (const auto* preset : aculyre::presets)
-    for (const bool piezo : { false, true })
     {
         const int count = preset->stringCount;
         std::array<double, aculyre::maxStrings> levels {};
@@ -316,7 +317,7 @@ int main()
             engine->setInstrument(*preset);
             aculyre::PlayingControls controls = engine->controls();
             controls.room = 0.0;
-            controls.piezo = piezo ? 1.0 : 0.0;
+            controls.piezo = 0.0;
             engine->setControls(controls);
             std::vector<float> l(14400), r(14400);
             // An idle block takes the controls at once; without it the
@@ -355,11 +356,11 @@ int main()
             worst = std::max(worst, std::abs(off));
             if (std::abs(off) > 1.0)
                 std::printf("%-16s note %d: %+.2f dB off the line, wants %s %.2f\n", preset->name,
-                            string.midiNote, off, piezo ? "piezoTouch" : "touch",
-                            (piezo ? string.piezoTouch : string.touch) * std::pow(10.0, -off / 20.0));
+                            string.midiNote, off, "touch",
+                            string.touch * std::pow(10.0, -off / 20.0));
         }
         std::printf("%-16s even touch (%s): every string within %.2f dB of the register's line (%+.2f dB per semitone)\n",
-                    preset->name, piezo ? "piezo" : "mics", worst, slope);
+                    preset->name, "mics", worst, slope);
         check(worst < 1.0, "an even touch keeps every string within 1 dB of the register's line");
 
         // The lever notes on the same line by their own touches; one that
@@ -368,8 +369,7 @@ int main()
         bool leverOnLine = true;
         for (int index = 0; index < count; ++index)
         {
-            const double leverTouch = piezo ? preset->leverPiezoTouch[static_cast<std::size_t>(index)]
-                                            : preset->leverTouch[static_cast<std::size_t>(index)];
+            const double leverTouch = preset->leverTouch[static_cast<std::size_t>(index)];
             if (!(leverTouch > 0.0))
                 continue;
             const int note = preset->strings[static_cast<std::size_t>(index)].midiNote + 1;
@@ -378,7 +378,7 @@ int main()
             engine->setInstrument(*preset);
             aculyre::PlayingControls controls = engine->controls();
             controls.room = 0.0;
-            controls.piezo = piezo ? 1.0 : 0.0;
+            controls.piezo = 0.0;
             controls.levers = true;
             engine->setControls(controls);
             std::vector<float> l(14400), r(14400);
@@ -399,11 +399,11 @@ int main()
             {
                 leverOnLine = false;
                 std::printf("%-16s lever note %d: %+.2f dB off the line, wants %s %.2f\n", preset->name, note, off,
-                            piezo ? "leverPiezoTouch" : "leverTouch", leverTouch * std::pow(10.0, -off / 20.0));
+                            "leverTouch", leverTouch * std::pow(10.0, -off / 20.0));
             }
         }
         std::printf("%-16s even touch (%s): every lever note within %.2f dB of the register's line\n",
-                    preset->name, piezo ? "piezo" : "mics", leverWorst);
+                    preset->name, "mics", leverWorst);
         check(leverOnLine, "an even touch keeps every lever note within 1 dB of the register's line");
     }
 

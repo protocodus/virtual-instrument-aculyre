@@ -3,6 +3,28 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-08: capture does not change the player's force (0.12.3 candidate)
+
+The owner requested physical energy-routing corrections and separate review
+audio before publication. The microphone-baseline touch is now the physical
+player's touch for every capture setting. PIEZO and its polarity change only
+the observer; native and lever excitation, wave states and sympathy remain
+bit-identical across microphone, blended and pickup capture.
+
+The former pickup-specific force tables were presentation voicing. A steel
+A4 at velocity 0.7 changed force from 0.352 to 1.169 N when only PIEZO changed
+from zero to one. That feedback from recording choice into performer work is
+removed. Historical tables remain source-compatible metadata and are ignored.
+Their old per-pickup even-touch test is replaced by capture invariance; the
+microphone touch and its evenness requirements remain.
+
+Only fixed digital pickup gains are rebalanced: 0.744327071 / 0.851306602 /
+0.545578595 for steel / nylon / gut, using the existing median-VU protocol on
+native notes and chords at velocities 70/90/110. These are output trims,
+not new body physics, string losses or measured sensor sensitivity. No
+per-note output EQ is introduced. A one-change comparison is prepared
+off-tree; no listener preference has been received.
+
 ## 2026-11-08: damping contact coordinates follow propagation (0.12.2 candidate)
 
 The physical audit found native bass return taps clipped against the explicit

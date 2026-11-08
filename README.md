@@ -24,6 +24,12 @@ reference recording below.
 
 ## Version history
 
+- **0.12.3** (candidate, not released): the pickup hears the same pluck as
+  the microphones. PIEZO no longer changes each string's force, pitch glide
+  or sympathetic excitation. The microphone-baseline touch is retained and
+  three fixed pickup output gains balance typical playing. The pickup's
+  natural note-to-note response is retained; it no longer has its own player
+  compensating each note. Listening review is pending.
 - **0.12.2** (candidate, not released): a damping finger follows a pitch
   bend instead of touching samples outside the shortened string loop.
   Fractional, passive contact taps use the full current phase period and a
@@ -514,9 +520,11 @@ straight line through every string's level, so the register keeps its
 slope (about -0.3 dB per semitone on the lyre harps) and no string stands
 out of it. The
 piezo hears the force on the bar, not what the soundbox radiates, so it
-favours other strings (the microphones' touch would leave one string 7 to
-8 dB out of the piezo's line); it has a touch of its own, evened the same
-way, and the touch blends geometrically between the two as PIEZO does.
+favours other strings. It now observes the same physical touch as the
+microphones: capture selection does not alter excitation. A fixed output
+gain per instrument balances typical playing, while retaining the pickup's
+different note-to-note response. Before 0.12.3, PIEZO blended between two
+force tables and inadvertently changed string energy and pitch glide.
 
 **Bridge and body.** All strings end on one bar: heave and rock carry the
 strings' motion normal to the top, sway the motion parallel to it, through

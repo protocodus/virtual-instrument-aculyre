@@ -1,4 +1,5 @@
 #include "AculyreEngine.h"
+#include "StringContact.h"
 
 #include <algorithm>
 #include <cmath>
@@ -906,11 +907,8 @@ struct Loop
     // past them every slot is zero, and the stream through the array is
     // skipped (it missed the cache once every sixteen samples, on every loop).
     int pendingAhead { 0 };
-    // The playing hand resting on the string at one point: the line's two
-    // samples passing it, out to the yoke and back, by age, and the share of
-    // the point's velocity it takes from each (0, no hand).
-    int handOut { 0 }, handBack { 0 };
-    double handShare { 0.0 };
+    detail::StringContact hand {};
+    double handRate { 0.0 };
     double gain { 1.0 };
     double damping { 1.0 };
     double dampingStep { 0.0 };
@@ -990,10 +988,10 @@ struct Loop
         // Back to where prepare() leaves the line, so a reset plays as a
         // fresh instance does, sample for sample.
         write = 0;
-        handOut = handBack = 0;
+        hand = {};
         damping = dampingTarget = 1.0;
         dampingStep = 0.0;
-        handShare = 0.0;
+        handRate = 0.0;
         setLineDelay(restLineDelay);
     }
 
@@ -1090,29 +1088,25 @@ struct Loop
         return y;
     }
 
-    // A dashpot at the hand's point. The line holds the outgoing wave with
-    // the bridge's inversion folded in, so the string's velocity there is
-    // the returning sample less the outgoing one; the dashpot's force takes
-    // the same share of it from both waves leaving the point.
+    // Adjoint interpolation/scattering keeps fractional contacts passive.
     void touch() noexcept
     {
-        float& out = line[static_cast<std::size_t>((write - 1 - handOut) & (delayCapacity - 1))];
-        float& back = line[static_cast<std::size_t>((write - 1 - handBack) & (delayCapacity - 1))];
-        const float taken = static_cast<float>(handShare) * (back - out);
-        out += taken;
-        back -= taken;
+        hand.apply(line.data(), delayCapacity - 1, write);
     }
 
     // Puts the hand at `point` (a fraction of the length from the bridge)
     // with the decay rate `rate` (1/s) averaged over the partials. A dashpot
     // R at x damps partial n at R sin^2(n pi x / L) / (mu L); in waves,
     // with r = R / 2Z, that is 4 r f sin^2, 2 r f on average.
-    void setHand(double point, double rate, double frequency) noexcept
+    void setHand(double point, double rate, double frequency, double sampleRate) noexcept
     {
-        handShare = rate > 0.0 ? std::min(0.25, rate / (2.0 * frequency)) : 0.0;
-        const int last = std::max(2, whole - 1);
-        handOut = std::clamp(static_cast<int>(std::lround(0.5 * point * loopDelay)), 1, last);
-        handBack = std::clamp(static_cast<int>(std::lround((1.0 - 0.5 * point) * loopDelay)), 1, last);
+        handRate = rate;
+        hand.configure(point, rate, frequency, sampleRate, whole);
+    }
+
+    void retuneHand(double frequency, double sampleRate) noexcept
+    {
+        hand.configure(hand.point, handRate, frequency, sampleRate, whole);
     }
 
     // The loss per round trip a resting hand adds, reached over one round trip.
@@ -3515,8 +3509,8 @@ void AculyreEngine::updateDamping(int string) noexcept
     }
     voice.normal.setDamping(rate > 0.0 ? std::exp(-rate / voice.frequency) : 1.0);
     voice.parallel.setDamping(rate > 0.0 ? std::exp(-rate / voice.parallelFrequency) : 1.0);
-    voice.normal.setHand(voice.handPoint, hand, voice.frequency);
-    voice.parallel.setHand(voice.handPoint, hand, voice.parallelFrequency);
+    voice.normal.setHand(voice.handPoint, hand, voice.frequency, sampleRate_);
+    voice.parallel.setHand(voice.handPoint, hand, voice.parallelFrequency, sampleRate_);
 }
 
 void AculyreEngine::setControls(const PlayingControls& controls) noexcept
@@ -4107,6 +4101,11 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                 const auto plane = static_cast<std::size_t>(2 * index);
                 filters.setLineDelay(voice.normal, plane, voice.normal.lineDelayAt(ratio));
                 filters.setLineDelay(voice.parallel, plane + 1, voice.parallel.lineDelayAt(ratio));
+                // A bend/glide changes both the live storage interval and
+                // the phase period. Keep the point contact in that interval,
+                // including on idle strings being damped against sympathy.
+                voice.normal.retuneHand(voice.frequency * ratio, sampleRate_);
+                voice.parallel.retuneHand(voice.parallelFrequency * ratio, sampleRate_);
                 // The mean follows the period the bend and the glide set.
                 const int roundTrip = std::clamp(static_cast<int>(std::lround(sampleRate_ / (voice.frequency * ratio))),
                                                  1, delayCapacity - 1);
@@ -4214,7 +4213,7 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
             voice.normal.writeSample(normalIn[static_cast<std::size_t>(index)] - normalPort[index]);
             voice.parallel.writeSample(parallelIn[static_cast<std::size_t>(index)] - velocity[2]);
-            if (voice.normal.handShare > 0.0)
+            if (voice.normal.hand.share > 0.0)
             {
                 voice.normal.touch();
                 voice.parallel.touch();
@@ -4321,6 +4320,17 @@ AculyreEngine::StringActivity AculyreEngine::stringActivity(int string) const no
         return {};
     const auto& voice = state_->strings[static_cast<std::size_t>(string)];
     return { voice.energy(), voice.keyDown || voice.sustained, voice.plucked, voice.raised };
+}
+
+AculyreEngine::ContactReport AculyreEngine::contactReport(int string, bool parallel) const noexcept
+{
+    if (string < 0 || string >= stringCount_)
+        return {};
+    const auto& voice = state_->strings[static_cast<std::size_t>(string)];
+    const auto& loop = parallel ? voice.parallel : voice.normal;
+    const auto& hand = loop.hand;
+    return { hand.point, hand.period, hand.requestedSeparation,
+             hand.outgoingAge, hand.returningAge, hand.share, hand.latestAge, loop.last };
 }
 
 int AculyreEngine::modeCount() const noexcept { return state_->modeCount; }

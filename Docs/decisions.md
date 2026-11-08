@@ -3,6 +3,23 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-08: damping contact coordinates follow propagation (0.12.2 candidate)
+
+The physical audit found native bass return taps clipped against the explicit
+delay line, and stale taps after a bend shortened that line. The owner
+authorized a bounded correction and a separate listening comparison, with no
+publication before review. This entry records implementation, not a listening
+verdict; no preference has been received.
+
+`StringContact.h` uses the shorter mirror-equivalent separation of the current
+full phase period. Both fractional kernels fit inside the live delay. Reading
+and scattering use adjoint weights, so the contact removes wave energy. The
+independent standing-wave/node and stored-wave-norm checks, plus engine checks
+at 44.1, 48 and 96 kHz through two-semitone and octave bends, are in
+`ContactPhysicsTests.cpp`. This does not claim an exact distributed stiff-string
+contact, or resolve the separately documented polarization and bend-mechanism
+limitations. See [validation](validation/contact-routing-2026-11-08.md).
+
 ## 2026-11-07: strings are tuned to what sounds a second after the pluck (0.11.0)
 
 **What was decided.** Each string's two planes are tuned together so that

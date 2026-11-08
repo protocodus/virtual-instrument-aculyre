@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Aculyre VERSION 0.12.1 LANGUAGES CXX)
+project(Aculyre VERSION 0.12.2 LANGUAGES CXX)
 
 # An experimental prototype: the DSP and its Performer, no plug-in yet.
 option(BUILD_TESTING "Build the tests" ON)
@@ -39,6 +39,10 @@ if(BUILD_TESTING)
     target_link_libraries(AculyreEngineTests PRIVATE AculyreDSP)
     add_test(NAME Aculyre.Engine COMMAND AculyreEngineTests)
     set_tests_properties(Aculyre.Engine PROPERTIES LABELS unit)
+    add_executable(AculyreContactPhysicsTests Tests/ContactPhysicsTests.cpp)
+    target_link_libraries(AculyreContactPhysicsTests PRIVATE AculyreDSP)
+    add_test(NAME Aculyre.ContactPhysics COMMAND AculyreContactPhysicsTests)
+    set_tests_properties(Aculyre.ContactPhysics PROPERTIES LABELS unit)
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
         # The committed demo phrases are what the writer writes (G3a).

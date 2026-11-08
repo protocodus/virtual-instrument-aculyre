@@ -212,6 +212,16 @@ public:
         bool raised;    // its sharping lever is up
     };
     [[nodiscard]] StringActivity stringActivity(int string) const noexcept;
+    // Diagnostic of the phase-equivalent point contact, in current samples.
+    // A shorter realised than requested separation exposes the lumped
+    // loop's limit at extreme bends/positions (StringContact.h).
+    struct ContactReport
+    {
+        double point, period, requestedSeparation, outgoingAge, returningAge, share;
+        int latestAge;
+        double incomingWaveVelocity; // m/s, before the bridge junction
+    };
+    [[nodiscard]] ContactReport contactReport(int string, bool parallel = false) const noexcept;
     // Asleep: everything has died away below -140 dBFS, so process() writes
     // silence without running the strings, the body or the room until the
     // next pluck.

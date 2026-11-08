@@ -24,6 +24,13 @@ reference recording below.
 
 ## Version history
 
+- **0.12.2** (candidate, not released): a damping finger follows a pitch
+  bend instead of touching samples outside the shortened string loop.
+  Fractional, passive contact taps use the full current phase period and a
+  shorter equivalent arc, so the bass strings no longer clip one tap against
+  the loop's dispersion filters. This remains a phase-equivalent point
+  contact, not a distributed stiff-string/finger simulation. Listening review
+  is pending; see [validation](Docs/validation/contact-routing-2026-11-08.md).
 - **0.12.1** (prototype, not released): the lever notes are evened as the
   strings are. Each string's touch puts it on one line with the others, but
   a lever note took its string's touch, so the ones that land on a body
@@ -924,6 +931,13 @@ nothing until the next pluck.
   give it, its dispersion takes the first-order fit alone, without the
   second-order sections, so a bass key's upper partials drift further from
   the stiff-string law, and each end plays one key at a time.
+- The damping hand uses a phase-equivalent contact on the folded string loop.
+  Its shorter mirror arc preserves ideal-string modal participation and stays
+  inside the live delay as pitch bends, with passive fractional scattering.
+  The dispersion filters are lumped rather than distributed along the string;
+  a physical stiff-string contact's high-partial phases therefore remain an
+  approximation. At extreme bend/position combinations where even the short
+  arc exceeds the live delay, its separation is bounded symmetrically.
 - The gut lyre's ten added strings are no reconstruction's: their gauges,
   the slanted yoke and the 6 mm spacing are assumed, and the box and bridge
   bar are still the six-string lyre's.

@@ -3610,6 +3610,16 @@ void AculyreEngine::updateDamping(int string) noexcept
     voice.parallel.setHand(voice.handPoint, hand, voice.parallelFrequency, sampleRate_);
 }
 
+void AculyreEngine::setRealismEnhancements(bool enabled) noexcept
+{
+    if (realismEnhancements_ == enabled)
+        return;
+    realismEnhancements_ = enabled;
+    if (state_)
+        for (int index = 0; index < stringCount_; ++index)
+            state_->strings[static_cast<std::size_t>(index)].dampingDirty = true;
+}
+
 void AculyreEngine::setControls(const PlayingControls& controls) noexcept
 {
     State& s = *state_;
@@ -3915,6 +3925,13 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // (Tools/compare_lyre_harp_samples.py --takes; Aculele's benchmark).
     release *= std::clamp(std::pow(v / 0.5, -1.4 * 1.2) * std::pow(20.0, 1.0 - v), 0.4, 10.0)
              * std::exp(0.4 * s.random.gaussian() - 1.2 * 0.14 * forceDraw);
+    if (realismEnhancements_ && release > 0.0)
+    {
+        const double nominalPos = std::clamp(reach * instrument.pluckPosition, 0.02, 0.7);
+        const double complianceRatio = (position * (1.0 - position))
+                                     / std::max(nominalPos * (1.0 - nominalPos), 1.0e-4);
+        release *= std::pow(std::clamp(complianceRatio, 0.30, 1.80), 0.22);
+    }
     s.lastPluck = { position, force, normalShare, release };
     voice.handPoint = position;
 

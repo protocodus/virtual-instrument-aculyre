@@ -179,6 +179,8 @@ class AculyreEngine
 public:
     AculyreEngine();
     ~AculyreEngine();
+    // Electrical antialiasing delay; microphones/room are aligned to it.
+    static constexpr int latencySamples = 7;
 
     // Setup: designs the strings, the body and the room. Not real-time.
     void prepare(double sampleRate);

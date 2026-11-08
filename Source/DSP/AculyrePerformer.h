@@ -56,7 +56,11 @@ public:
     [[nodiscard]] int oversampling() const noexcept { return factor_; }
     // Output delay in host samples: the limiter's look-ahead, plus the
     // decimating filter's when oversampling.
-    [[nodiscard]] int latency() const noexcept { return stage_.DelaySamples() + (factor_ > 1 ? decimatorDelay : 0); }
+    [[nodiscard]] int latency() const noexcept
+    {
+        return stage_.DelaySamples() + (factor_ > 1 ? decimatorDelay : 0)
+             + (AculyreEngine::latencySamples + factor_ - 1) / factor_;
+    }
     [[nodiscard]] const AculyreEngine& engine() const noexcept { return *engines_[static_cast<std::size_t>(active_)]; }
     // An instrument's own way of playing (its preset's PlayingControls).
     [[nodiscard]] static PlayingControls defaultControls(int index) noexcept;
@@ -90,6 +94,10 @@ private:
 
     std::array<std::unique_ptr<AculyreEngine>, instrumentCount> engines_;
     std::array<Decimator, 2> decimators_ {};
+    // Round the electrical delay up to a whole host sample before decimating;
+    // both capture paths share it. At most factor-1 extra engine samples.
+    std::array<std::array<double, maxOversampling>, 2> alignment_ {};
+    int alignmentSamples_ { 0 }, alignmentCursor_ { 0 };
     protocodus::OutputStage<2> stage_ {};
     int stageSilence_ { 0 };
     std::array<std::array<float, 64 * maxOversampling>, 2> fast_ {};

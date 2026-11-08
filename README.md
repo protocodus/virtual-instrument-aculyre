@@ -24,6 +24,14 @@ reference recording below.
 
 ## Version history
 
+- **0.12.4** (candidate, not released): the piezo's electrical chain now
+  includes its loaded charge source, bootstrapped preamp, coupling capacitors,
+  protection diodes and finite amplifier rails. Ordinary notes retain the
+  small-signal level; extreme valid chords can overload the circuit instead
+  of passing through a linear high-pass alone. Rail crossings are antialiased.
+  The microphone/room path and reported host latency include the seven-sample
+  electrical delay, also at 2x/4x. Independent circuit and routing checks
+  accompany a separate listening comparison; review is pending.
 - **0.12.3** (candidate, not released): the pickup hears the same pluck as
   the microphones. PIEZO no longer changes each string's force, pitch glide
   or sympathetic excitation. The microphone-baseline touch is retained and
@@ -587,10 +595,15 @@ echoes for its first 300 ms.
 force on the top, so it hears the bar's heave and not its rock, and it hears no
 room. Its element, cable, preamp and DI are Aculele's, which are Acustra's
 documented chain: an element of 0.2 V/N at 1.45 nF, the ESP Project 202 preamp
-and a 1 MOhm DI. At a lyre's bridge forces that chain stays linear. A
-glissando at full velocity presses at most 7.6 N on any factory patch, and the
-preamp's op-amps limit at about 13 N. So the chain reduces to its 31 Hz input
-coupling. The strip itself is not rigid: the bar's mass rides on the
+and a 1 MOhm DI. Its component-derived circuit includes input loading,
+bootstrap and coupling-capacitor memory, the protection diodes and finite
+op-amp rails. Ordinary playing stays linear, but the force after the seat's
+resonance can exceed the rails on extreme chords. The circuit runs in volts,
+with only the output divided by its small-signal V/N gain for digital level
+matching; that normalization does not move the physical overload threshold.
+Seven samples of antialiasing delay are matched in the microphone/room path
+and reported to the host, rounded up to whole host samples when oversampling.
+The strip itself is not rigid: the bar's mass rides on the
 element's stiffness, Acustra's element (a 3.8 g saddle on it rings at 6 kHz)
 taken per metre of its length along the whole bar. On the lyre harp that
 resonance sits at 8.7 kHz, damped by the top under the bar, lifting the piezo
@@ -949,10 +962,13 @@ nothing until the next pluck.
 - The gut lyre's ten added strings are no reconstruction's: their gauges,
   the slanted yoke and the 6 mm spacing are assumed, and the box and bridge
   bar are still the six-string lyre's.
-- The piezo's element stiffness is Acustra's, scaled to the bar's length,
-  and its preamp is taken as linear, with no overload at settings past the
-  factory patches. The pickup system is a guitar's; no lyre pickup is
-  measured.
+- The piezo's mechanical seat is still a one-way observation filter on the
+  rigid-junction force; it is not a reciprocal compliant bridge termination.
+  Its stiffness is Acustra's scaled to the bar length, while the electrical
+  element/cable/preamp are the documented guitar reference, not measured on
+  a lyre. Electrical backreaction is small for these assumptions: the
+  open/short stiffness change is below 0.11% (under one cent in resonance),
+  but this bound does not validate the separate mechanical-seat approximation.
 - Designing an instrument is not real-time safe; the Performer designs all
   three at startup, which a front end must allow for: about 1.3 s on one
   core of a cloud container at 48 kHz (1.7 s before 0.7.8), where 0.7.4 took

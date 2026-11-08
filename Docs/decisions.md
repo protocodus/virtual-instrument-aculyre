@@ -3,6 +3,34 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-08: piezo circuit through overload (0.12.4 candidate)
+
+The owner explicitly requested proper circuit and physical modeling of the
+piezo. The former 31 Hz-only electrical path was adequate for ordinary playing
+but its blanket linearity assumption did not cover valid extremes: a baseline
+gut six-string hard chord reached 13.63 N after the resonant seat and drove
+the gain stage 0.45 dB beyond its positive rail. Larger simultaneous chords
+also exceed the rails. The seat force, not the raw bridge force, must drive
+the electrical element.
+
+`PiezoCircuit.h` extracts Acustra's documented component-derived electrical
+model, without a second saddle filter. It takes newtons on the element,
+computes voltages, diode charge and amplifier limiting, and divides out the
+fixed small-signal 0.251306 V/N only at the output. The existing digital
+pickup gain remains outside. Microphone/room observations are delayed by the
+same seven samples as the antialiasing pipeline; the Performer rounds that
+delay up to whole host samples before decimation and reports it.
+
+Independent node-circuit DC, AC, harmonic, overload and recovery fixtures,
+plus latency, reset and block-partition checks, validate the approximation.
+The circuit's physical constants remain the documented guitar reference.
+The mechanical seat is still one-way; electrical backreaction's small bound
+(below 0.11% stiffness here) does not establish a reciprocal seat model. No
+new body calibration or unspecified circuit constants are introduced.
+
+The candidate has separate ordinary/extreme one-change review audio. No
+listening verdict or permission to publish has been received.
+
 ## 2026-11-08: capture does not change the player's force (0.12.3 candidate)
 
 The owner requested physical energy-routing corrections and separate review

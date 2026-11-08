@@ -1,5 +1,6 @@
 #include "AculyreEngine.h"
 #include "StringContact.h"
+#include "PiezoCircuit.h"
 
 #include <algorithm>
 #include <cmath>
@@ -2188,13 +2189,10 @@ struct AculyreEngine::State
     double pressureRight { 0.0 };
     Room room {};
     double outputGain { 1.0 };
-    // The piezo's coupling into its preamp (prepare()), as a bilinear
-    // one-pole high-pass: y = piezoScale (x - x[n-1]) + piezoPole y[n-1].
     double piezoGain { 0.0 };
-    double piezoScale { 0.0 };
-    double piezoPole { 0.0 };
-    double piezoPreviousForce { 0.0 };
-    double piezoPrevious { 0.0 };
+    PiezoCircuit piezoCircuit {};
+    std::array<std::array<double, AculyreEngine::latencySamples>, 2> microphoneDelay {};
+    int microphoneCursor { 0 };
     // The strip's compliance under the bar's mass (setInstrument()), a
     // biquad on the bar's heave force: b0 b1 b2 a1 a2, transposed direct
     // form II.
@@ -2244,18 +2242,17 @@ void AculyreEngine::prepare(double sampleRate)
     state_->outputSmoothing = 1.0 - std::exp(-1.0 / (0.01 * sampleRate_));
     // The piezo is Aculele's pickup system (Acustra's documented chain): an
     // element of 0.2 V/N at 1.45 nF, 3 m of cable, the ESP Project 202
-    // preamp at a gain of 1.62 and a 1 MOhm DI. At a lyre's bridge forces it
-    // stays linear: its op-amps reach their limits at about 13 N, and a
-    // glissando at full velocity on any factory patch presses at most 7.6 N.
-    // Linear, the chain is flat but for its coupling capacitors, and only C3
-    // into R5 || R6 (220 nF into 23.5 kOhm) lies above 2 Hz: a first-order
-    // high-pass at 31 Hz. Its level is InstrumentSpec::piezoGain.
-    {
-        const double corner = 1.0 / (2.0 * pi * 23.5e3 * 220.0e-9);
-        const double k = std::tan(pi * corner / sampleRate_);
-        state_->piezoScale = 1.0 / (1.0 + k);
-        state_->piezoPole = (1.0 - k) / (1.0 + k);
-    }
+    // preamp at a gain of 1.62 and a 1 MOhm DI. Ordinary playing is linear,
+    // but valid hard chords can exceed the gain stage's rails AFTER the
+    // mechanical seat resonance, so the old 31 Hz-only reduction was not
+    // sufficient over the complete control range.
+    // The complete electrical reduction: loaded charge source, bootstrapped
+    // buffer, AC coupling, finite rails, input diodes and antialiased rail
+    // crossings. Input is already the force on the element; do not apply a
+    // second saddle filter. The returned N-equivalent leaves digital level
+    // in piezoGain without changing the electrical overload threshold.
+    static_assert(AculyreEngine::latencySamples == PiezoCircuit::latencySamples);
+    state_->piezoCircuit.prepare(sampleRate_);
     state_->bendSmoothing = 1.0 - std::exp(-controlPeriod / (0.01 * sampleRate_));
     if (stringCount_ > 0)
         setInstrument(state_->instrument);
@@ -3413,7 +3410,9 @@ void AculyreEngine::reset() noexcept
     s.bendForcePast = {};
     s.previousLeft = s.previousRight = 0.0;
     s.pressureLeft = s.pressureRight = 0.0;
-    s.piezoPreviousForce = s.piezoPrevious = 0.0;
+    s.piezoCircuit.reset();
+    s.microphoneDelay = {};
+    s.microphoneCursor = 0;
     s.piezoMountZ1 = s.piezoMountZ2 = 0.0;
     s.room.reset();
     s.sustain = false;
@@ -4008,7 +4007,9 @@ void AculyreEngine::sleep() noexcept
     s.lastGeneralizedVelocity = {};
     s.previousLeft = s.previousRight = 0.0;
     s.pressureLeft = s.pressureRight = 0.0;
-    s.piezoPreviousForce = s.piezoPrevious = 0.0;
+    s.piezoCircuit.reset();
+    s.microphoneDelay = {};
+    s.microphoneCursor = 0;
     s.piezoMountZ1 = s.piezoMountZ2 = 0.0;
     s.room.reset();
     s.idle = true;
@@ -4247,17 +4248,20 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         const double element = mount[0] * plateForce[0] + s.piezoMountZ1;
         s.piezoMountZ1 = mount[1] * plateForce[0] - mount[3] * element + s.piezoMountZ2;
         s.piezoMountZ2 = mount[2] * plateForce[0] - mount[4] * element;
-        const double piezo = s.piezoScale * (element - s.piezoPreviousForce) + s.piezoPole * s.piezoPrevious;
-        s.piezoPreviousForce = element;
-        s.piezoPrevious = piezo;
+        const double piezo = s.piezoCircuit.process(element);
         const double level = std::max(s.outputGain * std::max(std::max(std::abs(pressureLeft), std::abs(pressureRight)),
                                                               std::max(std::abs(wetLeft), std::abs(wetRight))),
                                       s.piezoGain * std::abs(piezo));
         s.quietSamples = level > idleLevel ? 0 : s.quietSamples + 1;
         const double outLeft = pressureLeft + s.output[0] * wetLeft;
         const double outRight = pressureRight + s.output[0] * wetRight;
-        const double micLeft = s.outputGain * (s.output[1] * outLeft + s.output[2] * outRight);
-        const double micRight = s.outputGain * (s.output[1] * outRight + s.output[2] * outLeft);
+        const double micLeft = s.microphoneDelay[0][static_cast<std::size_t>(s.microphoneCursor)];
+        const double micRight = s.microphoneDelay[1][static_cast<std::size_t>(s.microphoneCursor)];
+        s.microphoneDelay[0][static_cast<std::size_t>(s.microphoneCursor)]
+            = s.outputGain * (s.output[1] * outLeft + s.output[2] * outRight);
+        s.microphoneDelay[1][static_cast<std::size_t>(s.microphoneCursor)]
+            = s.outputGain * (s.output[1] * outRight + s.output[2] * outLeft);
+        s.microphoneCursor = (s.microphoneCursor + 1) % AculyreEngine::latencySamples;
         // Which way the element is wired is a choice: this way round, a
         // blend with the microphones adds in the low mids instead of
         // cancelling there. The sign glides through zero over the outputs'

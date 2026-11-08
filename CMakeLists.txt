@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Aculyre VERSION 0.12.3 LANGUAGES CXX)
+project(Aculyre VERSION 0.12.4 LANGUAGES CXX)
 
 # An experimental prototype: the DSP and its Performer, no plug-in yet.
 option(BUILD_TESTING "Build the tests" ON)
@@ -47,6 +47,16 @@ if(BUILD_TESTING)
     target_link_libraries(AculyreCapturePhysicsTests PRIVATE AculyreDSP)
     add_test(NAME Aculyre.CapturePhysics COMMAND AculyreCapturePhysicsTests)
     set_tests_properties(Aculyre.CapturePhysics PROPERTIES LABELS unit)
+    add_executable(AculyrePiezoCircuitTests Tests/PiezoCircuitTests.cpp)
+    target_include_directories(AculyrePiezoCircuitTests PRIVATE Source)
+    target_compile_definitions(AculyrePiezoCircuitTests PRIVATE
+        ACULYRE_PIEZO_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fixtures/piezo-circuit")
+    add_test(NAME Aculyre.PiezoCircuit COMMAND AculyrePiezoCircuitTests)
+    set_tests_properties(Aculyre.PiezoCircuit PROPERTIES LABELS unit)
+    add_executable(AculyrePiezoRoutingTests Tests/PiezoRoutingTests.cpp)
+    target_link_libraries(AculyrePiezoRoutingTests PRIVATE AculyreDSP)
+    add_test(NAME Aculyre.PiezoRouting COMMAND AculyrePiezoRoutingTests)
+    set_tests_properties(Aculyre.PiezoRouting PROPERTIES LABELS unit)
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
         # The committed demo phrases are what the writer writes (G3a).

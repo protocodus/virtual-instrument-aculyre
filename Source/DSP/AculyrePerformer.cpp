@@ -33,6 +33,9 @@ void Performer::prepare(double sampleRate, int oversampling)
         factor_ *= 2;
     for (auto& decimator : decimators_)
         decimator.design(factor_);
+    alignmentSamples_ = (factor_ - AculyreEngine::latencySamples % factor_) % factor_;
+    alignment_ = {};
+    alignmentCursor_ = 0;
     stage_.Prepare(sampleRate, protocodus::kVuGuard);
     stageSilence_ = stage_.DelaySamples() + 1;
     for (int index = 0; index < instrumentCount; ++index)
@@ -54,6 +57,8 @@ void Performer::reset() noexcept
         engine->reset();
     for (auto& decimator : decimators_)
         decimator.clear();
+    alignment_ = {};
+    alignmentCursor_ = 0;
     stage_.Reset();
     stageSilence_ = stage_.DelaySamples() + 1;
     fading_ = -1;
@@ -105,7 +110,7 @@ void Performer::process(float* left, float* right, int numSamples) noexcept
         return;
     }
     if (fading_ < 0 && engines_[static_cast<std::size_t>(active_)]->idle()
-        && silentPushes_ >= decimators_[0].length && stageResting())
+        && silentPushes_ >= decimators_[0].length + alignmentSamples_ && stageResting())
     {
         std::fill(left, left + numSamples, 0.0f);
         std::fill(right, right + numSamples, 0.0f);
@@ -122,8 +127,20 @@ void Performer::process(float* left, float* right, int numSamples) noexcept
         {
             for (int k = 0; k < factor_; ++k)
             {
-                decimators_[0].push(fast_[0][static_cast<std::size_t>(i * factor_ + k)]);
-                decimators_[1].push(fast_[1][static_cast<std::size_t>(i * factor_ + k)]);
+                for (std::size_t channel = 0; channel < 2; ++channel)
+                {
+                    double value = fast_[channel][static_cast<std::size_t>(i * factor_ + k)];
+                    if (alignmentSamples_ > 0)
+                    {
+                        double& delayed = alignment_[channel][static_cast<std::size_t>(alignmentCursor_)];
+                        const double input = value;
+                        value = delayed;
+                        delayed = input;
+                    }
+                    decimators_[channel].push(value);
+                }
+                if (alignmentSamples_ > 0)
+                    alignmentCursor_ = (alignmentCursor_ + 1) % alignmentSamples_;
             }
             left[done + i] = static_cast<float>(decimators_[0].output());
             right[done + i] = static_cast<float>(decimators_[1].output());

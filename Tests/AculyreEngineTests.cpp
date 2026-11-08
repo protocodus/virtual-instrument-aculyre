@@ -990,8 +990,9 @@ int main()
         check(factor(48000.0, 4) == 4 && factor(44100.0, 2) == 2 && factor(48000.0, 3) == 2
                   && factor(96000.0, 4) == 2 && factor(192000.0, 4) == 1 && factor(48000.0, 0) == 1,
               "oversampling is 1, 2 or 4 and keeps the engine at or below 192 kHz");
-        check(performer.latency() == 96 && factor(48000.0, 2) == 2 && performer.latency() == 96 + 31,
-              "the decimator delays by 31 host samples, and 1x by none, after the limiter's 96");
+        check(performer.latency() == 96 + 7 && factor(48000.0, 2) == 2
+                  && performer.latency() == 96 + 31 + 4,
+              "latency includes the limiter, decimator and integer-host-aligned seven-sample circuit");
 
         const auto play = [] (int oversampling, int block)
         {
@@ -1255,12 +1256,13 @@ int main()
     }
 
     // The output stage leaves quiet playing bit for bit as the engine makes
-    // it, only later by the look-ahead, and holds a far too loud one under
+    // it (including the engine's capture alignment), only later by the
+    // output-stage look-ahead, and holds a far too loud one under
     // -1.5 dBFS.
     {
         aculyre::Performer performer;
         performer.prepare(48000.0);
-        const int lookahead = performer.latency();
+        const int lookahead = performer.latency() - aculyre::AculyreEngine::latencySamples;
         check(lookahead == 96, "the limiter looks 2 ms ahead");
         aculyre::AculyreEngine engine;
         engine.prepare(48000.0);

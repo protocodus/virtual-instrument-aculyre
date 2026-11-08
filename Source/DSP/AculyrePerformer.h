@@ -102,6 +102,7 @@ private:
     [[nodiscard]] bool stageResting() const noexcept { return stageSilence_ > stage_.DelaySamples(); }
 
     void render(float* left, float* right, int numSamples) noexcept;
+    void downsample(float& left,float& right) const noexcept;
 
     std::array<std::unique_ptr<AculyreEngine>, instrumentCount> engines_;
     std::array<Decimator, 2> decimators_ {};

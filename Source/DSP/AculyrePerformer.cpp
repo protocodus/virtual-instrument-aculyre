@@ -142,8 +142,7 @@ void Performer::process(float* left, float* right, int numSamples) noexcept
                 if (alignmentSamples_ > 0)
                     alignmentCursor_ = (alignmentCursor_ + 1) % alignmentSamples_;
             }
-            left[done + i] = static_cast<float>(decimators_[0].output());
-            right[done + i] = static_cast<float>(decimators_[1].output());
+            downsample(left[done+i],right[done+i]);
         }
         done += count;
     }
@@ -250,6 +249,25 @@ void Performer::Decimator::push(double x) noexcept
     cursor = (cursor == 0 ? length : cursor) - 1;
     history[static_cast<std::size_t>(cursor)] = x;
     history[static_cast<std::size_t>(cursor + length)] = x;
+}
+
+// The two channels keep independent sums in the original tap order.
+// Parallelize channels, not taps: no reassociation of the FIR's recurrence.
+void Performer::downsample(float& left,float& right) const noexcept
+{
+#if defined(__clang__) || defined(__GNUC__)
+    typedef double Stereo __attribute__((vector_size(16)));
+    const auto& a=decimators_[0];const auto& b=decimators_[1];
+    const double* l=a.history.data()+a.cursor;
+    const double* r=b.history.data()+b.cursor;
+    Stereo sum {0.0,0.0};
+    for(int i=0;i<a.length;++i)
+        sum+=Stereo{a.taps[static_cast<std::size_t>(i)],b.taps[static_cast<std::size_t>(i)]}*Stereo{l[i],r[i]};
+    left=static_cast<float>(sum[0]);right=static_cast<float>(sum[1]);
+#else
+    left=static_cast<float>(decimators_[0].output());
+    right=static_cast<float>(decimators_[1].output());
+#endif
 }
 
 double Performer::Decimator::output() const noexcept

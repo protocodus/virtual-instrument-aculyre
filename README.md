@@ -24,6 +24,12 @@ reference recording below.
 
 ## Version history
 
+- **0.12.5** (candidate, not released): a final 0.6 dB output reserve covers
+  a measured low-rate intersample peak, lowering the sample ceiling to
+  -2.1 dBFS. Reciprocal digital calibration before the unchanged shared stage
+  retains nominal quiet level and unity master controls. Physical excitation,
+  capture electronics and latency are unchanged; the normal-level protocol
+  and reconstructed peaks are rechecked.
 - **0.12.4** (candidate, not released): the piezo's electrical chain now
   includes its loaded charge source, bootstrapped preamp, coupling capacitors,
   protection diodes and finite amplifier rails. Ordinary notes retain the
@@ -746,17 +752,28 @@ every new instrument) with its guard for the plucked instruments
 (`kVuGuard`): a compressor on the louder channel's power averaged over the
 meter's 300 ms (10 ms attack, 300 ms release, ratio 10 over a 16 dB knee
 from -11 to +5 VU), then a peak limiter that looks 2 ms ahead and holds
-every sample under -1.5 dBFS. The portfolio's earlier guard read each
+every sample under -1.5 dBFS. Since 0.12.5, explicit digital calibration of
++0.6 dB before that stage and a final -0.6 dB reserve retain nominal quiet
+level while putting the delivered sample ceiling at -2.1 dBFS. A 612-case
+output audit found a +0.090 dB reconstructed peak at 22.05 kHz/2x despite
+the old sample ceiling; the reserve adds about 0.5 dB of measured margin.
+It changes no string force, body parameter or piezo voltage. The ordinary
+VU protocol is retained. A VU reading above zero is a loudness reference,
+distinct from clipping at digital full scale. The portfolio's earlier guard read each
 sample's power with an 80 ms attack and its knee centred at -2 VU, so a
 chord's attack set its gain: the median four-note chord read 0.2-0.4 dB
 quieter at velocity 127 than at 110 on the microphones, and the gut lyre's
 0.8 dB quieter than at 90. Through this one it rises 1.7-2.4 dB from velocity 90 to 127 on the lyre harps and
 0.6-1.9 dB on the gut lyre, whose plucks gain only 1.8 dB there unguarded.
-Typical playing passes it unchanged, single notes read within 0.3 dB of
+Quiet playing retains nominal unity gain apart from two float roundings.
+In the original guard calibration, single notes read within 0.3 dB of
 their own level but for the loudest strings at full velocity (up to 2.1 dB
 lower), and the hardest chords read -1.6 VU or less. The look-ahead delays
 the output by 2 ms rounded down to 4 samples (88 at 44.1 kHz, 96 at
-48 kHz).
+48 kHz). The output reserve adds no delay; the circuit alignment remains
+seven engine samples, rounded up to whole host samples by the Performer.
+The current output audit and its limits are described in
+[output headroom validation](Docs/validation/output-headroom-2026-11-08.md).
 
 **Cost.** The 16-string steel lyre harp (32 waveguides, 234 modes, seven bar bends
 and the room) playing its demo used about 9% of one core of a cloud

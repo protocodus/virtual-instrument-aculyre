@@ -1255,10 +1255,10 @@ int main()
         }
     }
 
-    // The output stage leaves quiet playing bit for bit as the engine makes
-    // it (including the engine's capture alignment), only later by the
-    // output-stage look-ahead, and holds a far too loud one under
-    // -1.5 dBFS.
+    // The shared stage leaves quiet playing untouched. The Performer's
+    // reciprocal digital calibration/reserve adds two float roundings, only
+    // later by the output-stage look-ahead, and lowers the final sample
+    // ceiling from -1.5 to -2.1 dBFS to cover measured intersample peaks.
     {
         aculyre::Performer performer;
         performer.prepare(48000.0);
@@ -1281,8 +1281,12 @@ int main()
         }
         bool same = true;
         for (int i = 0; i + lookahead < 24000; ++i)
-            same = same && l[static_cast<std::size_t>(i + lookahead)] == el[static_cast<std::size_t>(i)];
-        check(same, "the output stage passes quiet playing through untouched");
+        {
+            const float expected = aculyre::Performer::finalHeadroomGain
+                * (aculyre::Performer::digitalCalibrationGain * el[static_cast<std::size_t>(i)]);
+            same = same && l[static_cast<std::size_t>(i + lookahead)] == expected;
+        }
+        check(same, "quiet playing changes only by the documented output trims and their float roundings");
 
         aculyre::PlayingControls loud = controls;
         loud.volume = 4.0;
@@ -1298,7 +1302,9 @@ int main()
                 peak = std::max({ peak, static_cast<double>(std::abs(l[static_cast<std::size_t>(i)])),
                                   static_cast<double>(std::abs(r[static_cast<std::size_t>(i)])) });
         }
-        check(peak > 0.8 && peak <= 0.8414, "the limiter holds the hardest chord 12 dB too loud under -1.5 dBFS");
+        const double finalCeiling = protocodus::OutputStage<2>::kCeiling * aculyre::Performer::finalHeadroomGain;
+        check(peak > 0.99 * finalCeiling && peak <= finalCeiling * (1.0 + 1e-6),
+              "the final reserve holds a chord 12 dB too loud at the -2.1 dBFS sample ceiling");
     }
 
     // An audio reset leaves nothing of what was played: after a phrase that

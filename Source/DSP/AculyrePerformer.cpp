@@ -169,10 +169,10 @@ void Performer::finish(float* left, float* right, int numSamples) noexcept
         }
         else
             stageSilence_ = 0;
-        std::array<float, 2> frame { left[i], right[i] };
+        std::array<float, 2> frame { digitalCalibrationGain * left[i], digitalCalibrationGain * right[i] };
         stage_.Process(frame);
-        left[i] = frame[0];
-        right[i] = frame[1];
+        left[i] = finalHeadroomGain * frame[0];
+        right[i] = finalHeadroomGain * frame[1];
     }
 }
 

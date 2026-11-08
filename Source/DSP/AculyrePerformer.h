@@ -8,10 +8,13 @@
 // and body are sampled, not what they are designed to be.
 //
 // The output stage is the portfolio's (OutputStage.h) with its plucked
-// guard, kVuGuard: a soft-knee compressor that keeps the loudest playing out
-// of the red, leaves typical playing alone and still lets harder chords read
-// louder, then a look-ahead peak limiter that holds every sample under
-// -1.5 dBFS.
+// guard, kVuGuard: a soft-knee compressor that reins in strong chords while
+// retaining their velocity differences, then a look-ahead peak limiter
+// that holds every sample under
+// -1.5 dBFS. Digital calibration before that stage preserves the nominal
+// unity-control level; a final 0.6 dB reserve leaves its sample ceiling at
+// -2.1 dBFS. The reserve covers the measured intersample excursion without
+// changing physical excitation, capture electronics or the shared stage.
 
 #pragma once
 
@@ -33,6 +36,14 @@ public:
     // The engine designs up to 192 kHz, so a high host rate lowers the
     // factor: 4x runs as 2x at 88.2 and 96 kHz and as 1x above.
     static constexpr double maxEngineRate = 192000.0;
+    // Output-only calibration, after all physical/circuit observations.
+    // The 2026-11-08 612-case audit found +0.090 dB reconstructed output
+    // despite the shared stage's -1.5 dBFS sample ceiling (22.05 kHz/2x,
+    // steel pickup, repeated dense chords). 0.6 dB adds about 0.5 dB margin.
+    // These reciprocal trims retain unity gain when the stage is inactive;
+    // normal-playing levels are rechecked by the existing VU protocol.
+    static constexpr float digitalCalibrationGain = 1.071519305f; // +0.6 dB
+    static constexpr float finalHeadroomGain = 0.933254301f;       // -0.6 dB
 
     Performer();
     ~Performer();

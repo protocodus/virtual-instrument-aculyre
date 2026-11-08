@@ -51,7 +51,8 @@ int main()
         check(first == reset, "reset clears circuit, microphone and decimation-alignment histories");
         for (const auto& channel : first)
             for (float sample : channel)
-                check(std::isfinite(sample) && std::abs(sample) <= protocodus::OutputStage<2>::kCeiling*(1.0+1e-6),
+                check(std::isfinite(sample) && std::abs(sample) <= protocodus::OutputStage<2>::kCeiling
+                          * aculyre::Performer::finalHeadroomGain*(1.0+1e-6),
                       "an extreme valid pickup blend stays finite and under the output ceiling");
     }
     std::printf(failures == 0 ? "all passed\n" : "%d failed\n", failures);

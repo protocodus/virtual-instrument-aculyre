@@ -3,6 +3,31 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-08: final digital output reserve (0.12.5 candidate)
+
+The owner requested ordinary output levels without final overload. The
+unchanged 0.12.4 signal path passed its sample-peak checks, but a 612-case
+output sweep found +0.040 dB on an independent 8x reconstruction at the
+supported 22.05 kHz/2x setting: steel pickup, repeated all-string MIDI chords,
+at unity master volume. A 32x reconstruction with longer kernels converged
+to +0.090 dB. The sample peak itself stayed below -1.5 dBFS.
+
+The authorized correction is a final 0.6 dB reserve, providing about 0.5 dB
+of measured margin and a -2.1 dBFS sample ceiling. Explicit +0.6 dB digital
+calibration before the shared stage preserves nominal quiet level and the
+unity master control. These gains surround the shared stage after physical
+and circuit observations. They do not alter excitation, body gains, pickup
+component values, microphone geometry, the shared stage or latency.
+
+The existing normal/hard level bounds are retained and remeasured through
+the production Performer and actual Reason patches. A supplemental maximum-
+control reading above 0 VU is not itself digital clipping and did not set the
+correction. Physical preamp saturation remains intentional circuit behavior.
+Reconstructed-peak results are finite-case estimates, not a certified meter
+or a universal true-peak guarantee. The isolated review audio preserves the
+shipping baseline and native levels separately from RMS-matched listening
+files. No publication or listening verdict has been received.
+
 ## 2026-11-08: piezo circuit through overload (0.12.4 candidate)
 
 The owner explicitly requested proper circuit and physical modeling of the

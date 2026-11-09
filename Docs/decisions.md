@@ -3,6 +3,48 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-09: the causal pluck release and the slip law for soft plucks (0.13.1), owner's selection
+
+**What was decided.** Two listening sets, each against the shipping engine
+(A, `main` at `7a18016`), one mechanism changed per set, rendered through
+the Performer at its default controls, 48 kHz, identical MIDI and seeds:
+
+| Question | Material | Letters | Levels |
+| --- | --- | --- | --- |
+| Does the body feel the finger's whole held force as the string slips off? | soft plucks (velocity 32-40) in the upper register, a dyad and a held note: steel G5-G6, gut E4-E5 | A the body starts from the periodic wave's first cell; B the causal release, the full held force unloading over the slip | common gain steel +16.0, gut +11.0 dB; then B -0.18 and -0.17 dB on whole-file RMS |
+| Does a soft pluck follow the slip law? | a velocity ladder (12 to 127) on steel A4 and gut D4, then a G-major arpeggio at velocity 18-28 | A the release clamp on the product of the velocity and slip laws; B the clamp on the release velocity alone | B +0.38 and +0.24 dB on whole-file RMS; the soft notes' level is part of what is judged |
+
+**What the measurements said** (each against A, before choosing).
+
+- **Release:** wherever the slip is slow against the period, A's body took
+  only part of the held force: 0.72 at A4 for a soft pluck, 0.21 at G6,
+  0.08 at C8. B reproduces the slip model's causal response within 1e-9.
+  Plucked alone at velocity 32, the first 20 ms of steel E5 to G6 rise by up
+  to 4.8 dB (F6), gut by up to 2.6 dB (B4), almost all below 1 kHz; at
+  velocity 89 and 127 within 0.2 dB, and above 8 kHz at every onset within
+  0.15 dB.
+- **Soft plucks:** A's clamp is reached by every pluck under velocity 49,
+  which all let go alike (a bare steel A4's attack centroid 489 to 490 Hz
+  from velocity 10 to 44). With B on the 0.13.1 branch, through the
+  Performer, the steel A4 is 19.1 dB quieter at velocity 12, 5.4 at 24 and
+  3.6 at 36, its first 50 ms' centroid 1392 to 669 Hz at velocity 12;
+  velocity 49 to 109 is unchanged,
+  harder plucks move under 0.4% in brightness. The 2026-10-28 verdict had
+  licensed the velocity law within that clamp; the slip law added on
+  2026-10-29 went inside it.
+
+**Verdict.** The owner chose the candidates: "take candidate and push to
+origin/main" (2026-11-09). The reply does not say whether the sets were
+heard, so this records the owner's selection, not a listening score. The
+sets stay in the project files (`aculyre/2026-11-09-pluck-release-ab/`,
+`aculyre/2026-11-09-soft-velocity-ab/`), each with its key.
+
+**What it licenses.** The causal unloading of the held force for every
+release with a slip, and the release velocity held within the harpists'
+0.2 to 5 m/s with the slip's 0.04 to 0.8 mm law outside that clamp. It does
+not license reading the slip's geometric course with velocity as measured,
+or a softest slip beyond 0.8 mm.
+
 ## 2026-11-08 — owner accepts the physical-model review candidates
 
 The owner instructed: “use all candidates” after receiving the private

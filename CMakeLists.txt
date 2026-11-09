@@ -101,6 +101,12 @@ if(BUILD_TESTING)
     target_link_libraries(AculyrePiezoRoutingTests PRIVATE AculyreDSP)
     add_test(NAME Aculyre.PiezoRouting COMMAND AculyrePiezoRoutingTests)
     set_tests_properties(Aculyre.PiezoRouting PROPERTIES LABELS unit)
+    # U11: every control reaches held and new notes after long play.
+    find_package(Threads REQUIRED)
+    add_executable(AculyreParameterReachTests Tests/ParameterReachTests.cpp)
+    target_link_libraries(AculyreParameterReachTests PRIVATE AculyreDSP Threads::Threads)
+    add_test(NAME Aculyre.ParameterReach COMMAND AculyreParameterReachTests --reach --jobs 4)
+    set_tests_properties(Aculyre.ParameterReach PROPERTIES LABELS unit TIMEOUT 1800)
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
         # The committed demo phrases are what the writer writes (G3a).

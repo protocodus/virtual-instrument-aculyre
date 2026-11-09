@@ -712,6 +712,56 @@ int main()
         check(rms(none, 0, 24000) < 1.0e-9, "without levers a note between strings is silent");
     }
 
+    // The levers still reach a key between strings after long play, off and
+    // on again: Aculyre.ParameterReach's probes play no such key (U11). Six
+    // seconds of the chromatic octave from C4 with the levers up, then C#4
+    // with them down and up again; a twin run that never presses it tells
+    // whether it played.
+    {
+        const auto play = [] (bool pressDown, bool pressUp)
+        {
+            aculyre::AculyreEngine engine;
+            engine.prepare(48000.0);
+            engine.setInstrument(aculyre::lyreHarpSteel);
+            aculyre::PlayingControls controls = engine.controls();
+            controls.levers = true;
+            engine.setControls(controls);
+            std::vector<float> l(6000), r(6000), out;
+            for (int step = 0; step < 24; ++step)
+            {
+                const int note = 60 + (step < 12 ? step : 23 - step);
+                engine.noteOn(note, 0.7f);
+                engine.process(l.data(), r.data(), 6000);
+                engine.noteOff(note);
+                engine.process(l.data(), r.data(), 6000);
+            }
+            for (const bool levers : { false, true })
+            {
+                controls.levers = levers;
+                engine.setControls(controls);
+                if (levers ? pressUp : pressDown)
+                    engine.noteOn(61, 0.7f);
+                for (int block = 0; block < 4; ++block)
+                {
+                    engine.process(l.data(), r.data(), 6000);
+                    out.insert(out.end(), l.begin(), l.end());
+                }
+                engine.noteOff(61);
+            }
+            return out;
+        };
+        const auto neither = play(false, false);
+        check(play(true, false) == neither, "after long play, with the levers down a key between strings is ignored");
+        const auto up = play(false, true);
+        std::vector<float> difference(up.size());
+        for (std::size_t i = 0; i < up.size(); ++i)
+            difference[i] = up[i] - neither[i];
+        const double played = rms(difference, 24000, 24000) / rms(neither, 24000, 24000);
+        std::printf("C#4 after long play, levers down then up: %.1f dB over the strings left ringing\n",
+                    20.0 * std::log10(played));
+        check(played > 1.0, "after long play, with the levers up again a key between strings plays");
+    }
+
     // Every key of a piano, A0 to C8, sounds at its own pitch with the
     // levers up: a key past the strings stretches the edge string to it,
     // and its key lets it go. Keys past those 88 stay silent.

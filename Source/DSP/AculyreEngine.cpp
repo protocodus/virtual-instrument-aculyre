@@ -1243,6 +1243,17 @@ inline Pair* pairs(double* p) noexcept { return reinterpret_cast<Pair*>(p); }
 inline const Pair* pairs(const double* p) noexcept { return reinterpret_cast<const Pair*>(p); }
 inline Pair splat(double x) noexcept { return Pair { x, x }; }
 
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__)) && !defined(ACULYRE_DISABLE_AVX2)
+#define ACULYRE_AVX2_PATH 1
+// Four doubles as one vector, for the AVX2 passes prepare() selects on a
+// processor that has them. Each lane is the scalar arithmetic in the same
+// order, with no fused multiply-add, so both paths give the same samples.
+typedef double Quad __attribute__((vector_size(32), aligned(8), may_alias));
+inline Quad* quads(double* p) noexcept { return reinterpret_cast<Quad*>(p); }
+inline const Quad* quads(const double* p) noexcept { return reinterpret_cast<const Quad*>(p); }
+__attribute__((target("avx2,no-fma"))) inline Quad splat4(double x) noexcept { return Quad {x,x,x,x}; }
+#endif
+
 // Reads every loop's arriving wave into `wave`. Each loop's dispersion is a
 // chain of sections, every one waiting on the last: read loop by loop, a
 // loop's chain left little else to do meanwhile, and its stage count, which
@@ -1309,12 +1320,39 @@ struct LoopFilters
             section.u1 = u1[i];
             section.u2 = u2[i];
         }
+#if defined(ACULYRE_AVX2_PATH)
+        // process()'s vector pass four loops at a time; returns where it stopped.
+        __attribute__((target("avx2,no-fma"))) int processQuads(double* wave, int fastCount) noexcept
+        {
+            int k = 0;
+            for (; k + 3 < fastCount; k += 4)
+            {
+                const auto i = static_cast<std::size_t>(k);
+                const Quad x = *quads(wave + k);
+                const Quad difference = x - *quads(&previousInput[i]);
+                const Quad w = *quads(&c0[i]) * difference + *quads(&c1[i]) * *quads(&previousDifference[i]);
+                const Quad u = w - *quads(&a1[i]) * *quads(&u1[i]) - *quads(&a2[i]) * *quads(&u2[i]);
+                *quads(&previousInput[i]) = x;
+                *quads(&previousDifference[i]) = difference;
+                *quads(&u2[i]) = *quads(&u1[i]);
+                *quads(&u1[i]) = u;
+                *quads(wave + k) = x - u;
+            }
+            return k;
+        }
+#endif
         // UnitDcSection::process on every loop; an inactive one passes its
         // input and keeps its state.
-        void process(double* wave, int count) noexcept
+        void process(double* wave, int count, bool wide) noexcept
         {
             const int fastCount = prefixOnly ? activePrefix : 0;
             int k = 0;
+#if defined(ACULYRE_AVX2_PATH)
+            if (wide)
+                k = processQuads(wave, fastCount);
+#else
+            (void) wide;
+#endif
             for (; k + 1 < fastCount; k += 2)
             {
                 const auto i = static_cast<std::size_t>(k);
@@ -1347,6 +1385,58 @@ struct LoopFilters
         }
     };
     Losses constantLoss {}, bendingLoss {};
+    // Whether read() takes its AVX2 passes (prepare()).
+    bool wide { false };
+
+#if defined(ACULYRE_AVX2_PATH)
+    // read()'s vector passes four loops at a time. Each returns where it
+    // stopped; read() runs the rest two loops, then one, at a time.
+    __attribute__((target("avx2,no-fma"))) int thiranQuads(double* wave, int count) noexcept
+    {
+        int k = 0;
+        for (; k + 3 < count; k += 4)
+        {
+            const auto i = static_cast<std::size_t>(k);
+            const Quad x = *quads(wave + k);
+            const Quad a1 = *quads(&thiranA1[i]), a2 = *quads(&thiranA2[i]);
+            const Quad y = a2 * x + a1 * *quads(&tx1[i]) + *quads(&tx2[i]) - a1 * *quads(&ty1[i]) - a2 * *quads(&ty2[i]);
+            *quads(&tx2[i]) = *quads(&tx1[i]);
+            *quads(&tx1[i]) = x;
+            *quads(&ty2[i]) = *quads(&ty1[i]);
+            *quads(&ty1[i]) = y;
+            *quads(wave + k) = y;
+        }
+        return k;
+    }
+    __attribute__((target("avx2,no-fma"))) static int stageQuads(double* sorted, const double* dispersion,
+                                                                 double* state, int count) noexcept
+    {
+        int j = 0;
+        for (; j + 3 < count; j += 4)
+        {
+            const Quad y = *quads(sorted + j);
+            const Quad d = *quads(dispersion + j);
+            const Quad out = d * y + *quads(state + j);
+            *quads(state + j) = y - d * out;
+            *quads(sorted + j) = out;
+        }
+        return j;
+    }
+    __attribute__((target("avx2,no-fma"))) static int pairQuads(double* sorted, const double* c1, const double* c2,
+                                                                double* s0, double* s1, int count) noexcept
+    {
+        int j = 0;
+        for (; j + 3 < count; j += 4)
+        {
+            const Quad y = *quads(sorted + j);
+            const Quad out = *quads(c2 + j) * y + *quads(s0 + j);
+            *quads(s0 + j) = *quads(c1 + j) * (y - out) + *quads(s1 + j);
+            *quads(s1 + j) = y - *quads(c2 + j) * out;
+            *quads(sorted + j) = out;
+        }
+        return j;
+    }
+#endif
 
     void gatherThiran(const Loop& loop, std::size_t i) noexcept
     {
@@ -1462,7 +1552,12 @@ struct LoopFilters
         };
         if (firstOrderCount == 0)
         {
-            for (int k = 0; k + 1 < count; k += 2)
+            int k = 0;
+#if defined(ACULYRE_AVX2_PATH)
+            if (wide)
+                k = thiranQuads(wave, count);
+#endif
+            for (; k + 1 < count; k += 2)
                 secondOrderPair(k);
         }
         else
@@ -1497,6 +1592,10 @@ struct LoopFilters
                 break;
             double* const state = stageState[stage].data();
             int j = 0;
+#if defined(ACULYRE_AVX2_PATH)
+            if (wide)
+                j = stageQuads(sorted, dispersion.data(), state, loopsWithStage);
+#endif
             for (; j + 1 < loopsWithStage; j += 2)
             {
                 const Pair y = *pairs(sorted + j);
@@ -1529,6 +1628,10 @@ struct LoopFilters
                 double* const s0 = pairS0[k].data();
                 double* const s1 = pairS1[k].data();
                 int j = 0;
+#if defined(ACULYRE_AVX2_PATH)
+                if (wide)
+                    j = pairQuads(sorted, c1, c2, s0, s1, loopsWithPair);
+#endif
                 for (; j + 1 < loopsWithPair; j += 2)
                 {
                     const Pair y = *pairs(sorted + j);
@@ -1549,8 +1652,8 @@ struct LoopFilters
             for (int j = 0; j < withPairs[0]; ++j)
                 wave[byPairs[static_cast<std::size_t>(j)]] = sorted[j];
         }
-        constantLoss.process(wave, count);
-        bendingLoss.process(wave, count);
+        constantLoss.process(wave, count, wide);
+        bendingLoss.process(wave, count, wide);
     }
 };
 
@@ -1609,6 +1712,9 @@ struct ModeBank
     std::array<int, 3> coordinateCount {};
     std::array<std::array<double, capacity>, barCoordinates> drive {}, pull {};
     std::array<double, capacity> a1 {}, a2 {}, left {}, right {}, s1 {}, s2 {};
+    // Each mode's b0, from which runModesAvx forms `drive` as setInstrument
+    // does, b0 times the participation, instead of reading it.
+    std::array<double, capacity> b0 {};
 };
 
 
@@ -1746,34 +1852,40 @@ void runModes(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::l
     }
 }
 
-#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__)) && !defined(ACULYRE_DISABLE_AVX2)
+#if defined(ACULYRE_AVX2_PATH)
 // The same eight independent modal lanes in four-double vectors. No
 // reassociation or fused multiply-add: state and reductions retain their
 // portable path's order. Dispatch happens during prepare, never per mode.
-typedef double Quad __attribute__((vector_size(32), aligned(8), may_alias));
-inline Quad* quads(double* p) noexcept { return reinterpret_cast<Quad*>(p); }
-inline const Quad* quads(const double* p) noexcept { return reinterpret_cast<const Quad*>(p); }
-__attribute__((target("avx2,no-fma"))) inline Quad splat4(double x) noexcept { return Quad {x,x,x,x}; }
 __attribute__((target("avx2,no-fma"))) void runModesAvx(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::lanes],
               double (&right)[ModeBank::lanes], double (&past)[barCoordinates][ModeBank::lanes]) noexcept
 {
+    // One pass over the bank, a group at a time: its pulls on the bar are
+    // taken while its new state is still in registers. The bank (about
+    // 40 KB for a 289-mode soundbox) does not fit the first-level cache with
+    // the strings, and a second pass over it for the pulls cost about as
+    // much as the modes' arithmetic. Each pull sum still adds its groups in
+    // order, part by part, as the two-pass form did; `past` stays in cache.
     constexpr int vectors = ModeBank::lanes / 4;
     const int bounds[4] { 0, bank.evenEnd, bank.oddEnd, bank.count };
     Quad* const sumLeft = quads(left);
     Quad* const sumRight = quads(right);
     for (std::size_t part = 0; part < 3; ++part)
+    {
+        const int coordinates = bank.coordinateCount[part];
+        const std::size_t* const coordinate = bank.coordinates[part].data();
         for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
         {
+            const Quad* const b0 = quads(bank.b0.data() + group);
             Quad x[vectors];
             for (int v = 0; v < vectors; ++v)
                 x[v] = splat4(0.0);
-            for (int n = 0; n < bank.coordinateCount[part]; ++n)
+            for (int n = 0; n < coordinates; ++n)
             {
-                const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-                const Quad* const drive = quads(bank.drive[c].data() + group);
+                const std::size_t c = coordinate[n];
+                const Quad* const pull = quads(bank.pull[c].data() + group);
                 const Quad f = splat4(force[c]);
                 for (int v = 0; v < vectors; ++v)
-                    x[v] += drive[v] * f;
+                    x[v] += (b0[v] * pull[v]) * f;
             }
             Quad* const s1 = quads(bank.s1.data() + group);
             Quad* const s2 = quads(bank.s2.data() + group);
@@ -1781,54 +1893,20 @@ __attribute__((target("avx2,no-fma"))) void runModesAvx(ModeBank& bank, const Ba
             const Quad* const a2 = quads(bank.a2.data() + group);
             const Quad* const toLeft = quads(bank.left.data() + group);
             const Quad* const toRight = quads(bank.right.data() + group);
+            Quad state[vectors];
             for (int v = 0; v < vectors; ++v)
             {
                 const Quad y = x[v] + s1[v];
-                const Quad next = s2[v] - a1[v] * y;
+                state[v] = s2[v] - a1[v] * y;
                 s2[v] = -x[v] - a2[v] * y;
-                s1[v] = next;
+                s1[v] = state[v];
                 sumLeft[v] += toLeft[v] * y;
                 sumRight[v] += toRight[v] * y;
             }
-        }
-    const double* const s1 = bank.s1.data();
-    for (std::size_t part = 0; part < 3; ++part)
-    {
-        int n = 0;
-        for (; n + 1 < bank.coordinateCount[part]; n += 2)
-        {
-            const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-            const std::size_t d = bank.coordinates[part][static_cast<std::size_t>(n + 1)];
-            Quad sumC[vectors], sumD[vectors];
-            for (int v = 0; v < vectors; ++v)
+            for (int n = 0; n < coordinates; ++n)
             {
-                sumC[v] = quads(past[c])[v];
-                sumD[v] = quads(past[d])[v];
-            }
-            for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
-            {
-                const Quad* const state = quads(s1 + group);
-                const Quad* const pullC = quads(bank.pull[c].data() + group);
-                const Quad* const pullD = quads(bank.pull[d].data() + group);
-                for (int v = 0; v < vectors; ++v)
-                {
-                    sumC[v] += pullC[v] * state[v];
-                    sumD[v] += pullD[v] * state[v];
-                }
-            }
-            for (int v = 0; v < vectors; ++v)
-            {
-                quads(past[c])[v] = sumC[v];
-                quads(past[d])[v] = sumD[v];
-            }
-        }
-        for (; n < bank.coordinateCount[part]; ++n)
-        {
-            const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-            Quad* const sum = quads(past[c]);
-            for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
-            {
-                const Quad* const state = quads(s1 + group);
+                const std::size_t c = coordinate[n];
+                Quad* const sum = quads(past[c]);
                 const Quad* const pull = quads(bank.pull[c].data() + group);
                 for (int v = 0; v < vectors; ++v)
                     sum[v] += pull[v] * state[v];
@@ -2512,8 +2590,9 @@ void AculyreEngine::prepare(double sampleRate)
     sampleRate_ = std::isfinite(sampleRate) && sampleRate >= 22050.0 && sampleRate <= 192000.0
         ? sampleRate : 48000.0;
     state_->room.prepare(sampleRate_);
-#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__)) && !defined(ACULYRE_DISABLE_AVX2)
+#if defined(ACULYRE_AVX2_PATH)
     state_->renderModes=instrumentCpu::hasAvx2()?runModesAvx:runModes;
+    state_->filters.wide = instrumentCpu::hasAvx2();
 #endif
     state_->outputSmoothing = 1.0 - std::exp(-1.0 / (0.01 * sampleRate_));
     // The piezo is Aculele's pickup system (Acustra's documented chain): an
@@ -3311,6 +3390,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 bank.drive[c][k] = mode.b0 * mode.participation[c];
                 bank.pull[c][k] = mode.participation[c];
             }
+            bank.b0[k] = mode.b0;
             bank.a1[k] = mode.a1;
             bank.a2[k] = mode.a2;
             // Its share of the volume acceleration (process()) carries the

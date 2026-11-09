@@ -24,6 +24,14 @@ reference recording below.
 
 ## Version history
 
+- **0.13.2** (local candidate): lower CPU, the sound unchanged. The
+  soundbox's modes read one table of their shapes at the bridge where they
+  read two, so each sample goes through 28 KB of them in place of 40 KB. On
+  CPUs with AVX2 and FMA3 the modes and the per-sample loop also use fused
+  multiply-adds; Reason's build never does. The largest difference from
+  0.13.1 over the CPU probe's eighteen cases is 142 dB under the signal.
+  [Measurements](Docs/benchmarks/cpu-consolidation-2026-11-09.md).
+
 - **0.13.1** (local candidate): a soft pluck of a high string unloads the
   finger's whole held force into the soundbox as it slips off, so its body
   knock and the open strings' sympathetic ringing no longer fade with a slow

@@ -22,4 +22,18 @@ inline bool hasAvx2() noexcept
     return false;
 #endif
 }
+
+// AVX2 with FMA3 (CPUID 1, ECX bit 12): the fused kernels need both, and a
+// CPU with AVX2 alone keeps the portable ones.
+inline bool hasAvx2Fma() noexcept
+{
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+    if(!hasAvx2())return false;
+    unsigned a,b,c,d;
+    __asm__ volatile("cpuid" : "=a"(a),"=b"(b),"=c"(c),"=d"(d) : "a"(1u),"c"(0u));
+    return (c&(1u<<12))!=0;
+#else
+    return false;
+#endif
+}
 }

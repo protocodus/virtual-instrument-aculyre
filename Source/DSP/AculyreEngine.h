@@ -280,6 +280,11 @@ private:
     void applyPitch(int string, bool raised, int extensionKey = -1) noexcept;
     void updateDamping(int string) noexcept;
     void sleep() noexcept;
+    // process()'s body, defined and used only in AculyreEngine.cpp.
+    inline void processSamples(float* left, float* right, int numSamples, bool fused) noexcept;
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__)) && !defined(ACULYRE_DISABLE_AVX2)
+    void processFused(float* left, float* right, int numSamples) noexcept;
+#endif
 
     std::unique_ptr<State> state_;
     PlayingControls controls_ {};

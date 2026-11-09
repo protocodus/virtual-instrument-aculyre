@@ -3,6 +3,7 @@
 #include "PluckRelease.h"
 #include "PolarizationRotation.h"
 #include "CpuFeatures.h"
+#include "ModeBank.h"
 #include "StringContact.h"
 #include "PiezoCircuit.h"
 
@@ -1221,27 +1222,9 @@ struct Loop
     }
 };
 
-// Two doubles as one vector. The Rack's SDK compiler does not vectorize
-// loops itself, but keeps vector types to the end: written with them, the
-// strings' filters and the modes run two lanes per instruction there too
-// (SSE2, NEON). Each lane is the scalar arithmetic, so the result is the
-// same in every build.
-#if defined(__GNUC__) || defined(__clang__)
-typedef double Pair __attribute__((vector_size(16), aligned(8), may_alias));
-#else
-struct Pair
-{
-    double v[2];
-    Pair operator+(Pair o) const noexcept { return { { v[0] + o.v[0], v[1] + o.v[1] } }; }
-    Pair operator-(Pair o) const noexcept { return { { v[0] - o.v[0], v[1] - o.v[1] } }; }
-    Pair operator*(Pair o) const noexcept { return { { v[0] * o.v[0], v[1] * o.v[1] } }; }
-    Pair operator-() const noexcept { return { { -v[0], -v[1] } }; }
-    Pair& operator+=(Pair o) noexcept { return *this = *this + o; }
-};
-#endif
-inline Pair* pairs(double* p) noexcept { return reinterpret_cast<Pair*>(p); }
-inline const Pair* pairs(const double* p) noexcept { return reinterpret_cast<const Pair*>(p); }
-inline Pair splat(double x) noexcept { return Pair { x, x }; }
+using detail::Pair;
+using detail::pairs;
+using detail::splat;
 
 // Reads every loop's arriving wave into `wave`. Each loop's dispersion is a
 // chain of sections, every one waiting on the last: read loop by loop, a
@@ -1591,253 +1574,9 @@ struct Mode
     double airShare { 0.0 };
 };
 
-// The modes as process() runs them, in transposed direct form II: a
-// structure of arrays, padded with silent modes to whole groups of `lanes`
-// so the compiler can vectorize each group. `drive` is the participation
-// times b0, `pull` the participation alone. The modes that meet only the
-// even coordinates come first, up to evenEnd, then those that meet only the
-// odd ones, up to oddEnd, then the rest, each part padded, so that process()
-// runs each part with only its own coordinates: those of its parity that
-// some mode meets (a bar whose higher bends are left out meets none of
-// them), listed in `coordinates`.
-struct ModeBank
-{
-    static constexpr int lanes = 8;
-    static constexpr int capacity = maxModes + 3 * lanes;
-    int evenEnd { 0 }, oddEnd { 0 }, count { 0 };
-    std::array<std::array<std::size_t, barCoordinates>, 3> coordinates {};
-    std::array<int, 3> coordinateCount {};
-    std::array<std::array<double, capacity>, barCoordinates> drive {}, pull {};
-    std::array<double, capacity> a1 {}, a2 {}, left {}, right {}, s1 {}, s2 {};
-};
-
-
-// Runs the bank's modes one sample on, adding what they radiate to each
-// microphone and their pull on the bar's next velocity, each lane in its own
-// sum. A group's generalized force and its recursion run together, while the
-// force is still in registers; the pulls follow, two coordinates at a time
-// so that each load of a mode's state serves both.
-// Done mode by mode with every sum at once, a group's sums (two outputs and
-// up to ten coordinates, eight lanes each) needed far more vector registers
-// than SSE2 or NEON have, and lived on the stack. Every mode adds its terms
-// in the same order either way.
-void runModes(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::lanes],
-              double (&right)[ModeBank::lanes], double (&past)[barCoordinates][ModeBank::lanes]) noexcept
-{
-    constexpr int vectors = ModeBank::lanes / 2;
-    const int bounds[4] { 0, bank.evenEnd, bank.oddEnd, bank.count };
-    Pair accLeft[vectors] { splat(0.0), splat(0.0), splat(0.0), splat(0.0) };
-    Pair accRight[vectors] { splat(0.0), splat(0.0), splat(0.0), splat(0.0) };
-    for (std::size_t part = 0; part < 3; ++part)
-        for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
-        {
-            Pair x[vectors] { splat(0.0), splat(0.0), splat(0.0), splat(0.0) };
-            int n = 0;
-            for (; n + 1 < bank.coordinateCount[part]; n += 2)
-            {
-                const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-                const std::size_t d = bank.coordinates[part][static_cast<std::size_t>(n + 1)];
-                const Pair* const driveC = pairs(bank.drive[c].data() + group);
-                const Pair* const driveD = pairs(bank.drive[d].data() + group);
-                const Pair fc = splat(force[c]);
-                const Pair fd = splat(force[d]);
-                for (int v = 0; v < vectors; ++v)
-                    x[v] = (x[v] + driveC[v] * fc) + driveD[v] * fd;
-            }
-            for (; n < bank.coordinateCount[part]; ++n)
-            {
-                const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-                const Pair* const drive = pairs(bank.drive[c].data() + group);
-                const Pair f = splat(force[c]);
-                for (int v = 0; v < vectors; ++v)
-                    x[v] += drive[v] * f;
-            }
-            Pair* const s1 = pairs(bank.s1.data() + group);
-            Pair* const s2 = pairs(bank.s2.data() + group);
-            const Pair* const a1 = pairs(bank.a1.data() + group);
-            const Pair* const a2 = pairs(bank.a2.data() + group);
-            const Pair* const toLeft = pairs(bank.left.data() + group);
-            const Pair* const toRight = pairs(bank.right.data() + group);
-            for (int v = 0; v < vectors; ++v)
-            {
-                const Pair y = x[v] + s1[v];
-                const Pair next = s2[v] - a1[v] * y;
-                s2[v] = -x[v] - a2[v] * y;
-                s1[v] = next;
-                accLeft[v] += toLeft[v] * y;
-                accRight[v] += toRight[v] * y;
-            }
-        }
-    Pair* const sumLeft = pairs(left);
-    Pair* const sumRight = pairs(right);
-    for (int v = 0; v < vectors; ++v)
-    {
-        sumLeft[v] = accLeft[v];
-        sumRight[v] = accRight[v];
-    }
-    const double* const s1 = bank.s1.data();
-    for (std::size_t part = 0; part < 3; ++part)
-    {
-        if (bounds[part] == bounds[part + 1])
-            continue;
-        int n = 0;
-        for (; n + 1 < bank.coordinateCount[part]; n += 2)
-        {
-            const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-            const std::size_t d = bank.coordinates[part][static_cast<std::size_t>(n + 1)];
-            Pair sumC[vectors], sumD[vectors];
-            if (part < 2)
-            {
-                for (int v = 0; v < vectors; ++v)
-                {
-                    sumC[v] = splat(0.0);
-                    sumD[v] = splat(0.0);
-                }
-            }
-            else
-            {
-                for (int v = 0; v < vectors; ++v)
-                {
-                    sumC[v] = pairs(past[c])[v];
-                    sumD[v] = pairs(past[d])[v];
-                }
-            }
-            for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
-            {
-                const Pair* const state = pairs(s1 + group);
-                const Pair* const pullC = pairs(bank.pull[c].data() + group);
-                const Pair* const pullD = pairs(bank.pull[d].data() + group);
-                for (int v = 0; v < vectors; ++v)
-                {
-                    sumC[v] += pullC[v] * state[v];
-                    sumD[v] += pullD[v] * state[v];
-                }
-            }
-            for (int v = 0; v < vectors; ++v)
-            {
-                pairs(past[c])[v] = sumC[v];
-                pairs(past[d])[v] = sumD[v];
-            }
-        }
-        for (; n < bank.coordinateCount[part]; ++n)
-        {
-            const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-            Pair sumC[vectors];
-            if (part < 2)
-            {
-                for (int v = 0; v < vectors; ++v)
-                    sumC[v] = splat(0.0);
-            }
-            else
-            {
-                for (int v = 0; v < vectors; ++v)
-                    sumC[v] = pairs(past[c])[v];
-            }
-            for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
-            {
-                const Pair* const state = pairs(s1 + group);
-                const Pair* const pull = pairs(bank.pull[c].data() + group);
-                for (int v = 0; v < vectors; ++v)
-                    sumC[v] += pull[v] * state[v];
-            }
-            for (int v = 0; v < vectors; ++v)
-                pairs(past[c])[v] = sumC[v];
-        }
-    }
-}
-
-#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__)) && !defined(ACULYRE_DISABLE_AVX2)
-// The same eight independent modal lanes in four-double vectors. No
-// reassociation or fused multiply-add: state and reductions retain their
-// portable path's order. Dispatch happens during prepare, never per mode.
-typedef double Quad __attribute__((vector_size(32), aligned(8), may_alias));
-inline Quad* quads(double* p) noexcept { return reinterpret_cast<Quad*>(p); }
-inline const Quad* quads(const double* p) noexcept { return reinterpret_cast<const Quad*>(p); }
-__attribute__((target("avx2,no-fma"))) inline Quad splat4(double x) noexcept { return Quad {x,x,x,x}; }
-__attribute__((target("avx2,no-fma"))) void runModesAvx(ModeBank& bank, const BarVector& force, double (&left)[ModeBank::lanes],
-              double (&right)[ModeBank::lanes], double (&past)[barCoordinates][ModeBank::lanes]) noexcept
-{
-    constexpr int vectors = ModeBank::lanes / 4;
-    const int bounds[4] { 0, bank.evenEnd, bank.oddEnd, bank.count };
-    Quad* const sumLeft = quads(left);
-    Quad* const sumRight = quads(right);
-    for (std::size_t part = 0; part < 3; ++part)
-        for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
-        {
-            Quad x[vectors];
-            for (int v = 0; v < vectors; ++v)
-                x[v] = splat4(0.0);
-            for (int n = 0; n < bank.coordinateCount[part]; ++n)
-            {
-                const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-                const Quad* const drive = quads(bank.drive[c].data() + group);
-                const Quad f = splat4(force[c]);
-                for (int v = 0; v < vectors; ++v)
-                    x[v] += drive[v] * f;
-            }
-            Quad* const s1 = quads(bank.s1.data() + group);
-            Quad* const s2 = quads(bank.s2.data() + group);
-            const Quad* const a1 = quads(bank.a1.data() + group);
-            const Quad* const a2 = quads(bank.a2.data() + group);
-            const Quad* const toLeft = quads(bank.left.data() + group);
-            const Quad* const toRight = quads(bank.right.data() + group);
-            for (int v = 0; v < vectors; ++v)
-            {
-                const Quad y = x[v] + s1[v];
-                const Quad next = s2[v] - a1[v] * y;
-                s2[v] = -x[v] - a2[v] * y;
-                s1[v] = next;
-                sumLeft[v] += toLeft[v] * y;
-                sumRight[v] += toRight[v] * y;
-            }
-        }
-    const double* const s1 = bank.s1.data();
-    for (std::size_t part = 0; part < 3; ++part)
-    {
-        int n = 0;
-        for (; n + 1 < bank.coordinateCount[part]; n += 2)
-        {
-            const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-            const std::size_t d = bank.coordinates[part][static_cast<std::size_t>(n + 1)];
-            Quad sumC[vectors], sumD[vectors];
-            for (int v = 0; v < vectors; ++v)
-            {
-                sumC[v] = quads(past[c])[v];
-                sumD[v] = quads(past[d])[v];
-            }
-            for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
-            {
-                const Quad* const state = quads(s1 + group);
-                const Quad* const pullC = quads(bank.pull[c].data() + group);
-                const Quad* const pullD = quads(bank.pull[d].data() + group);
-                for (int v = 0; v < vectors; ++v)
-                {
-                    sumC[v] += pullC[v] * state[v];
-                    sumD[v] += pullD[v] * state[v];
-                }
-            }
-            for (int v = 0; v < vectors; ++v)
-            {
-                quads(past[c])[v] = sumC[v];
-                quads(past[d])[v] = sumD[v];
-            }
-        }
-        for (; n < bank.coordinateCount[part]; ++n)
-        {
-            const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-            Quad* const sum = quads(past[c]);
-            for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
-            {
-                const Quad* const state = quads(s1 + group);
-                const Quad* const pull = quads(bank.pull[c].data() + group);
-                for (int v = 0; v < vectors; ++v)
-                    sum[v] += pull[v] * state[v];
-            }
-        }
-    }
-}
-
-#endif
+using detail::ModeBank;
+static_assert(ModeBank::barCoordinates == static_cast<int>(barCoordinates) && ModeBank::maxModes == maxModes,
+              "the bank is sized for the bar and the modes");
 
 struct BarMatrix
 {
@@ -2419,7 +2158,8 @@ struct AculyreEngine::State
     std::array<std::array<double, coupledCapacity>, coupledCapacity> coupledSystem {}, coupledVectors {},
         coupledOverlaps {};
     ModeBank bank {};
-    decltype(&runModes) renderModes {runModes};
+    // process() runs its sample loop compiled for AVX2 and FMA3 (prepare()).
+    bool fusedProcess { false };
     // The modes' state at the bridge, sum(pull s1): process() sums it as it
     // updates them, noteOn's preload makes it stale.
     BarVector modalPast {};
@@ -2512,8 +2252,8 @@ void AculyreEngine::prepare(double sampleRate)
     sampleRate_ = std::isfinite(sampleRate) && sampleRate >= 22050.0 && sampleRate <= 192000.0
         ? sampleRate : 48000.0;
     state_->room.prepare(sampleRate_);
-#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__)) && !defined(ACULYRE_DISABLE_AVX2)
-    state_->renderModes=instrumentCpu::hasAvx2()?runModesAvx:runModes;
+#if defined(ACULYRE_HAS_FUSED_KERNELS)
+    state_->fusedProcess = instrumentCpu::hasAvx2Fma();
 #endif
     state_->outputSmoothing = 1.0 - std::exp(-1.0 / (0.01 * sampleRate_));
     // The piezo is Aculele's pickup system (Acustra's documented chain): an
@@ -3306,13 +3046,6 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             if (part != (!odd ? 0 : !even ? 1 : 2))
                 continue;
             const auto k = static_cast<std::size_t>(bank.count++);
-            for (std::size_t c = 0; c < barCoordinates; ++c)
-            {
-                bank.drive[c][k] = mode.b0 * mode.participation[c];
-                bank.pull[c][k] = mode.participation[c];
-            }
-            bank.a1[k] = mode.a1;
-            bank.a2[k] = mode.a2;
             // Its share of the volume acceleration (process()) carries the
             // k / 2fs of its bilinear design, k = w / tan(w / 2fs), and
             // the energy its bandwidth loses to the transform
@@ -3320,8 +3053,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             const double omega = 2.0 * pi * mode.frequency;
             const double warp = omega / std::tan(omega / (2.0 * fs)) / (2.0 * fs)
                               * bilinearEnergyGain(mode.frequency, mode.q, fs);
-            bank.left[k] = mode.radiationLeft * warp;
-            bank.right[k] = mode.radiationRight * warp;
+            bank.setMode(k, mode.b0, mode.a1, mode.a2, mode.participation,
+                         mode.radiationLeft * warp, mode.radiationRight * warp);
         }
         bank.count = (bank.count + ModeBank::lanes - 1) / ModeBank::lanes * ModeBank::lanes;
         (part == 0 ? bank.evenEnd : bank.oddEnd) = bank.count;
@@ -3723,8 +3456,7 @@ void AculyreEngine::reset() noexcept
         voice.dampingDirty = true;
     }
     s.clock = 0;
-    s.bank.s1.fill(0.0);
-    s.bank.s2.fill(0.0);
+    s.bank.clearState();
     s.modalPast = {};
     s.modalPastStale = true;
     s.massPast = {};
@@ -4292,7 +4024,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         const auto m = static_cast<std::size_t>(k);
         double modal = 0.0;
         for (std::size_t c = 0; c < barCoordinates; ++c)
-            modal += bank.drive[c][m] * preload[c];
+            modal += bank.shape[c][m] * preload[c];
         bank.s1[m] -= modal;
         bank.s2[m] -= modal;
     }
@@ -4352,8 +4084,7 @@ void AculyreEngine::sleep() noexcept
             voice.dampingDirty = true;
         }
     }
-    s.bank.s1.fill(0.0);
-    s.bank.s2.fill(0.0);
+    s.bank.clearState();
     s.modalPastStale = true;
     s.massPast = {};
     s.bendVelocityPast = {};
@@ -4371,6 +4102,33 @@ void AculyreEngine::sleep() noexcept
 bool AculyreEngine::idle() const noexcept { return state_->idle; }
 
 void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
+{
+#if defined(ACULYRE_HAS_FUSED_KERNELS)
+    if (state_->fusedProcess)
+    {
+        processFused(left, right, numSamples);
+        return;
+    }
+#endif
+    processSamples(left, right, numSamples, false);
+}
+
+#if defined(ACULYRE_HAS_FUSED_KERNELS)
+// The same samples compiled for AVX2 and FMA3: the strings' filters, the
+// junction and the room run as fused multiply-adds in three-operand
+// instructions. The compiler fuses them where it may, so the output meets
+// the portable build's to rounding, not to the bit, as the fused modal
+// kernels do (ModeBank.h). Acukoto's, from its 0.25.7.
+__attribute__((target("avx2,fma"))) void AculyreEngine::processFused(float* left, float* right, int numSamples) noexcept
+{
+    processSamples(left, right, numSamples, true);
+}
+#endif
+
+// Inlined into each caller with `fused` known, so the modes' kernel is a
+// direct call: the Rack's build has only the portable one.
+ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* right, int numSamples,
+                                                        [[maybe_unused]] bool fused) noexcept
 {
     State& s = *state_;
     s.clock += numSamples;
@@ -4547,7 +4305,7 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             s.modalPast = {};
             for (std::size_t c = 0; c < barCoordinates; ++c)
                 for (int k = 0; k < bank.count; ++k)
-                    s.modalPast[c] += bank.pull[c][static_cast<std::size_t>(k)] * bank.s1[static_cast<std::size_t>(k)];
+                    s.modalPast[c] += bank.shape[c][static_cast<std::size_t>(k)] * bank.s1[static_cast<std::size_t>(k)];
             s.modalPastStale = false;
         }
         const BarVector& past = s.modalPast;
@@ -4576,18 +4334,13 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             }
         }
 
-        constexpr int lanes = ModeBank::lanes;
-        double laneLeft[lanes] {}, laneRight[lanes] {}, lanePast[barCoordinates][lanes] {};
-        s.renderModes(bank, plateForce, laneLeft, laneRight, lanePast);
         double radiatedLeft = 0.0, radiatedRight = 0.0;
-        s.modalPast = {};
-        for (int lane = 0; lane < lanes; ++lane)
-        {
-            radiatedLeft += laneLeft[lane];
-            radiatedRight += laneRight[lane];
-            for (std::size_t c = 0; c < barCoordinates; ++c)
-                s.modalPast[c] += lanePast[c][lane];
-        }
+#if defined(ACULYRE_HAS_FUSED_KERNELS)
+        if (fused)
+            detail::runModesFused(bank, plateForce, radiatedLeft, radiatedRight, s.modalPast);
+        else
+#endif
+            detail::runModes(bank, plateForce, radiatedLeft, radiatedRight, s.modalPast);
 
         alignas(16) double normalPort[maxStrings];
         for (int index = 0; index < count; index += 2)

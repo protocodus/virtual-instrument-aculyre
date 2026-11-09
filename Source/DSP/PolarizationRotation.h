@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cmath>
+#include "DspMath.h"
 
 namespace aculyre::detail
 {
@@ -15,7 +15,7 @@ struct PolarizationRotation
 
     static PolarizationRotation fromSlope(double slope) noexcept
     {
-        const double cosine = 1.0 / std::sqrt(1.0 + slope * slope);
+        const double cosine = 1.0 / squareRoot(1.0 + slope * slope);
         return { cosine, slope * cosine };
     }
 

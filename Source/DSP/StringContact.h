@@ -49,7 +49,9 @@ struct StringContact
         }
         const auto tap = [&] (double age, int offset, double sign)
         {
-            const int first = static_cast<int>(std::floor(age));
+            // Ages are never negative, so the cast is the floor (a library
+            // call in Reason's build, four per loop every control period).
+            const int first = static_cast<int>(age);
             const double fraction = age - first;
             ages[static_cast<std::size_t>(offset)] = first;
             ages[static_cast<std::size_t>(offset + 1)] = std::min(first + 1, latestAge);

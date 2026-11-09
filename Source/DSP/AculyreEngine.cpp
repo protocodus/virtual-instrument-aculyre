@@ -1,5 +1,6 @@
 #include "AculyreEngine.h"
 #include "FingerContact.h"
+#include "DspMath.h"
 #include "PluckRelease.h"
 #include "PolarizationRotation.h"
 #include "CpuFeatures.h"
@@ -1690,7 +1691,7 @@ struct Random
     double gaussian() noexcept
     {
         const double u = (static_cast<double>(next() >> 11) + 1.0) * (1.0 / 9007199254740992.0);
-        return std::clamp(std::sqrt(-2.0 * std::log(u)) * std::cos(pi * bipolar()), -3.0, 3.0);
+        return std::clamp(detail::squareRoot(-2.0 * std::log(u)) * std::cos(pi * bipolar()), -3.0, 3.0);
     }
 };
 
@@ -3786,7 +3787,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         loop.pendingAhead = count;
         oldEnergy += before;
         keptEnergy += after;
-        return before > 0.0 ? std::sqrt(after / before) : 0.0;
+        return before > 0.0 ? detail::squareRoot(after / before) : 0.0;
     };
     if (sounding)
     {
@@ -3836,7 +3837,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     const double touch = lever ? instrument.leverTouch[at] : string.touch;
     const double forceDraw = s.random.gaussian();
     const double force = instrument.pluckForce * touch * std::pow(v, 1.4) * std::exp(0.14 * forceDraw);
-    const double angle = std::asin(std::sqrt(std::clamp(controls.normalShare, 0.0, 1.0)))
+    const double angle = std::asin(detail::squareRoot(std::clamp(controls.normalShare, 0.0, 1.0)))
                        + 4.0 * pi / 180.0 * s.random.gaussian();
     const double normalShare = std::clamp(std::sin(angle) * std::sin(angle), 0.01, 0.9);
 
@@ -3937,7 +3938,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         const double frequency = plane == 0 ? voice.frequency : voice.parallelFrequency;
         const double pluckPoint = position * length;
         const double amplitude = force * pluckPoint * (length - pluckPoint) / (voice.tension * length)
-                               * std::sqrt(plane == 0 ? normalShare : 1.0 - normalShare);
+                               * detail::squareRoot(plane == 0 ? normalShare : 1.0 - normalShare);
         releasedEnergy += length * length * frequency * frequency * amplitude * amplitude
                         * (1.0 / pluckPoint + 1.0 / (length - pluckPoint)) / length;
     }
@@ -3951,8 +3952,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     voice.parallel.currentPeriod = voice.parallel.loopDelay / releasedRatio;
     voice.normal.retuneHand(voice.frequency * releasedRatio, sampleRate_);
     voice.parallel.retuneHand(voice.parallelFrequency * releasedRatio, sampleRate_);
-    voice.roundTrip = std::clamp(static_cast<int>(std::lround(sampleRate_ / (voice.frequency * releasedRatio))),
-                                1, delayCapacity - 1);
+    voice.roundTrip = std::clamp(detail::nearest(sampleRate_ / (voice.frequency * releasedRatio)), 1, delayCapacity - 1);
 
     for (int plane = 0; plane < 2; ++plane)
     {
@@ -3963,7 +3963,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         const double pluckPoint = position * length;
         // The displacement the held force sets, A = F x (L - x) / (T L).
         const double amplitude = force * pluckPoint * (length - pluckPoint) / (voice.tension * length)
-                               * (plane == 0 ? std::sqrt(normalShare) : strokeSign * std::sqrt(1.0 - normalShare));
+                               * (plane == 0 ? detail::squareRoot(normalShare) : strokeSign * detail::squareRoot(1.0 - normalShare));
         // The wave reaching the bridge over the next round trip, one period
         // of the loop: first the half that travels straight there,
         // (c/2) y0'(c t), then the half that went to the yoke,
@@ -4242,8 +4242,7 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
                 voice.normal.retuneHand(voice.frequency * ratio, sampleRate_);
                 voice.parallel.retuneHand(voice.parallelFrequency * ratio, sampleRate_);
                 // The mean follows the period the bend and the glide set.
-                const int roundTrip = std::clamp(static_cast<int>(std::lround(sampleRate_ / (voice.frequency * ratio))),
-                                                 1, delayCapacity - 1);
+                const int roundTrip = std::clamp(detail::nearest(sampleRate_ / (voice.frequency * ratio)), 1, delayCapacity - 1);
                 while (voice.roundTrip < roundTrip)
                 {
                     ++voice.roundTrip;
@@ -4403,9 +4402,10 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
         s.piezoMountZ1 = mount[1] * plateForce[0] - mount[3] * element + s.piezoMountZ2;
         s.piezoMountZ2 = mount[2] * plateForce[0] - mount[4] * element;
         const double piezo = s.piezoCircuit.process(element);
-        const double level = std::max(s.outputGain * std::max(std::max(std::abs(pressureLeft), std::abs(pressureRight)),
-                                                              std::max(std::abs(wetLeft), std::abs(wetRight))),
-                                      s.piezoGain * std::abs(piezo));
+        using detail::magnitude;
+        const double level = std::max(s.outputGain * std::max(std::max(magnitude(pressureLeft), magnitude(pressureRight)),
+                                                              std::max(magnitude(wetLeft), magnitude(wetRight))),
+                                      s.piezoGain * magnitude(piezo));
         s.quietSamples = level > idleLevel ? 0 : s.quietSamples + 1;
         const double outLeft = pressureLeft + s.output[0] * wetLeft;
         const double outRight = pressureRight + s.output[0] * wetRight;

@@ -2487,22 +2487,6 @@ struct AculyreEngine::State
     std::array<double, 6> output {};
     double outputSmoothing { 0.0 };
     double bendSmoothing { 0.0 };
-
-    // Each string's friction attack survives plucks on the others. A single
-    // shared transient made a chord erase every attack except its last note.
-    // These are the existing authored contact-noise envelope/band, not a
-    // calibrated tribological simulation. Only live attacks are processed.
-    struct SlipTransient
-    {
-        int remaining { 0 };
-        double envelope { 0.0 }, decay { 0.0 }, pole { 0.0 };
-        double previous { 0.0 }, lowpass { 0.0 };
-        Random random {};
-        alignas(16) BarVector coupling {};
-    };
-    std::array<SlipTransient, maxStrings> slips {};
-    std::array<int, maxStrings> activeSlips {};
-    int slipCount { 0 };
 };
 
 AculyreEngine::AculyreEngine() : state_(std::make_unique<State>()) {}
@@ -3745,8 +3729,6 @@ void AculyreEngine::reset() noexcept
     s.random.seed(0x5eed1ac0ffeeull);
     s.bend = s.bendTarget;
     s.output = s.outputTarget;
-    s.slips = {};
-    s.slipCount = 0;
 }
 
 const InstrumentSpec& AculyreEngine::instrument() const noexcept { return state_->instrument; }
@@ -3865,11 +3847,6 @@ void AculyreEngine::setRealismEnhancements(bool enabled) noexcept
     realismEnhancements_ = enabled;
     if (state_)
     {
-        if (!enabled)
-        {
-            state_->slips = {};
-            state_->slipCount = 0;
-        }
         for (int index = 0; index < stringCount_; ++index)
             state_->strings[static_cast<std::size_t>(index)].dampingDirty = true;
     }
@@ -4279,33 +4256,6 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         const double heldForce = 2.0 * voice.impedance * (wave[0] - mean);
         preloadPlane(heldForce, plane == 0);
     }
-    if (realismEnhancements_)
-    {
-        // The authored contact-noise attack already used by 0.12.7, now
-        // owned by its string instead of overwriting the previous pluck's.
-        auto& slip = s.slips[static_cast<std::size_t>(index)];
-        if (slip.remaining == 0)
-            s.activeSlips[static_cast<std::size_t>(s.slipCount++)] = index;
-        const double slipDuration = plectrum ? 0.0075
-                                             : (controls.technique == Technique::Nail ? 0.0085 : 0.0110);
-        const int totalSamples = std::max(8, static_cast<int>(std::lround(slipDuration * sampleRate_)));
-        slip.remaining = totalSamples;
-        const double slipCornerHz = plectrum ? 8500.0
-                                             : (controls.technique == Technique::Nail ? 7500.0 : 5500.0);
-        slip.pole = std::exp(-2.0 * pi * slipCornerHz / sampleRate_);
-        const double techRoughness = plectrum ? 0.0044
-                                              : (controls.technique == Technique::Nail ? 0.0038 : 0.0026);
-        const double windingBoost = string.coreDiameter > 0.0 ? 1.45 : 1.0;
-        slip.envelope = force * (v * v) * techRoughness * windingBoost;
-        slip.decay = std::exp(-3.5 / totalSamples);
-        slip.previous = 0.0;
-        slip.lowpass = 0.0;
-        const auto forceBits = static_cast<std::uint64_t>(std::abs(forceDraw) * 1.0e12) + 1ull;
-        slip.random.seed((forceBits * 0x9e3779b97f4a7c15ull)
-                       ^ static_cast<std::uint64_t>((midiNote + 1) * 2654435761u + (index + 1) * 40503u));
-        for (std::size_t c = 0; c < barCoordinates; ++c)
-            slip.coupling[c] = c == 2 ? 0.35 : port[c];
-    }
     voice.squaresSum = 0.0;
     for (int k = 1; k <= voice.roundTrip; ++k)
         voice.squaresSum += voice.squares[static_cast<std::size_t>((voice.squaresIndex - k) & (delayCapacity - 1))];
@@ -4388,8 +4338,6 @@ void AculyreEngine::sleep() noexcept
     s.microphoneCursor = 0;
     s.piezoMountZ1 = s.piezoMountZ2 = 0.0;
     s.room.reset();
-    s.slips = {};
-    s.slipCount = 0;
     s.idle = true;
 }
 
@@ -4552,32 +4500,6 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             d2 += c[2] * n;
             d3 += c[3] * n;
             d4 += c[4] * n;
-        }
-        if (realismEnhancements_ && s.slipCount > 0)
-        {
-            for (int active = 0; active < s.slipCount;)
-            {
-                auto& slip = s.slips[static_cast<std::size_t>(s.activeSlips[static_cast<std::size_t>(active)])];
-                --slip.remaining;
-                const double raw = slip.random.bipolar();
-                const double hp = raw - slip.previous;
-                slip.previous = raw;
-                slip.lowpass = slip.pole * slip.lowpass + (1.0 - slip.pole) * hp;
-                const double rubForce = slip.envelope * slip.lowpass;
-                slip.envelope *= slip.decay;
-                const Pair* const sc = pairs(slip.coupling.data());
-                const Pair rf = splat(rubForce);
-                d0 += sc[0] * rf;
-                d1 += sc[1] * rf;
-                d2 += sc[2] * rf;
-                d3 += sc[3] * rf;
-                d4 += sc[4] * rf;
-                if (slip.remaining == 0)
-                    s.activeSlips[static_cast<std::size_t>(active)]
-                        = s.activeSlips[static_cast<std::size_t>(--s.slipCount)];
-                else
-                    ++active;
-            }
         }
         alignas(16) BarVector drive;
         Pair* const d = pairs(drive.data());

@@ -1,4 +1,5 @@
 #include "AculyreEngine.h"
+#include "FingerContact.h"
 #include "PluckRelease.h"
 #include "PolarizationRotation.h"
 #include "CpuFeatures.h"
@@ -957,13 +958,31 @@ struct Loop
     // it on a bass string): a wave squeezed into the line alone would leave
     // a gap and pluck at the wrong point.
     std::array<float, delayCapacity> pending {};
+    // How far behind `write` any of the string's designs can read, at any
+    // bend and with the round trip's energy window (setInstrument). Older
+    // history is overwritten before a read reaches it, so silence() clears
+    // only this much: clearing both 64 KB rings cost a re-plucked chord
+    // milliseconds on the large rings A0's octave bend needs at 192 kHz.
+    int reach { delayCapacity };
+
+    // Zeroes `length` slots of a ring from `start`, wrapping once.
+    template <typename T>
+    static void clearRing(std::array<T, delayCapacity>& ring, int start, int length) noexcept
+    {
+        length = std::min(length, delayCapacity);
+        start &= delayCapacity - 1;
+        const int first = std::min(length, delayCapacity - start);
+        std::fill_n(ring.begin() + start, first, T {});
+        std::fill_n(ring.begin(), length - first, T {});
+    }
 
     // Stops the wave and everything still on its way, keeping the pitch and
-    // the hand's damping.
+    // the hand's damping. A pluck's pending slots past pendingAhead are
+    // already zero: each is cleared as it arrives.
     void silence() noexcept
     {
-        line.fill(0.0f);
-        pending.fill(0.0f);
+        clearRing(line, write - reach, reach);
+        clearRing(pending, write, pendingAhead);
         pendingAhead = 0;
         tx1 = tx2 = ty1 = ty2 = last = 0.0;
         dispersionState.fill(0.0);
@@ -975,6 +994,9 @@ struct Loop
     void reset() noexcept
     {
         silence();
+        // A new instrument's reach may be longer than the last one's.
+        line.fill(0.0f);
+        pending.fill(0.0f);
         // Back to where prepare() leaves the line, so a reset plays as a
         // fresh instance does, sample for sample.
         write = 0;
@@ -2443,11 +2465,11 @@ struct AculyreEngine::State
     int quietSamples { 0 };
     int controlCountdown { 0 };
     std::array<double, delayCapacity> pluckWave {};
-    // A re-pluck's working space: a copy of the ringing loop, the period it
-    // would bring to the bridge, and that period after the contact.
-    Loop contactLoop {};
+    // A re-pluck's working space: the period the ringing loop would bring to
+    // the bridge, and that period after the contact.
     std::array<double, delayCapacity> contactWave {};
     std::array<double, delayCapacity> contactKept {};
+    std::array<double, delayCapacity> contactKernel {};
     // Samples processed since prepare() or reset(); when a string was last
     // plucked, on it.
     std::int64_t clock { 0 };
@@ -3596,6 +3618,26 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 for (int plane = 0; plane < 2; ++plane)
                     tune(s.extension[static_cast<std::size_t>(key)].planes[static_cast<std::size_t>(plane)], plane);
             }
+        // The furthest any design reads back: its line at every tabulated
+        // bend (between table points the delay is monotonic, so the ends
+        // bound it), or the energy window's round trip, up to an octave
+        // down. The margin covers the Thiran section's two past taps.
+        double reach = 0.0;
+        const auto reachOf = [&] (const LoopDesign& design)
+        {
+            reach = std::max(reach, 2.0 * design.loopDelay);
+            for (std::size_t k = 0; k < bendPoints; ++k)
+                reach = std::max(reach, (1.0 - design.lagCycles[k]) * design.loopDelay / bendRatios[k]);
+        };
+        for (const State::PitchDesign& pitch : voice.pitch)
+            for (const LoopDesign& design : pitch.planes)
+                reachOf(design);
+        for (int key = lowestKey; key <= highestKey; ++key)
+            if (s.extensionString[static_cast<std::size_t>(key)] == index)
+                for (const LoopDesign& design : s.extension[static_cast<std::size_t>(key)].planes)
+                    reachOf(design);
+        voice.normal.reach = voice.parallel.reach
+            = std::min(delayCapacity, static_cast<int>(std::ceil(reach)) + 32);
         voice.normal.whole = wholeFor(voice.pitch[0].planes[0].restLineDelay);
         voice.parallel.whole = wholeFor(voice.pitch[0].planes[1].restLineDelay);
         applyPitch(index, false);
@@ -3986,70 +4028,28 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         const int count = std::clamp(static_cast<int>(std::ceil(loop.currentPeriod)), 2, delayCapacity);
         std::array<double, delayCapacity>& wave = s.contactWave;
         std::array<double, delayCapacity>& kept = s.contactKept;
-        s.contactLoop = loop;
+        // The loop runs its next period freely on itself rather than on a
+        // copy (128 KB per plane): silence() below discards every wave state
+        // the run moves, and the rest is put back. What the run writes ahead
+        // of `write` is the oldest history; it is cleared too, since a long
+        // enough bent line on a full ring could reach it.
+        const int write = loop.write, pendingAhead = loop.pendingAhead;
+        const double damping = loop.damping, dampingStep = loop.dampingStep;
         double before = 0.0;
         for (int k = 0; k < count; ++k)
         {
-            wave[static_cast<std::size_t>(k)] = s.contactLoop.freeStep();
+            wave[static_cast<std::size_t>(k)] = loop.freeStep();
             before += wave[static_cast<std::size_t>(k)] * wave[static_cast<std::size_t>(k)];
         }
-        // e^-a I_k(a) by Miller's backward recurrence, I_(k-1) = I_(k+1) +
-        // (2k / a) I_k, normalised by e^a = I_0 + 2 sum I_k.
-        constexpr int maxTerms = 64;
-        std::array<double, maxTerms + 2> weight {};
-        double next = 0.0, current = 1.0e-30, sum = 0.0;
-        for (int k = maxTerms; k >= 1; --k)
-        {
-            const double previous = next + 2.0 * k / hold * current;
-            next = current;
-            current = previous;
-            weight[static_cast<std::size_t>(k - 1)] = current;
-            if (current > 1.0e250)
-            {
-                for (int j = k - 1; j <= maxTerms; ++j)
-                    weight[static_cast<std::size_t>(j)] *= 1.0e-250;
-                current *= 1.0e-250;
-                next *= 1.0e-250;
-            }
-        }
-        sum = weight[0];
-        for (int k = 1; k <= maxTerms; ++k)
-            sum += 2.0 * weight[static_cast<std::size_t>(k)];
-        const double shift = position * count;
-        const auto at = [&] (double t)
-        {
-            // Catmull-Rom over the circular period.
-            t -= count * std::floor(t / count);
-            const int i = static_cast<int>(t);
-            const double f = t - i;
-            // Only these four neighbours wrap. Rounding a tiny negative t
-            // can produce exactly count above, so normalize that index
-            // AFTER computing f in the original arithmetic. With count>=2,
-            // the taps then lie in [-1,count+1]: one correction replaces
-            // two integer remainders per tap, without changing a sample.
-            const int base = i == count ? 0 : i;
-            const auto w = [&] (int j)
-            {
-                const int wrapped = j < 0 ? j + count : (j >= count ? j - count : j);
-                return wave[static_cast<std::size_t>(wrapped)];
-            };
-            const double y0 = w(base - 1), y1 = w(base), y2 = w(base + 1), y3 = w(base + 2);
-            return y1 + 0.5 * f * (y2 - y0 + f * (2.0 * y0 - 5.0 * y1 + 4.0 * y2 - y3 + f * (3.0 * (y1 - y2) + y3 - y0)));
-        };
+        loop.write = write;
+        loop.pendingAhead = pendingAhead;
+        loop.damping = damping;
+        loop.dampingStep = dampingStep;
+        Loop::clearRing(loop.line, write, count);
+        detail::fingerContact(wave, kept, s.contactKernel, count, position, hold);
         double after = 0.0;
         for (int j = 0; j < count; ++j)
-        {
-            double value = weight[0] / sum * wave[static_cast<std::size_t>(j)];
-            for (int k = 1; k <= maxTerms; ++k)
-            {
-                const double w = weight[static_cast<std::size_t>(k)] / sum;
-                if (w < 1.0e-9)
-                    break;
-                value += w * (at(j - k * shift) + at(j + k * shift));
-            }
-            kept[static_cast<std::size_t>(j)] = value;
-            after += value * value;
-        }
+            after += kept[static_cast<std::size_t>(j)] * kept[static_cast<std::size_t>(j)];
         loop.silence();
         for (int k = 0; k < count; ++k)
             loop.pending[static_cast<std::size_t>((loop.write + k) & (delayCapacity - 1))]
@@ -4074,8 +4074,9 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             preloadPlane(-stopped, loop == &voice.normal);
         }
         const float ratio = oldEnergy > 0.0 ? static_cast<float>(keptEnergy / oldEnergy) : 0.0f;
-        for (float& square : voice.squares)
-            square *= ratio;
+        // Only the energy window's reach is ever summed again (Loop::reach).
+        for (int k = 1; k <= voice.normal.reach; ++k)
+            voice.squares[static_cast<std::size_t>((voice.squaresIndex - k) & (delayCapacity - 1))] *= ratio;
     }
     voice.lastOnset = s.clock;
     // A plectrum re-striking a string that still sounds is a tremolo, played

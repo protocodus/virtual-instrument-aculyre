@@ -1,5 +1,6 @@
 #include "AculyreEngine.h"
 #include "AculyrePresets.h"
+#include "FingerContact.h"
 #include "StringContact.h"
 
 #include <array>
@@ -27,6 +28,67 @@ double squaredNorm(const std::array<float, 512>& wave)
 
 int main()
 {
+    // The re-pluck contact's convolution against its definition: the period
+    // read at every Bessel-weighted shift by Catmull-Rom, sample by sample,
+    // and partial n kept as exp(-hold (1 - cos 2 pi n x)) on a whole period.
+    for (int count : { 2, 3, 7, 41, 389, 1745 })
+        for (double point : { 0.02, 0.25, 0.27, 0.5, 0.7 })
+            for (double hold : { 0.3, 2.15, 5.6 })
+            {
+                std::array<double, 2048> wave {}, kept {}, kernel {};
+                for (int j = 0; j < count; ++j)
+                    wave[std::size_t(j)] = std::sin(2.0 * pi * j / count) + 0.4 * std::cos(6.0 * pi * j / count + 0.3)
+                                         + 0.1 * std::sin(2.0 * pi * 17.0 * j / count);
+                aculyre::detail::fingerContact(wave, kept, kernel, count, point, hold);
+                // e^-a I_k(a), by the series, independent of the recurrence.
+                const auto bessel = [&] (int k)
+                {
+                    double term = std::pow(0.5 * hold, k) / std::tgamma(k + 1.0), sum = 0.0;
+                    for (int m = 0; m < 200; ++m)
+                    {
+                        sum += term;
+                        term *= 0.25 * hold * hold / ((m + 1.0) * (m + 1.0 + k));
+                    }
+                    return std::exp(-hold) * sum;
+                };
+                const auto at = [&] (double t)
+                {
+                    t -= count * std::floor(t / count);
+                    const int i = std::min(int(t), count - 1);
+                    const double f = t - i;
+                    const auto w = [&] (int j) { return wave[std::size_t(((j % count) + count) % count)]; };
+                    const double y0 = w(i - 1), y1 = w(i), y2 = w(i + 1), y3 = w(i + 2);
+                    return y1 + 0.5 * f * (y2 - y0 + f * (2.0 * y0 - 5.0 * y1 + 4.0 * y2 - y3
+                                                          + f * (3.0 * (y1 - y2) + y3 - y0)));
+                };
+                double worst = 0.0;
+                for (int j = 0; j < count; ++j)
+                {
+                    double value = bessel(0) * wave[std::size_t(j)];
+                    for (int k = 1; k < 60; ++k)
+                        value += bessel(k) * (at(j - k * point * count) + at(j + k * point * count));
+                    worst = std::max(worst, std::abs(value - kept[std::size_t(j)]));
+                }
+                check(worst < 1e-8, "the contact convolution is the shifted Catmull-Rom sum");
+                if (count >= 389)
+                {
+                    // Low partials, where Catmull-Rom is near exact, keep the
+                    // Bessel law's exp(-hold (1 - cos 2 pi n x)).
+                    for (int n : { 1, 3 })
+                    {
+                        std::complex<double> in = 0.0, out = 0.0;
+                        for (int j = 0; j < count; ++j)
+                        {
+                            in += wave[std::size_t(j)] * std::polar(1.0, -2.0 * pi * n * j / count);
+                            out += kept[std::size_t(j)] * std::polar(1.0, -2.0 * pi * n * j / count);
+                        }
+                        const double expected = std::exp(-hold * (1.0 - std::cos(2.0 * pi * n * point)));
+                        check(std::abs(std::abs(out / in) - expected) < 2e-3 * (1.0 + expected),
+                              "the contact keeps partial n as exp(-hold (1 - cos 2 pi n x))");
+                    }
+                }
+            }
+
     // The independent standing-wave solution has local velocity proportional
     // to sin(n pi x). Include fractional periods/taps and a bass line whose
     // missing filter phase made the old long-arc contact clip its return tap.

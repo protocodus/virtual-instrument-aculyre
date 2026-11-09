@@ -24,6 +24,14 @@ reference recording below.
 
 ## Version history
 
+- **0.13.3** (local candidate): no subnormal arithmetic as a sound dies
+  away, whether or not the host sets flush-to-zero. A palm-muted chord kept
+  its strings' squared velocities as single-precision subnormals for about
+  1.6 s before the engine slept, an idle string's first arrival did for a
+  few samples, and the softest muted pluck sent subnormal samples on to the
+  output stage. Each is now zero below 300 dB under a pluck. Every other
+  sample is unchanged.
+
 - **0.13.2** (local candidate): lower CPU, the sound unchanged. The
   soundbox's modes read one table of their shapes at the bridge where they
   read two, so each sample goes through 28 KB of them in place of 40 KB. On

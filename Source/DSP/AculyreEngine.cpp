@@ -2101,6 +2101,11 @@ struct AculyreEngine::State
         // hard-plucked steel G3 kept its energy for seconds). A pluck enters
         // its wave's squares at once: the string is stretched from the
         // moment it is released, not a round trip later.
+        // A square under 1e-30 is kept as zero: a wave 300 dB under a
+        // pluck's, whose square single precision would next hold as a
+        // subnormal (a palm-muted string a second after its pluck, an idle
+        // string's first arrival), slow to compute with on x86.
+        static float squareOf(double value) noexcept { return value > 1.0e-30 ? static_cast<float>(value) : 0.0f; }
         std::array<float, delayCapacity> squares {};
         int squaresIndex { 0 };
         int roundTrip { 1 };
@@ -3800,7 +3805,10 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         const float ratio = oldEnergy > 0.0 ? static_cast<float>(keptEnergy / oldEnergy) : 0.0f;
         // Only the energy window's reach is ever summed again (Loop::reach).
         for (int k = 1; k <= voice.normal.reach; ++k)
-            voice.squares[static_cast<std::size_t>((voice.squaresIndex - k) & (delayCapacity - 1))] *= ratio;
+        {
+            float& square = voice.squares[static_cast<std::size_t>((voice.squaresIndex - k) & (delayCapacity - 1))];
+            square = State::StringVoice::squareOf(static_cast<double>(square) * ratio);
+        }
     }
     voice.lastOnset = s.clock;
     // A plectrum re-striking a string that still sounds is a tremolo, played
@@ -3998,7 +4006,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             {
                 float& square = voice.squares[static_cast<std::size_t>((voice.squaresIndex - voice.roundTrip + k)
                                                                        & (delayCapacity - 1))];
-                square += static_cast<float>(value * value);
+                square += State::StringVoice::squareOf(value * value);
             }
         }
         // The periodic wave starts below the held force wherever the slip is
@@ -4263,7 +4271,7 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
             parallelIn[static_cast<std::size_t>(index)] = vp;
             // The loop's mean squared velocity over a round trip; both
             // directions' slopes count, hence the factor in glidePerEnergy.
-            const float square = static_cast<float>(vn * vn + vp * vp);
+            const float square = State::StringVoice::squareOf(vn * vn + vp * vp);
             float& slot = voice.squares[static_cast<std::size_t>(voice.squaresIndex)];
             const float leaving = voice.squares[static_cast<std::size_t>((voice.squaresIndex - voice.roundTrip)
                                                                          & (delayCapacity - 1))];
@@ -4418,8 +4426,14 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
         const double volume = s.output[3];
         // Unlimited: the Performer's output stage keeps it under full scale.
         // Written so that either end of the blend is exactly one source.
-        left[sample] = static_cast<float>(volume * ((1.0 - blend) * micLeft + blend * pickup));
-        right[sample] = static_cast<float>(volume * ((1.0 - blend) * micRight + blend * pickup));
+        // Under 1e-15 (-300 dBFS) it is zero. The softest pluck under a full
+        // palm mute falls through single precision's subnormals in the half
+        // second before the engine sleeps, and the output stage squares its
+        // input in single precision (its level detector), subnormal from
+        // 1e-19 down: both are slow to compute with on x86.
+        const auto sent = [] (double x) noexcept { return x > 1.0e-15 || x < -1.0e-15 ? static_cast<float>(x) : 0.0f; };
+        left[sample] = sent(volume * ((1.0 - blend) * micLeft + blend * pickup));
+        right[sample] = sent(volume * ((1.0 - blend) * micRight + blend * pickup));
         if (s.quietSamples >= static_cast<int>(0.5 * sampleRate_))
         {
             filters.scatter(loops.data(), 2 * count);

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Aculyre VERSION 0.13.2 LANGUAGES CXX)
+project(Aculyre VERSION 0.13.3 LANGUAGES CXX)
 
 # An experimental prototype: the DSP and its Performer, no plug-in yet.
 option(BUILD_TESTING "Build the tests" ON)
@@ -69,6 +69,10 @@ if(BUILD_TESTING)
     target_include_directories(AculyreModeBankTests PRIVATE Source/DSP)
     add_test(NAME Aculyre.ModeBank COMMAND AculyreModeBankTests)
     set_tests_properties(Aculyre.ModeBank PROPERTIES LABELS unit)
+    add_executable(AculyreDenormalTests Tests/DenormalTests.cpp)
+    target_link_libraries(AculyreDenormalTests PRIVATE AculyreDSP)
+    add_test(NAME Aculyre.Denormals COMMAND AculyreDenormalTests)
+    set_tests_properties(Aculyre.Denormals PROPERTIES LABELS unit)
     add_executable(AculyreContactPhysicsTests Tests/ContactPhysicsTests.cpp)
     target_link_libraries(AculyreContactPhysicsTests PRIVATE AculyreDSP)
     add_test(NAME Aculyre.ContactPhysics COMMAND AculyreContactPhysicsTests)

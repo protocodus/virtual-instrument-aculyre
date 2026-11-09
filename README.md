@@ -488,8 +488,11 @@ Every string of the three instruments, lever up or down, lands within 2.6
 cents up to 5 kHz at every rate from 44.1 to 192 kHz, no more than 0.9
 cents further out than at 48 kHz. First-order sections alone left the steel
 G3 up to 95 cents flat, and two sections the gut D3 25 cents off.
-A second-order Thiran section sets the fractional delay, solved with the
-bridge's discrete-time reflection phase so the coupled string sounds its note. The strings
+A second-order Thiran section normally sets the fractional delay, solved
+with the bridge's discrete-time reflection phase so the coupled string sounds
+its note. Very short loops use a stable first-order section when necessary;
+their setup solves continuous integer-tap branches of that actual realization.
+The strings
 are tuned by hand within half a cent of 12-TET: each instrument's sit a fraction
 of a cent off their notes, the same ones every time, spread by 0.35 cents about
 the instrument's pitch.
@@ -518,8 +521,12 @@ middle of the 0.5 to 1.2 mm most of ten harpists' slips in chords and
 arpeggios fell in (the same paper, Table V), geometrically with velocity: an authored law between two measured
 slips, at the owner's request that the tone follow velocity more. The wave that
 reaches the bridge over the first round trip is loaded as one full period of
-the loop (cell-averaged slopes, so the release is band-limited). The soundbox starts deflected under the held
-force, so only the release reaches it and the top springs back. Plucks
+the loop. Its continuous periodic exponential release is integrated over
+each sample cell, including the fractional last cell. The soundbox's initial
+deflection matches the released wave's first cell; this approximates the
+boundary state rather than retaining the full static force before a causal
+slip. The difference is substantial for soft, high notes; see the
+[release audit](Docs/validation/realism-audit-2026-11-09.md). Plucks
 scatter as harpists' do (Chadefaux et al.): the pluck point by 0.012 of the
 length on a short string to 0.022 on a long one, the force by 14%, the
 angle the string leaves at by 4 degrees, each a normal spread about the
@@ -937,9 +944,9 @@ nothing until the next pluck.
   The rest is not measured apart. Near the pluck's comb notches single
   partials also land up to 16 dB apart between rates (the steel A5's 13th
   and 14th).
-- No plucking-hand model beyond a release time and a plectrum's reach, no
-  buzzing, no string-to-string contact, no hand damping
-  gestures beyond note-off. The release is a stand-in for the slip
+- No spatially resolved fingertip model, buzzing or string-to-string contact.
+  Re-plucks use phase-equivalent point contact; MUTE and note-off combine
+  point contact with an authored distributed-loss share. The release is a stand-in for the slip
   Chadefaux, Le Carrou and Fabre model (JASA 133 (2013) 2444): its 0.053 ms
   is one harpist's plucks near the fingertip in their lab, while ten
   harpists playing chords and arpeggios slipped 0.2 to 1.5 mm, mostly 0.5

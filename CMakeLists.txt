@@ -115,6 +115,17 @@ if(BUILD_TESTING)
     target_link_libraries(AculyreParameterReachTests PRIVATE AculyreDSP Threads::Threads)
     add_test(NAME Aculyre.ParameterReach COMMAND AculyreParameterReachTests --reach --jobs 4)
     set_tests_properties(Aculyre.ParameterReach PROPERTIES LABELS unit TIMEOUT 1800)
+
+    # U4: the fuzz target with the shared harness's main, for any compiler. It
+    # replays the reproducers committed in Tests/Fixtures/fuzz, then seeded
+    # random inputs.
+    add_executable(AculyreDspFuzzReplay Tests/DspFuzz.cpp)
+    target_link_libraries(AculyreDspFuzzReplay PRIVATE AculyreDSP)
+    target_compile_definitions(AculyreDspFuzzReplay PRIVATE PROTOCODUS_FUZZ_MAIN)
+    file(GLOB ACULYRE_FUZZ_REPRODUCERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fixtures/fuzz/*")
+    add_test(NAME Aculyre.DspFuzzReplay
+             COMMAND AculyreDspFuzzReplay -seed=1 -runs=200 -max_len=1024 ${ACULYRE_FUZZ_REPRODUCERS})
+    set_tests_properties(Aculyre.DspFuzzReplay PROPERTIES LABELS unit TIMEOUT 300)
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
         # The committed demo phrases are what the writer writes (G3a).

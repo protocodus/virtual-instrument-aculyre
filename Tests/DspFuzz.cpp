@@ -5,6 +5,7 @@
 // its check detects non-finite/runaway state, not an output-limiter ceiling.
 #include "AculyreEngine.h"
 #include "AculyrePresets.h"
+#include "FuzzHarness.h"
 
 #include <algorithm>
 #include <array>

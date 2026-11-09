@@ -27,11 +27,12 @@ reference recording below.
 - **0.13.1** (local candidate): a soft pluck of a high string unloads the
   finger's whole held force into the soundbox as it slips off, so its body
   knock and the open strings' sympathetic ringing no longer fade with a slow
-  slip. A soft steel F6 is up to 4.8 dB louder in its first 20 ms, almost all of it
-  below 1 kHz. Hard plucks, nails and the plectrum are unchanged. The
-  stick-slip micro-transient of 0.12.7 is removed: it sat 58 dB or more
-  under the attack it rode on. A re-pluck of every string costs about a
-  quarter of the time it did. [Measurements](Docs/benchmarks/cpu-repluck-2026-11-09.md).
+  slip. A soft steel F6 is up to 4.8 dB louder in its first 20 ms, almost
+  all of it below 1 kHz. Hard plucks, nails and the plectrum are unchanged.
+  The stick-slip micro-transient of 0.12.7 is removed: it sat 58 dB or more
+  under the attack it rode on. Re-plucking every string at once costs a
+  fifth to a quarter of the time it did.
+  [Measurements](Docs/benchmarks/cpu-repluck-2026-11-09.md).
 
 - **0.13.0** (local candidate): pluck releases integrate the continuous slip
   over each sample; bent re-plucks stop the sounding period, and palm damping

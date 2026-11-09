@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Pair.h"
+
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -73,18 +75,62 @@ void fingerContact(const std::array<double, capacity>& wave, std::array<double, 
         shiftBy(k * shift, w);
     }
 
+    // The convolution, four taps a pass and two outputs at a time. Each
+    // output still adds its taps in rising order, so the sums are the ones a
+    // tap-by-tap loop makes; a pass short of four taps is padded with zeros,
+    // which change no sum. Reason's compiler does not vectorise loops: tap
+    // by tap in scalars this was three quarters of a re-pluck there.
+    constexpr int batch = 4;
+    std::array<int, 8 * maxTerms + 1 + batch> tapOffset {};
+    std::array<double, 8 * maxTerms + 1 + batch> tapWeight {};
+    int taps = 0;
+    for (int d = 0; d < count; ++d)
+        if (kernel[static_cast<std::size_t>(d)] != 0.0)
+        {
+            tapOffset[static_cast<std::size_t>(taps)] = d;
+            tapWeight[static_cast<std::size_t>(taps++)] = kernel[static_cast<std::size_t>(d)];
+        }
     for (int j = 0; j < count; ++j)
         kept[static_cast<std::size_t>(j)] = 0.0;
-    for (int d = 0; d < count; ++d)
+    const double* const from = wave.data();
+    double* const to = kept.data();
+    for (int first = 0; first < taps; first += batch)
     {
-        const double c = kernel[static_cast<std::size_t>(d)];
-        if (c == 0.0)
-            continue;
-        const int split = count - d;
-        for (int j = 0; j < split; ++j)
-            kept[static_cast<std::size_t>(j)] += c * wave[static_cast<std::size_t>(j + d)];
-        for (int j = split; j < count; ++j)
-            kept[static_cast<std::size_t>(j)] += c * wave[static_cast<std::size_t>(j + d - count)];
+        // Padding repeats the pass's last offset, so the offsets still rise.
+        int offset[batch];
+        double weight4[batch];
+        for (int t = 0; t < batch; ++t)
+        {
+            const bool real = first + t < taps;
+            offset[t] = tapOffset[static_cast<std::size_t>(real ? first + t : taps - 1)];
+            weight4[t] = real ? tapWeight[static_cast<std::size_t>(first + t)] : 0.0;
+        }
+        // The later taps wrap round the period first: the outputs fall into
+        // five runs, each with its own four read places.
+        int begin = 0;
+        for (int wrapped = 0; wrapped <= batch; ++wrapped)
+        {
+            const int end = wrapped == batch ? count : count - offset[batch - 1 - wrapped];
+            std::ptrdiff_t shift[batch];
+            for (int t = 0; t < batch; ++t)
+                shift[t] = offset[t] - (t >= batch - wrapped ? count : 0);
+            int j = begin;
+            for (; j + 1 < end; j += 2)
+            {
+                Pair sum = *pairs(to + j);
+                for (int t = 0; t < batch; ++t)
+                    sum = sum + splat(weight4[t]) * *pairs(from + (j + shift[t]));
+                *pairs(to + j) = sum;
+            }
+            if (j < end)
+            {
+                double sum = to[j];
+                for (int t = 0; t < batch; ++t)
+                    sum += weight4[t] * from[j + shift[t]];
+                to[j] = sum;
+            }
+            begin = end;
+        }
     }
 }
 } // namespace aculyre::detail

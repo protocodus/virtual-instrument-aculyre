@@ -58,9 +58,6 @@ struct StringSpec
     // pluckForce: the microphone-baseline player's touch, independent of
     // capture selection (AculyrePresets.h).
     double touch { 1.0 };
-    // Legacy preset metadata, retained for source compatibility. Since
-    // 0.12.3 this never changes excitation; pickup balance is piezoGain.
-    double piezoTouch { 1.0 };
     // A wound string: its maker's unit weight (kg/m), and the core diameter
     // (m) that sets its bending stiffness and carries its tension, the wrap
     // adding mass but almost no stiffness. Zero for plain wire.
@@ -131,13 +128,10 @@ struct InstrumentSpec
     double room;           // room send, 0-1
     double outputGain;     // digital full scale per pascal at the microphones
     double piezoGain;      // digital full scale per newton on the piezo
-    // The touch of the lever note each string sounds raised a semitone, by
-    // the microphones and by the piezo, as StringSpec's touch is for the
-    // string (AculyrePresets.h). Zero for a string with no lever note, the
-    // next string a semitone above it.
+    // The touch of the lever note each string sounds raised a semitone, as
+    // StringSpec's touch is for the string (AculyrePresets.h). Zero for a
+    // string with no lever note, the next string a semitone above it.
     std::array<double, maxStrings> leverTouch {};
-    // Legacy metadata; ignored by the physical model since 0.12.3.
-    std::array<double, maxStrings> leverPiezoTouch {};
 };
 
 // What a player and the room change while the instrument sounds. Every

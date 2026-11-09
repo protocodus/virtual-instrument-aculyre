@@ -24,6 +24,16 @@ reference recording below.
 
 ## Version history
 
+- **0.13.4** (local candidate): lower CPU where the blocks are worst, every
+  sample unchanged. A re-pluck's contact with the sounding string, a
+  convolution over one period, now runs two outputs to an instruction in
+  the build Reason makes, where it ran one: a re-plucked chord's note-ons
+  take four tenths fewer instructions there. While it plays the engine no
+  longer calls the maths library for a square root, a floor or a rounding,
+  which Reason's build cannot inline (425,000 calls a second on a harp).
+  [Measurements](Docs/benchmarks/cpu-consolidation-2026-11-09.md),
+  [audit](Docs/validation/consolidation-audit-2026-11-09.md).
+
 - **0.13.3** (local candidate): no subnormal arithmetic as a sound dies
   away, whether or not the host sets flush-to-zero. A palm-muted chord kept
   its strings' squared velocities as single-precision subnormals for about
@@ -849,6 +859,17 @@ itself. On a bar centred on the top most modes are even or odd about its
 middle, and their passes skip the bar motions they cannot meet. Once everything has died away below -140 dBFS for
 half a second the engine sleeps, and a sleeping instance costs next to
 nothing until the next pluck.
+From 0.13.2 the modes read one table of their shapes at the bridge, each
+mode's state scaled by the root of its gain, and a CPU with AVX2 and FMA3
+runs fused kernels (Reason's build never does; its output differs from
+theirs by about 160 dB under the signal). The engine needs neither
+flush-to-zero nor denormals-are-zero from its host: where a dying tail
+would reach subnormal numbers it writes zeros (0.13.3). On the stress
+phrase the portfolio sets (a chord of eight re-struck note by note under
+the pedal, a second chord on top, then again) the harps' worst 256-frame
+block took 11% of a loaded development machine's core in a build with the
+Rack's flags, above the 10% ceiling, and 10% natively
+([measurements](Docs/benchmarks/cpu-consolidation-2026-11-09.md)).
 
 ## Known gaps
 
@@ -1052,6 +1073,14 @@ nothing until the next pluck.
   0.7 s, since the
   harps' eleven added strings and every key of the artificial range are
   designed and tuned to the bridge with them.
+- Soft plucks are less even from string to string than hard ones, most on
+  the gut lyre: at velocity 32 its notes' first 300 ms stand 2.4 dB rms
+  from their neighbours' median and F5 6.2 dB, where at velocity 110 they
+  stand 0.3 dB rms. A soft pluck is dark (0.13.1), so its level is its
+  fundamental's, which each string's place against the three lowest
+  soundbox modes sets; the touch that evens the scale is fitted at
+  velocity 90 alone
+  ([audit](Docs/validation/consolidation-audit-2026-11-09.md)).
 - No plug-in yet. The Rack Extension's 0.4.0d1 has been played in Recon
   from a local build; it has not been through Reason Studios' acceptance.
 
@@ -1069,7 +1098,11 @@ build/RenderAculyreDemo --report 0
 toolchain would. `Aculyre.Engine` checks tuning, the bass string's partials,
 the pluck point's missing harmonic, stability, determinism, block-size
 invariance and sympathetic coupling; `Aculyre.DemoMidiSources` checks that the
-committed phrases are what `Tools/write_preset_midi.py` writes.
+committed phrases are what `Tools/write_preset_midi.py` writes. `Aculyre.ModeBank`
+holds the soundbox's kernels to a mode-by-mode sum, `Aculyre.Denormals`
+plays dying tails with flush-to-zero off and requires the CPU's
+subnormal flags to stay clear, and `Aculyre.DspFuzzReplay` runs the fuzz
+target on seeded inputs.
 
 `RenderAculyreNotes` plucks every string of a preset alone, one WAV per note,
 and `Tools/compare_lyre_harp_samples.py` (NumPy and SciPy) measures those

@@ -75,14 +75,15 @@ void fingerContact(const std::array<double, capacity>& wave, std::array<double, 
         shiftBy(k * shift, w);
     }
 
-    // The convolution, four taps a pass and two outputs at a time. Each
+    // The convolution, eight taps a pass and two outputs at a time. Each
     // output still adds its taps in rising order, so the sums are the ones a
-    // tap-by-tap loop makes; a pass short of four taps is padded with zeros,
+    // tap-by-tap loop makes; a pass short of eight taps is padded with zeros,
     // which change no sum. Reason's compiler does not vectorise loops: tap
     // by tap in scalars this was three quarters of a re-pluck there.
-    constexpr int batch = 4;
-    std::array<int, 8 * maxTerms + 1 + batch> tapOffset {};
-    std::array<double, 8 * maxTerms + 1 + batch> tapWeight {};
+    constexpr int batch = 8;
+    // Not cleared: only the taps found are read.
+    std::array<int, 8 * maxTerms + 1> tapOffset;
+    std::array<double, 8 * maxTerms + 1> tapWeight;
     int taps = 0;
     for (int d = 0; d < count; ++d)
         if (kernel[static_cast<std::size_t>(d)] != 0.0)
@@ -96,37 +97,39 @@ void fingerContact(const std::array<double, capacity>& wave, std::array<double, 
     double* const to = kept.data();
     for (int first = 0; first < taps; first += batch)
     {
-        // Padding repeats the pass's last offset, so the offsets still rise.
+        // Padding repeats the last tap's offset, so the offsets still rise.
         int offset[batch];
-        double weight4[batch];
+        double weightOf[batch];
+        Pair weights[batch];
         for (int t = 0; t < batch; ++t)
         {
             const bool real = first + t < taps;
             offset[t] = tapOffset[static_cast<std::size_t>(real ? first + t : taps - 1)];
-            weight4[t] = real ? tapWeight[static_cast<std::size_t>(first + t)] : 0.0;
+            weightOf[t] = real ? tapWeight[static_cast<std::size_t>(first + t)] : 0.0;
+            weights[t] = splat(weightOf[t]);
         }
         // The later taps wrap round the period first: the outputs fall into
-        // five runs, each with its own four read places.
-        int begin = 0;
+        // runs, each with its own read places.
+        std::ptrdiff_t begin = 0;
         for (int wrapped = 0; wrapped <= batch; ++wrapped)
         {
-            const int end = wrapped == batch ? count : count - offset[batch - 1 - wrapped];
+            const std::ptrdiff_t end = wrapped == batch ? count : count - offset[batch - 1 - wrapped];
             std::ptrdiff_t shift[batch];
             for (int t = 0; t < batch; ++t)
                 shift[t] = offset[t] - (t >= batch - wrapped ? count : 0);
-            int j = begin;
+            std::ptrdiff_t j = begin;
             for (; j + 1 < end; j += 2)
             {
                 Pair sum = *pairs(to + j);
                 for (int t = 0; t < batch; ++t)
-                    sum = sum + splat(weight4[t]) * *pairs(from + (j + shift[t]));
+                    sum = sum + weights[t] * *pairs(from + (j + shift[t]));
                 *pairs(to + j) = sum;
             }
             if (j < end)
             {
                 double sum = to[j];
                 for (int t = 0; t < batch; ++t)
-                    sum += weight4[t] * from[j + shift[t]];
+                    sum += weightOf[t] * from[j + shift[t]];
                 to[j] = sum;
             }
             begin = end;

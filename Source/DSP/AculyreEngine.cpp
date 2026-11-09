@@ -964,6 +964,12 @@ struct Loop
     // only this much: clearing both 64 KB rings cost a re-plucked chord
     // milliseconds on the large rings A0's octave bend needs at 192 kHz.
     int reach { delayCapacity };
+    // The held force still unloading at the bridge beyond the periodic first
+    // round trip (detail::releaseUnloading): it drives the body and is never
+    // written back. Dropped after unloadingLeft samples, 140 dB down.
+    double unloading { 0.0 };
+    double unloadingDecay { 0.0 };
+    int unloadingLeft { 0 };
 
     // Zeroes `length` slots of a ring from `start`, wrapping once.
     template <typename T>
@@ -984,6 +990,8 @@ struct Loop
         clearRing(line, write - reach, reach);
         clearRing(pending, write, pendingAhead);
         pendingAhead = 0;
+        unloading = 0.0;
+        unloadingLeft = 0;
         tx1 = tx2 = ty1 = ty2 = last = 0.0;
         dispersionState.fill(0.0);
         pairState = {};
@@ -1078,6 +1086,13 @@ struct Loop
         y = y * gain * damping + arriving;
         last = y;
         return y;
+    }
+
+    double unload() noexcept
+    {
+        const double value = unloading;
+        unloading = --unloadingLeft > 0 ? unloading * unloadingDecay : 0.0;
+        return value;
     }
 
     void writeSample(double value) noexcept
@@ -4227,9 +4242,10 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             ? (release > 0.0 ? release * (plane == 0 ? pulpCompression : 1.16)
                              : (plane == 1 ? 0.008e-3 : 0.0))
             : release;
-        const int count = detail::releasedPluck(wave, period, position,
-            0.5 * waveSpeed * amplitude / pluckPoint,
-            -0.5 * waveSpeed * amplitude / (length - pluckPoint), planeRelease * sampleRate_);
+        const double high = 0.5 * waveSpeed * amplitude / pluckPoint;
+        const double low = -0.5 * waveSpeed * amplitude / (length - pluckPoint);
+        const double tau = planeRelease * sampleRate_;
+        const int count = detail::releasedPluck(wave, period, position, high, low, tau);
         // The held triangle has zero mean slope. Remove only accumulated
         // floating-point residue; the continuous release itself preserves DC.
         double mean = 0.0;
@@ -4249,12 +4265,19 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
                 square += static_cast<float>(value * value);
             }
         }
-        // Match the body's initial deflection to this periodic release's
-        // first cell. This inexpensive boundary-state approximation is not
-        // the full static held force before a causal slip; soft/high notes
-        // can differ substantially (Docs/validation/realism-audit-2026-11-09.md).
-        const double heldForce = 2.0 * voice.impedance * (wave[0] - mean);
-        preloadPlane(heldForce, plane == 0);
+        // The periodic wave starts below the held force wherever the slip is
+        // slow against the period: at C8 and velocity 32, at 0.08 of it. The
+        // body held that force's whole deflection before the pluck and feels
+        // it unload as the slip lets go (PluckRelease.h), so the bridge
+        // force runs on from the held one without a step.
+        const auto unloading = detail::releaseUnloading(period, position, high, low, tau);
+        if (unloading.first != 0.0)
+        {
+            loop.unloading += unloading.first;
+            loop.unloadingDecay = unloading.decay;
+            loop.unloadingLeft = static_cast<int>(std::ceil(std::log(1.0e7) * tau)) + 1;
+        }
+        preloadPlane(2.0 * voice.impedance * high, plane == 0);
     }
     voice.squaresSum = 0.0;
     for (int k = 1; k <= voice.roundTrip; ++k)
@@ -4487,11 +4510,16 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             voice.squaresIndex = (voice.squaresIndex + 1) & (delayCapacity - 1);
             double vnDrive = vn;
             double vpDrive = vp;
+            if (voice.normal.unloadingLeft > 0)
+                vnDrive += voice.normal.unload();
+            if (voice.parallel.unloadingLeft > 0)
+                vpDrive += voice.parallel.unload();
             if (realismEnhancements_)
             {
                 const auto& rotation = saddleRotation[static_cast<std::size_t>(index)];
-                vnDrive = rotation.normalForce(vn, vp);
-                vpDrive = rotation.parallelForce(vn, vp);
+                const double normal = vnDrive;
+                vnDrive = rotation.normalForce(normal, vpDrive);
+                vpDrive = rotation.parallelForce(normal, vpDrive);
             }
             const Pair* const c = pairs(coupling[static_cast<std::size_t>(index)].data());
             const Pair n = splat(vnDrive);

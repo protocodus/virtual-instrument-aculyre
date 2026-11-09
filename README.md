@@ -24,6 +24,15 @@ reference recording below.
 
 ## Version history
 
+- **0.13.1** (local candidate): a soft pluck of a high string unloads the
+  finger's whole held force into the soundbox as it slips off, so its body
+  knock and the open strings' sympathetic ringing no longer fade with a slow
+  slip. A soft steel F6 is up to 4.8 dB louder in its first 20 ms, almost all of it
+  below 1 kHz. Hard plucks, nails and the plectrum are unchanged. The
+  stick-slip micro-transient of 0.12.7 is removed: it sat 58 dB or more
+  under the attack it rode on. A re-pluck of every string costs about a
+  quarter of the time it did. [Measurements](Docs/benchmarks/cpu-repluck-2026-11-09.md).
+
 - **0.13.0** (local candidate): pluck releases integrate the continuous slip
   over each sample; bent re-plucks stop the sounding period, and palm damping
   keeps its decay time through bends. Chords retain every string's contact
@@ -522,11 +531,15 @@ arpeggios fell in (the same paper, Table V), geometrically with velocity: an aut
 slips, at the owner's request that the tone follow velocity more. The wave that
 reaches the bridge over the first round trip is loaded as one full period of
 the loop. Its continuous periodic exponential release is integrated over
-each sample cell, including the fractional last cell. The soundbox's initial
-deflection matches the released wave's first cell; this approximates the
-boundary state rather than retaining the full static force before a causal
-slip. The difference is substantial for soft, high notes; see the
-[release audit](Docs/validation/realism-audit-2026-11-09.md). Plucks
+each sample cell, including the fractional last cell. Before the pluck the
+string was held, not playing that period: the soundbox carries the held
+force's whole static deflection, and as the string slips off, the part of
+the force the periodic wave does not account for unloads into the bridge
+over the release time, once. The bridge force runs on from the held force
+without a step. Until 0.13.1 the soundbox took only the periodic wave's
+first cell, which a slip slow against the period leaves well below the held
+force: 0.72 of it at A4 for a soft pluck, 0.21 at G6 and 0.08 at C8
+([release audit](Docs/validation/realism-audit-2026-11-09.md)). Plucks
 scatter as harpists' do (Chadefaux et al.): the pluck point by 0.012 of the
 length on a short string to 0.022 on a long one, the force by 14%, the
 angle the string leaves at by 4 degrees, each a normal spread about the

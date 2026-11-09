@@ -46,6 +46,54 @@ int main()
                 check(worst < 1e-12, "continuous release integrals agree across sample grids");
                 check(std::abs(integral) < 1e-11, "a released fixed-end triangle introduces no DC velocity");
             }
+    // The string was held at `high` before the pluck. Integrating the
+    // continuous one-pole causally from that state must give the periodic
+    // cells plus the unloading's, and on a whole-sample period the second
+    // period too: the unloading comes once. Only a fractional period's
+    // zero-padded last cell has nothing to match.
+    for (double period : { 3.71, 23.4, 64.0, 137.82 })
+        for (double point : { 0.06, 0.27, 0.7 })
+            for (double tau : { 0.05, 0.5, 4.0, 32.0 })
+            {
+                std::array<double, 1024> wave {};
+                const double high = 1.0, low = -point / (1.0 - point);
+                const int count = aculyre::detail::releasedPluck(wave, period, point, high, low, tau);
+                const auto unloading = aculyre::detail::releaseUnloading(period, point, high, low, tau);
+                const double first = 0.5 * point * period, second = period - first;
+                const int cells = period == std::floor(period) ? 2 * count : count - 1;
+                // The ideal wave's edges over both periods, and each cell's.
+                std::vector<double> edges;
+                for (int repeat = 0; repeat < 2; ++repeat)
+                    for (double edge : { 0.0, first, second })
+                        edges.push_back(repeat * period + edge);
+                for (int cell = 0; cell <= cells + 1; ++cell)
+                    edges.push_back(cell);
+                std::sort(edges.begin(), edges.end());
+                double state = high, worst = 0.0, cellUnloading = unloading.first;
+                std::size_t edge = 0;
+                for (int cell = 0; cell < cells; ++cell)
+                {
+                    double integral = 0.0;
+                    while (edges[edge] < cell)
+                        ++edge;
+                    for (; edges[edge + 1] <= cell + 1.0; ++edge)
+                    {
+                        const double from = edges[edge], to = edges[edge + 1], middle = 0.5 * (from + to);
+                        const double phase = middle - period * std::floor(middle / period);
+                        const double target = phase >= first && phase < second ? low : high;
+                        const double decay = std::exp(-(to - from) / tau);
+                        integral += target * (to - from) + (state - target) * tau * (1.0 - decay);
+                        state = target + (state - target) * decay;
+                    }
+                    worst = std::max(worst, std::abs(wave[static_cast<std::size_t>(cell % count)] + cellUnloading
+                                                     - integral));
+                    cellUnloading *= unloading.decay;
+                }
+                check(worst < 1e-9, "periodic release plus its unloading is the causal release");
+                if (first >= 1.0)
+                    check(std::abs(wave[0] + unloading.first - high) < 1e-12,
+                          "the bridge force runs on from the held force");
+            }
     // Separate frequency-domain oracle: the rectangular velocity wave's
     // analytic Fourier coefficient is (high-low) sin(n pi x)/(n pi). The
     // physical exponential multiplies it by 1/(1+j omega tau), and the cell

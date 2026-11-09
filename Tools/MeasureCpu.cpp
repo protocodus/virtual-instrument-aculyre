@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -26,6 +27,10 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#if defined(ACULYRE_USE_CALLGRIND)
+#include <valgrind/callgrind.h>
+#endif
 
 #if defined(_WIN32)
 #define NOMINMAX
@@ -67,8 +72,25 @@ struct Options
 {
     int preset = -1, factor = 0;
     double seconds = 2.0;
-    std::string scenario = "dense", samples, csv;
+    std::string scenario = "dense", samples, csv, patchDirectory;
 };
+
+enum class Scenario { Dense, Gestures, Repluck, Idle, Factory, Burst, Cold };
+
+const char* name(Scenario scenario)
+{
+    switch (scenario)
+    {
+    case Scenario::Dense: return "dense";
+    case Scenario::Gestures: return "gestures";
+    case Scenario::Repluck: return "repluck";
+    case Scenario::Idle: return "idle";
+    case Scenario::Factory: return "factory";
+    case Scenario::Burst: return "burst";
+    case Scenario::Cold: return "cold";
+    }
+    return "unknown";
+}
 
 Options options(int argc, char** argv)
 {
@@ -79,7 +101,8 @@ Options options(int argc, char** argv)
         if (arg == "--help")
         {
             std::cout << "AculyreCpuProbe [--preset all|0|1|2] [--oversampling all|1|2|4] "
-                         "[--seconds 0.1..30] [--scenario dense|gestures|all] "
+                         "[--seconds 0.1..30] [--scenario dense|gestures|repluck|idle|factory|burst|cold|all] "
+                         "[--patch-dir factory-repatch-directory] "
                          "[--samples output.f32] [--blocks-csv output.csv]\n";
             std::exit(0);
         }
@@ -108,13 +131,82 @@ Options options(int argc, char** argv)
         else if (arg == "--scenario") out.scenario = value;
         else if (arg == "--samples") out.samples = value;
         else if (arg == "--blocks-csv") out.csv = value;
+        else if (arg == "--patch-dir") out.patchDirectory = value;
         else throw std::runtime_error("unknown option " + arg);
     }
-    if (out.scenario != "dense" && out.scenario != "gestures" && out.scenario != "all")
-        throw std::runtime_error("scenario must be dense, gestures or all");
+    if (out.scenario != "dense" && out.scenario != "gestures" && out.scenario != "repluck"
+        && out.scenario != "idle" && out.scenario != "factory" && out.scenario != "burst"
+        && out.scenario != "cold" && out.scenario != "all")
+        throw std::runtime_error("scenario must be dense, gestures, repluck, idle, factory, burst, cold or all");
     if (!out.samples.empty() && out.samples == out.csv)
         throw std::runtime_error("samples and CSV must use different paths");
     return out;
+}
+
+struct Patch
+{
+    std::string name;
+    int preset;
+    aculyre::PlayingControls controls;
+};
+
+std::vector<Patch> patches(const std::string& directory)
+{
+    std::vector<Patch> result;
+    if (directory.empty())
+        return result;
+    std::vector<std::filesystem::path> paths;
+    for (const auto& entry : std::filesystem::directory_iterator(directory))
+        if (entry.is_regular_file() && entry.path().extension() == ".repatch")
+            paths.push_back(entry.path());
+    std::sort(paths.begin(), paths.end());
+    for (const auto& path : paths)
+    {
+        std::ifstream file(path);
+        if (!file) throw std::runtime_error("cannot read patch " + path.string());
+        const std::string xml((std::istreambuf_iterator<char>(file)), {});
+        if (xml.find("cz.protocodus.Aculyre") == std::string::npos)
+            throw std::runtime_error("not an Aculyre factory patch: " + path.string());
+        // Frozen Rack panel defaults/mapping, matching its host contract.
+        // This optional tool path reads supplied public patch resources;
+        // canonical DSP has no dependency on the wrapper or its SDK.
+        const auto value = [&] (const char* key, double fallback)
+        {
+            const std::string tag = std::string("property=\"") + key + "\" type=\"number\">";
+            const auto at = xml.find(tag);
+            if (at == std::string::npos) return fallback;
+            const double number = std::stod(xml.substr(at + tag.size()));
+            if (!std::isfinite(number)) throw std::runtime_error("nonfinite patch property");
+            return number;
+        };
+        const double instrument = value("instrument", 0);
+        if (instrument < 0 || instrument >= aculyre::Performer::instrumentCount || instrument != std::floor(instrument))
+            throw std::runtime_error("invalid patch instrument");
+        Patch patch { path.stem().string(), static_cast<int>(instrument), {} };
+        if (patch.name.find_first_of(",\r\n\"\\") != std::string::npos)
+            throw std::runtime_error("unsupported punctuation in patch name");
+        auto& c = patch.controls;
+        const double technique = value("technique", 0);
+        if (technique < 0 || technique > 2 || technique != std::floor(technique))
+            throw std::runtime_error("invalid patch technique");
+        c.technique = static_cast<aculyre::Technique>(static_cast<int>(technique));
+        c.levers = value("levers", 1) >= 1;
+        c.pluckPosition = 0.06 + 0.44 * value("pluck_position", 0.4773);
+        const double angle = (5.0 + 55.0 * value("pluck_angle", 0.4545)) * 3.14159265358979323846 / 180.0;
+        c.normalShare = std::sin(angle) * std::sin(angle);
+        c.release = value("release", 0.6);
+        c.mute = std::max(value("mute", 0), value("mod_wheel", 0));
+        c.sympathy = value("sympathy", 1);
+        c.room = value("room", 1);
+        c.width = 2.0 * value("width", 0.5);
+        c.volume = std::pow(10.0, (-24.0 + 30.0 * value("volume", 0.8667)) / 20.0);
+        c.piezo = value("piezo", 0.5);
+        c.piezoInverted = value("piezo_polarity", 0) >= 1;
+        c.pitchBend = (value("pitch_wheel", 0.5) - 0.5) * 4.0;
+        result.push_back(patch);
+    }
+    if (result.empty()) throw std::runtime_error("no factory patches found");
+    return result;
 }
 
 struct Timing
@@ -123,16 +215,56 @@ struct Timing
 };
 
 void dispatch(aculyre::Performer& performer, aculyre::PlayingControls& controls,
-              const aculyre::InstrumentSpec& spec, int block, bool gestures)
+              const aculyre::InstrumentSpec& spec, int block, Scenario scenario)
 {
-    if (block % 96 == 0)
+    if (scenario == Scenario::Idle)
+        return;
+    if (scenario == Scenario::Burst || scenario == Scenario::Cold)
     {
-        const int string = (block / 96) % spec.stringCount;
+        if ((scenario == Scenario::Cold && block == 0) || (scenario == Scenario::Burst && block % 96 == 0))
+            for (int string = 0; string < spec.stringCount; ++string)
+            {
+                const int note = spec.strings[static_cast<std::size_t>(string)].midiNote;
+                if (scenario == Scenario::Burst) performer.noteOff(note);
+                performer.noteOn(note, 100.0f / 127.0f);
+            }
+        return;
+    }
+    if (scenario == Scenario::Factory)
+    {
+        // 120 BPM eighth notes, rounded to 188 callbacks (250.667 ms).
+        // Alternate single strings and three-note chords through the
+        // compass, cycling velocities 70/90/110 like the level protocol.
+        if (block % 188 == 0)
+        {
+            const int event = block / 188;
+            const auto notes = [&] (int step, bool on)
+            {
+                const int first = (3 * step) % (spec.stringCount - 5);
+                for (int k = 0; k < (step % 2 ? 3 : 1); ++k)
+                {
+                    const int note = spec.strings[static_cast<std::size_t>(first + 2 * k)].midiNote;
+                    if (on) performer.noteOn(note, static_cast<float>(70 + 20 * (step % 3)) / 127.0f);
+                    else performer.noteOff(note);
+                }
+            };
+            if (event > 0) notes(event - 1, false);
+            notes(event, true);
+        }
+        return;
+    }
+    const int interval = scenario == Scenario::Repluck ? 16 : 96;
+    if (block % interval == 0)
+    {
+        // A fast four-string arpeggio: 46.875 plucks/s, 11.72/s per string.
+        // It exposes the contact projection/copy cost, not just sustain DSP.
+        const int string = scenario == Scenario::Repluck ? (block / interval) % 4 + spec.stringCount / 2
+                                                        : (block / interval) % spec.stringCount;
         const int note = spec.strings[static_cast<std::size_t>(string)].midiNote;
         performer.noteOff(note);
         performer.noteOn(note, 100.0f / 127.0f);
     }
-    if (!gestures)
+    if (scenario != Scenario::Gestures)
         return;
     if (block % 8 == 0)
     {
@@ -159,30 +291,37 @@ void distribution(const char* name, const std::vector<Timing>& timings, bool cpu
               << ", \"deadline_misses\": " << misses << '}';
 }
 
-void run(const Options& opt, int preset, int factor, bool gestures,
-         std::ofstream& samples, std::ofstream& csv, std::uint64_t& sampleOffset)
+void run(aculyre::Performer& performer, const Options& opt, int preset, int factor, Scenario scenario,
+         std::ofstream& samples, std::ofstream& csv, std::uint64_t& sampleOffset,
+         const Patch* patch = nullptr)
 {
-    auto performer = std::make_unique<aculyre::Performer>();
-    performer->prepare(rate, factor);
-    performer->setInstrument(preset);
-    auto controls = aculyre::Performer::defaultControls(preset);
-    performer->setControls(controls);
+    performer.reset();
+    performer.setInstrument(preset);
+    auto controls = patch ? patch->controls : aculyre::Performer::defaultControls(preset);
+    performer.setControls(controls);
     const auto& spec = *aculyre::presets[static_cast<std::size_t>(preset)];
-    for (int i = 0; i < spec.stringCount; ++i)
-        performer->noteOn(spec.strings[static_cast<std::size_t>(i)].midiNote, 100.0f / 127.0f);
+    if (scenario != Scenario::Idle && scenario != Scenario::Factory && scenario != Scenario::Cold)
+        for (int i = 0; i < spec.stringCount; ++i)
+            performer.noteOn(spec.strings[static_cast<std::size_t>(i)].midiNote, 100.0f / 127.0f);
 
     std::array<float, frames> left {}, right {};
     for (int block = 0; block < warmupBlocks; ++block)
-        performer->process(left.data(), right.data(), frames);
+        performer.process(left.data(), right.data(), frames);
     const int blocks = static_cast<int>(std::ceil(opt.seconds / period));
     std::vector<Timing> timings(static_cast<std::size_t>(blocks));
     std::vector<float> audio(static_cast<std::size_t>(blocks) * frames * 2);
+#if defined(ACULYRE_USE_CALLGRIND)
+    // Setup, warm-up, allocations, analysis and export are outside the
+    // instruction collection just as they are outside native timing.
+    CALLGRIND_START_INSTRUMENTATION;
+    CALLGRIND_ZERO_STATS;
+#endif
     for (int block = 0; block < blocks; ++block)
     {
         const auto wallStart = wallTime();
         const auto cpuStart = threadTime();
-        dispatch(*performer, controls, spec, block, gestures);
-        performer->process(left.data(), right.data(), frames);
+        dispatch(performer, controls, spec, block, scenario);
+        performer.process(left.data(), right.data(), frames);
         const auto cpuEnd = threadTime();
         const auto wallEnd = wallTime();
         timings[static_cast<std::size_t>(block)] = { wallEnd - wallStart, cpuEnd - cpuStart };
@@ -193,6 +332,10 @@ void run(const Options& opt, int preset, int factor, bool gestures,
             audio[offset + 1] = right[static_cast<std::size_t>(i)];
         }
     }
+#if defined(ACULYRE_USE_CALLGRIND)
+    CALLGRIND_STOP_INSTRUMENTATION;
+    CALLGRIND_DUMP_STATS_AT(name(scenario));
+#endif
     double energy = 0.0, peak = 0.0, totalCpu = 0.0;
     for (float x : audio)
     {
@@ -201,11 +344,11 @@ void run(const Options& opt, int preset, int factor, bool gestures,
         energy += static_cast<double>(x) * x;
         peak = std::max(peak, std::abs(static_cast<double>(x)));
     }
-    if (peak >= 1.0 || energy == 0.0)
+    if (peak >= 1.0 || (scenario == Scenario::Idle ? energy != 0.0 : energy == 0.0))
         throw std::runtime_error("output is clipped or silent");
     for (const auto& t : timings)
         totalCpu += static_cast<double>(t.cpu) * 1e-9;
-    const char* scenario = gestures ? "gestures" : "dense";
+    const char* scenarioName = name(scenario);
     if (samples.is_open())
     {
         samples.write(reinterpret_cast<const char*>(audio.data()), static_cast<std::streamsize>(audio.size() * sizeof(float)));
@@ -216,12 +359,13 @@ void run(const Options& opt, int preset, int factor, bool gestures,
         for (int block = 0; block < blocks; ++block)
         {
             const auto& t = timings[static_cast<std::size_t>(block)];
-            csv << preset << ',' << factor << ',' << scenario << ',' << block << ',' << t.wall << ',' << t.cpu << '\n';
+            csv << (patch ? patch->name : "default") << ',' << preset << ',' << factor << ',' << scenarioName << ',' << block << ',' << t.wall << ',' << t.cpu << '\n';
         }
         if (!csv) throw std::runtime_error("CSV write failed");
     }
-    std::cout << "    {\"preset\": " << preset << ", \"oversampling\": " << performer->oversampling()
-              << ", \"engine_rate\": " << performer->engine().sampleRate() << ", \"scenario\": \"" << scenario
+    std::cout << "    {\"patch\": " << std::quoted(patch ? patch->name : "default")
+              << ", \"preset\": " << preset << ", \"oversampling\": " << performer.oversampling()
+              << ", \"engine_rate\": " << performer.engine().sampleRate() << ", \"scenario\": \"" << scenarioName
               << "\", \"strings\": " << spec.stringCount << ", \"blocks\": " << blocks
               << ", \"seconds\": " << blocks * period << ", \"sample_offset_frames\": " << sampleOffset
               << ", \"cpu_percent\": " << 100.0 * totalCpu / (blocks * period)
@@ -249,7 +393,7 @@ int main(int argc, char** argv)
         {
             csv.open(opt.csv);
             if (!csv) throw std::runtime_error("cannot open CSV output");
-            csv << "preset,oversampling,scenario,block,wall_ns,thread_cpu_ns\n";
+            csv << "patch,preset,oversampling,scenario,block,wall_ns,thread_cpu_ns\n";
         }
         (void)threadTime();
         std::cout << std::setprecision(10)
@@ -258,17 +402,32 @@ int main(int argc, char** argv)
                   << ", \"timer\": \"calling thread CPU and steady wall\",\n  \"cases\": [\n";
         bool first = true;
         std::uint64_t sampleOffset = 0;
-        for (int preset = 0; preset < aculyre::Performer::instrumentCount; ++preset)
-            for (int factor : { 1, 2, 4 })
-                for (bool gestures : { false, true })
+        const auto factory = patches(opt.patchDirectory);
+        const int configurations = factory.empty() ? aculyre::Performer::instrumentCount : static_cast<int>(factory.size());
+        for (int factor : { 1, 2, 4 })
+        {
+            if (opt.factor && opt.factor != factor) continue;
+            // Designing all three instruments is setup work. Reuse that
+            // immutable design across cases, resetting every playing state
+            // and applying each case's controls before its untimed warm-up.
+            auto performer = std::make_unique<aculyre::Performer>();
+            performer->prepare(rate, factor);
+            for (int configuration = 0; configuration < configurations; ++configuration)
+            {
+                const Patch* patch = factory.empty() ? nullptr : &factory[static_cast<std::size_t>(configuration)];
+                const int preset = patch ? patch->preset : configuration;
+                for (Scenario scenario : { Scenario::Dense, Scenario::Gestures, Scenario::Repluck, Scenario::Idle,
+                                           Scenario::Factory, Scenario::Burst, Scenario::Cold })
                 {
                     if ((opt.preset >= 0 && opt.preset != preset) || (opt.factor && opt.factor != factor)
-                        || (opt.scenario == "dense" && gestures) || (opt.scenario == "gestures" && !gestures))
+                        || (opt.scenario != "all" && opt.scenario != name(scenario)))
                         continue;
                     if (!first) std::cout << ",\n";
                     first = false;
-                    run(opt, preset, factor, gestures, samples, csv, sampleOffset);
+                    run(*performer, opt, preset, factor, scenario, samples, csv, sampleOffset, patch);
                 }
+            }
+        }
         std::cout << "\n  ]\n}\n";
         return 0;
     }

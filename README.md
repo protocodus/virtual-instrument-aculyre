@@ -24,6 +24,17 @@ reference recording below.
 
 ## Version history
 
+- **0.13.0** (local candidate): pluck releases integrate the continuous slip
+  over each sample; bent re-plucks stop the sounding period, and palm damping
+  keeps its decay time through bends. Chords retain every string's contact
+  attack. Saddle coupling is reciprocal and power-preserving; the previous
+  dimensionally inconsistent axial drive is removed. Extreme low/high keys
+  stay within delay storage and stable interpolation, and overlapping MIDI/CV
+  presses release only after their last matching Note Off. Full-keyboard
+  survey tools and physics/range/ownership regressions accompany the changes.
+  [Physical basis, keyboard results and remaining limits](Docs/validation/realism-audit-2026-11-09.md);
+  [CPU measurements and event-cost limits](Docs/benchmarks/cpu-2026-11-09.md).
+
 - **0.12.7** (local candidate): five physical realism enhancements (finite-width fingertip pad release damping split, pluck-point boundary compliance release scaling, nonlinear fingertip pulp compression with two-plane breakaway, stick-slip / winding-scrape attack micro-transient, and $2 f_n$ axial tension bridge coupling with fanned-saddle precession) plus SIMD and setup optimizations across string losses, dispersion readouts, modal bank, room FDN, and Wallace radiation integration (`-6.5%` mean callback CPU with all realism enhancements active, `-9.2%` with `setRealismEnhancements(false)`).
 
 - **0.12.6** (local candidate): lower native CPU through an exact AVX2 modal bank and paired stereo output FIRs. All tested oversampling settings preserve the sample sequence and calibrated levels. [Measurements and limits](Docs/benchmarks/cpu-oversampling-2026-11-08.md).

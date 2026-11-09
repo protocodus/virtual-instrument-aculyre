@@ -1,4 +1,6 @@
 #include "AculyreEngine.h"
+#include "PluckRelease.h"
+#include "PolarizationRotation.h"
 #include "CpuFeatures.h"
 #include "StringContact.h"
 #include "PiezoCircuit.h"
@@ -36,7 +38,10 @@ constexpr double microphoneSpacing = 0.17;
 // the material leave a string almost lossless.
 constexpr double yokeRoundTripGain = 0.9995;
 
-constexpr int delayCapacity = 8192;  // a string down to A0 (27.5 Hz) at 192 kHz
+// A0 at the maximum internal rate, including the supported octave-down
+// pitch bend: ceil(192000 / 13.75) = 13964 samples. The old 8192-sample
+// rings covered only unbent A0, and its bent pluck wrote past pluckWave.
+constexpr int delayCapacity = 16384;
 // The keys an artificial string plays past the instrument's own: the 88 of a
 // piano, A0 to C8 (owner, 2026-10-31).
 constexpr int lowestKey = 21;
@@ -850,11 +855,18 @@ constexpr bool bendRatiosOnGrid() noexcept
 }
 static_assert(bendRatiosOnGrid(), "bendRatios steps by a quarter semitone from -12 to +12");
 
-// The line's whole samples for a delay of `samples`, leaving the Thiran
-// section a fraction in [1.3, 2.3): about 2, where the section is a pure
-// delay at every frequency (Loop::setLineDelay).
+// The line's whole samples for a delay of `samples`. Ordinary lines leave
+// the Thiran section in [1.3, 2.3), near its pure two-sample delay. Very
+// short lines instead use the continuous phase branches described below.
 int wholeFor(double samples) noexcept
 {
+    // In very short lines use D in (1, 2], where adjoining integer taps
+    // meet at exact pure delays (D=2 and the D->1 limit). The ordinary
+    // [1.3,2.3) anchor has a small phase jump at each tap change; an exact
+    // phase solve cannot cross that gap. Keep D=2 at integer delays so the
+    // second-order section never sits on D=1's pole-zero cancellation.
+    if (samples < 8.0)
+        return std::max(1, static_cast<int>(std::ceil(samples - 2.0)));
     return static_cast<int>(std::floor(samples - 1.3));
 }
 
@@ -897,10 +909,9 @@ struct LoopDesign
 // One polarisation of one string: the round trip from the bridge to the yoke
 // and back, holding the velocity wave that will next arrive at the bridge.
 // The yoke's inversion is folded into what the bridge writes.
-// Every sample reads the first 64 bytes of fields, the pairs and the line;
-// the rest only once a control period or a block. Kept together, the hot
-// fields of all 56 loops stay in the L1 cache: spread over the 64 KiB
-// struct they had missed it on most reads.
+// Hot per-sample fields precede the large delay arrays, keeping their
+// bookkeeping together instead of scattering it between the rails.
+// Filter state is gathered into LoopFilters for the processing block.
 struct Loop
 {
     int write { 0 };
@@ -917,11 +928,13 @@ struct Loop
     // The wave that last arrived at the bridge.
     double last { 0.0 };
     double dampingTarget { 1.0 };
+    double dampingRate { 0.0 }, dampingFrequency { 0.0 };
     int dispersionPairs { 0 };
     std::array<std::array<double, 2>, aculyre::dispersionPairs> pair {};
     std::array<std::array<double, 2>, aculyre::dispersionPairs> pairState {};
     double fraction { 2.0 };
     double thiranA1 { 0.0 }, thiranA2 { 0.0 };
+    bool firstOrderThiran { false };
     double tx1 { 0.0 }, tx2 { 0.0 }, ty1 { 0.0 }, ty2 { 0.0 };
     int dispersionStages { 0 };
     double dispersion { 0.0 };
@@ -929,12 +942,13 @@ struct Loop
     std::array<double, maxDispersionStages> dispersionState {};
     UnitDcSection constantLoss {};
     UnitDcSection bendingLoss {};
-    LossSectionDesign constantDesign {};
-    LossSectionDesign bendingDesign {};
     // The line delay at rest (whole + fraction) and the whole loop's delay
     // at the fundamental, both in samples.
     double restLineDelay { 68.0 };
     double loopDelay { 70.0 };
+    // Sounding fundamental period, refreshed at pluck and control updates.
+    // A re-pluck's contact acts on this bent/gliding wave, not the open period.
+    double currentPeriod { 70.0 };
     std::array<double, bendPoints> lagCycles {};
     std::array<float, delayCapacity> line {};
     // A pluck's first round trip, still to arrive at the bridge, by sample.
@@ -958,32 +972,6 @@ struct Loop
         bendingLoss.reset();
     }
 
-    void scale(double factor) noexcept
-    {
-        const float f = static_cast<float>(factor);
-        for (float& sample : line)
-            sample *= f;
-        for (float& sample : pending)
-            sample *= f;
-        tx1 *= factor;
-        tx2 *= factor;
-        ty1 *= factor;
-        ty2 *= factor;
-        last *= factor;
-        for (double& state : dispersionState)
-            state *= factor;
-        for (auto& pair : pairState)
-            for (double& state : pair)
-                state *= factor;
-        for (UnitDcSection* section : { &constantLoss, &bendingLoss })
-        {
-            section->previousInput *= factor;
-            section->previousDifference *= factor;
-            section->u1 *= factor;
-            section->u2 *= factor;
-        }
-    }
-
     void reset() noexcept
     {
         silence();
@@ -992,12 +980,13 @@ struct Loop
         write = 0;
         hand = {};
         damping = dampingTarget = 1.0;
+        dampingRate = dampingFrequency = 0.0;
         dampingStep = 0.0;
         handRate = 0.0;
         setLineDelay(restLineDelay);
     }
 
-    // Keeps the Thiran fraction in [1.1, 2.3), and once it leaves moves the
+    // On ordinary lines, keeps the Thiran fraction in [1.1, 2.3), then moves the
     // tap to bring it back into [1.3, 2.3) (wholeFor): the section is a pure
     // delay at 2 and strays from it at high frequencies the further the
     // fraction is from 2, at 11 kHz and 48 kHz by under 0.05 samples in that
@@ -1010,15 +999,34 @@ struct Loop
     // unbroken.
     void setLineDelay(double samples) noexcept
     {
+        // A second-order Thiran section is stable only for D > 1.
+        // Very high keys/bends at low sample rates need less than that
+        // after the explicit one-sample line. Use the stable first-order
+        // allpass there instead of continuing the second-order formula
+        // outside its domain (which made C8 +12 at 22.05 kHz run away).
+        samples = std::clamp(samples, 1.01, static_cast<double>(delayCapacity - 8));
+        // At D=1 both orders are exactly one sample, so this boundary also
+        // avoids a phase discontinuity when a live bend changes the order.
+        const bool shortLine = samples <= 2.0;
         const double current = samples - whole;
-        if (current < 1.1 || current >= 2.3)
+        // Short loops use the same canonical tap as their exact phase
+        // table. Hysteresis can otherwise choose a different Thiran
+        // fraction and move an extreme high bend by several cents.
+        if (samples < 8.0 || firstOrderThiran || current < 1.1 || current >= 2.3)
         {
             whole = std::clamp(wholeFor(samples), 1, delayCapacity - 8);
             tx1 = line[static_cast<std::size_t>((write - 1 - whole) & (delayCapacity - 1))];
             tx2 = line[static_cast<std::size_t>((write - 2 - whole) & (delayCapacity - 1))];
         }
         fraction = samples - whole;
-        thiranCoefficients(fraction, thiranA1, thiranA2);
+        firstOrderThiran = shortLine;
+        if (firstOrderThiran)
+        {
+            thiranA1 = (1.0 - fraction) / (1.0 + fraction);
+            thiranA2 = 0.0;
+        }
+        else
+            thiranCoefficients(fraction, thiranA1, thiranA2);
     }
 
     // The wave arriving at the bridge is read in steps (LoopFilters): the
@@ -1063,7 +1071,8 @@ struct Loop
     double freeStep() noexcept
     {
         const double x = readTap();
-        double y = thiranA2 * x + thiranA1 * tx1 + tx2 - thiranA1 * ty1 - thiranA2 * ty2;
+        double y = firstOrderThiran ? thiranA1 * x + tx1 - thiranA1 * ty1
+                                    : thiranA2 * x + thiranA1 * tx1 + tx2 - thiranA1 * ty1 - thiranA2 * ty2;
         tx2 = tx1;
         tx1 = x;
         ty2 = ty1;
@@ -1109,13 +1118,21 @@ struct Loop
     void retuneHand(double frequency, double sampleRate) noexcept
     {
         hand.configure(hand.point, handRate, frequency, sampleRate, whole);
+        setDampingRate(dampingRate, frequency, sampleRate);
     }
 
     // The loss per round trip a resting hand adds, reached over one round trip.
-    void setDamping(double target) noexcept
+    void setDampingRate(double rate, double frequency, double sampleRate) noexcept
     {
+        if (rate == dampingRate && (rate == 0.0 || frequency == dampingFrequency))
+            return;
+        dampingRate = rate;
+        dampingFrequency = frequency;
+        const double target = rate > 0.0 ? std::exp(-rate / frequency) : 1.0;
+        if (target == dampingTarget)
+            return;
         dampingTarget = target;
-        const double steps = std::max(1.0, loopDelay);
+        const double steps = std::max(1.0, sampleRate / frequency);
         dampingStep = (target - damping) / steps;
         if (dampingStep == 0.0)
             damping = target;
@@ -1157,12 +1174,11 @@ struct Loop
         dispersionPairs = design.dispersionPairs;
         pair = design.pair;
         dispersionCents = design.dispersionCents;
-        constantDesign = design.constantDesign;
-        bendingDesign = design.bendingDesign;
-        constantLoss.design(constantDesign);
-        bendingLoss.design(bendingDesign);
+        constantLoss.design(design.constantDesign);
+        bendingLoss.design(design.bendingDesign);
         restLineDelay = design.restLineDelay;
         loopDelay = design.loopDelay;
+        currentPeriod = loopDelay;
         lagCycles = design.lagCycles;
         setLineDelay(restLineDelay);
     }
@@ -1206,6 +1222,8 @@ struct LoopFilters
     static constexpr int capacity = 2 * maxStrings;
     // Loop::setLineDelay's Thiran section, as Loop::readTap's sample enters it.
     std::array<double, capacity> thiranA1 {}, thiranA2 {}, tx1 {}, tx2 {}, ty1 {}, ty2 {};
+    std::array<bool, capacity> firstOrderThiran {};
+    int firstOrderCount { 0 };
     std::array<int, capacity> byStages {}, byPairs {};
     std::array<int, maxDispersionStages> withStages {};
     std::array<int, dispersionPairs> withPairs {};
@@ -1295,6 +1313,8 @@ struct LoopFilters
 
     void gatherThiran(const Loop& loop, std::size_t i) noexcept
     {
+        firstOrderCount += static_cast<int>(loop.firstOrderThiran) - static_cast<int>(firstOrderThiran[i]);
+        firstOrderThiran[i] = loop.firstOrderThiran;
         thiranA1[i] = loop.thiranA1;
         thiranA2[i] = loop.thiranA2;
         tx1[i] = loop.tx1;
@@ -1310,6 +1330,8 @@ struct LoopFilters
 
     void gather(Loop* const* loops, int count) noexcept
     {
+        firstOrderCount = 0;
+        firstOrderThiran.fill(false);
         int n = 0;
         for (int stages = maxDispersionStages; stages > 0; --stages)
         {
@@ -1389,7 +1411,7 @@ struct LoopFilters
     {
         for (int i = 0; i < count; ++i)
             wave[i] = loops[i]->readTap();
-        for (int k = 0; k + 1 < count; k += 2)
+        const auto secondOrderPair = [&] (int k)
         {
             const auto i = static_cast<std::size_t>(k);
             const Pair x = *pairs(wave + k);
@@ -1400,6 +1422,33 @@ struct LoopFilters
             *pairs(&ty2[i]) = *pairs(&ty1[i]);
             *pairs(&ty1[i]) = y;
             *pairs(wave + k) = y;
+        };
+        if (firstOrderCount == 0)
+        {
+            for (int k = 0; k + 1 < count; k += 2)
+                secondOrderPair(k);
+        }
+        else
+        {
+            for (int k = 0; k + 1 < count; k += 2)
+            {
+                if (!firstOrderThiran[static_cast<std::size_t>(k)] && !firstOrderThiran[static_cast<std::size_t>(k + 1)])
+                {
+                    secondOrderPair(k);
+                    continue;
+                }
+                for (int j = k; j < k + 2; ++j)
+                {
+                    const auto i = static_cast<std::size_t>(j);
+                    const double x = wave[j];
+                    const double a1 = thiranA1[i], a2 = thiranA2[i];
+                    const double y = firstOrderThiran[i] ? a1 * x + tx1[i] - a1 * ty1[i]
+                        : a2 * x + a1 * tx1[i] + tx2[i] - a1 * ty1[i] - a2 * ty2[i];
+                    tx2[i] = tx1[i]; tx1[i] = x;
+                    ty2[i] = ty1[i]; ty1[i] = y;
+                    wave[j] = y;
+                }
+            }
         }
         double sorted[capacity];
         for (int j = 0; j < withStages[0]; ++j)
@@ -2290,6 +2339,9 @@ struct AculyreEngine::State
         // rather than kept per sample: a division per string every sample.
         double energy() const noexcept { return squaresSum / roundTrip; }
         bool keyDown { false };
+        // Paired MIDI/CV presses of the current owner pitch. A new pitch
+        // taking this physical string starts its own bounded ownership.
+        std::uint16_t keyPresses { 0 };
         bool sustained { false };
         bool plucked { false };   // played, and still sounding from that pluck
         bool raised { false };    // the sharping lever is up
@@ -2390,7 +2442,6 @@ struct AculyreEngine::State
     bool idle { true };
     int quietSamples { 0 };
     int controlCountdown { 0 };
-    BarVector lastGeneralizedVelocity {};
     std::array<double, delayCapacity> pluckWave {};
     // A re-pluck's working space: a copy of the ringing loop, the period it
     // would bring to the bridge, and that period after the contact.
@@ -2415,16 +2466,21 @@ struct AculyreEngine::State
     double outputSmoothing { 0.0 };
     double bendSmoothing { 0.0 };
 
-    // Non-repeating tribological stick-slip / winding-scrape bridge transient
-    // during the initial slip release (realismEnhancements_).
-    int slipSamplesRemaining { 0 };
-    double slipEnv { 0.0 };
-    double slipDecay { 0.0 };
-    double slipPole { 0.0 };
-    double slipPrev { 0.0 };
-    double slipLowpass { 0.0 };
-    Random slipRng {};
-    alignas(16) BarVector slipCoupling {};
+    // Each string's friction attack survives plucks on the others. A single
+    // shared transient made a chord erase every attack except its last note.
+    // These are the existing authored contact-noise envelope/band, not a
+    // calibrated tribological simulation. Only live attacks are processed.
+    struct SlipTransient
+    {
+        int remaining { 0 };
+        double envelope { 0.0 }, decay { 0.0 }, pole { 0.0 };
+        double previous { 0.0 }, lowpass { 0.0 };
+        Random random {};
+        alignas(16) BarVector coupling {};
+    };
+    std::array<SlipTransient, maxStrings> slips {};
+    std::array<int, maxStrings> activeSlips {};
+    int slipCount { 0 };
 };
 
 AculyreEngine::AculyreEngine() : state_(std::make_unique<State>()) {}
@@ -3484,30 +3540,33 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             // depend on the line, so the search for the line takes it once.
             const auto lagAt = [&] (double omega, double lineDelay, double filter, double lead)
             {
-                const int whole = wholeFor(lineDelay);
+                const int whole = std::max(1, wholeFor(lineDelay));
                 const double fraction = lineDelay - whole;
+                if (lineDelay <= 2.0)
+                    return omega * whole + allpassLag(1, (1.0 - fraction) / (1.0 + fraction), 0.0, omega)
+                           + filter - lead;
                 double t1 = 0.0, t2 = 0.0;
                 thiranCoefficients(fraction, t1, t2);
                 return omega * whole + allpassLag(2, t1, t2, omega) + filter - lead;
             };
-            double lead0 = 0.0;
-            double filter0 = 0.0;
+            const double omega0 = 2.0 * pi * f0 / fs;
+            const double lead0 = reflectionLead(omega0 * fs / (2.0 * pi));
+            const double filter0 = loop.filterLag(omega0);
             const auto solveLine = [&] (double omega, double cycles)
             {
-                lead0 = reflectionLead(omega * fs / (2.0 * pi));
-                filter0 = loop.filterLag(omega);
-                double lower = 6.0, upper = delayCapacity - 16.0;
+                const double lead = omega == omega0 ? lead0 : reflectionLead(omega * fs / (2.0 * pi));
+                const double filter = omega == omega0 ? filter0 : loop.filterLag(omega);
+                double lower = 1.01, upper = delayCapacity - 16.0;
                 for (int iteration = 0; iteration < 60; ++iteration)
                 {
                     const double middle = 0.5 * (lower + upper);
-                    if (lagAt(omega, middle, filter0, lead0) < 2.0 * pi * cycles)
+                    if (lagAt(omega, middle, filter, lead) < 2.0 * pi * cycles)
                         lower = middle;
                     else
                         upper = middle;
                 }
                 return 0.5 * (lower + upper);
             };
-            const double omega0 = 2.0 * pi * f0 / fs;
             loop.restLineDelay = solveLine(omega0, 1.0);
             for (std::size_t k = 0; k < bendRatios.size(); ++k)
             {
@@ -3516,6 +3575,13 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                 const double lead = k == bendPoints / 2 ? lead0 : reflectionLead(omega * fs / (2.0 * pi));
                 loop.lagCycles[k] = (lagAt(omega, loop.restLineDelay, filter, lead)
                                      - omega * loop.restLineDelay) / (2.0 * pi);
+                // The normal near-two-sample fraction is an excellent phase
+                // approximation while retuning. Below eight line samples
+                // its frequency-dependent error is material (and the very
+                // shortest loops change order), so solve the actual phase.
+                const double period = loop.loopDelay / bendRatios[k];
+                if ((1.0 - loop.lagCycles[k]) * period < 8.0)
+                    loop.lagCycles[k] = 1.0 - solveLine(omega, 1.0) / period;
             }
         };
         for (int raised = 0; raised < 2; ++raised)
@@ -3608,6 +3674,7 @@ void AculyreEngine::reset() noexcept
         voice.squaresSum = 0.0;
         voice.squaresIndex = 0;
         voice.keyDown = voice.sustained = voice.plucked = false;
+        voice.keyPresses = 0;
         voice.ownerNote = -1;
         voice.handPoint = restingHandPoint;
         voice.lastOnset = 0;
@@ -3636,14 +3703,8 @@ void AculyreEngine::reset() noexcept
     s.random.seed(0x5eed1ac0ffeeull);
     s.bend = s.bendTarget;
     s.output = s.outputTarget;
-    s.slipSamplesRemaining = 0;
-    s.slipEnv = 0.0;
-    s.slipDecay = 0.0;
-    s.slipPole = 0.0;
-    s.slipPrev = 0.0;
-    s.slipLowpass = 0.0;
-    s.slipRng.seed(0x9e3779b97f4a7c15ull);
-    s.slipCoupling = {};
+    s.slips = {};
+    s.slipCount = 0;
 }
 
 const InstrumentSpec& AculyreEngine::instrument() const noexcept { return state_->instrument; }
@@ -3730,10 +3791,10 @@ void AculyreEngine::updateDamping(int string) noexcept
         {
             if (realismEnhancements_)
             {
-                // A fingertip pad (~8-12 mm wide, Chadefaux et al., JASA 131
-                // (2012) 844) combines localized point damping at handPoint
-                // with distributed pad-width skin-shear absorption so nodal
-                // harmonics do not ring forever as synthetic whistles.
+                // A finite fingertip can absorb modes with a node at its
+                // centre. This authored 88/12 point/distributed blend is a
+                // cheap approximation of that effect, not a resolved pad
+                // width or a damping ratio measured in the cited studies.
                 hand = 0.88 * s.releaseRate;
                 rate += 0.12 * s.releaseRate;
             }
@@ -3747,10 +3808,12 @@ void AculyreEngine::updateDamping(int string) noexcept
             hand = s.sympathyRate;
         }
     }
-    voice.normal.setDamping(rate > 0.0 ? std::exp(-rate / voice.frequency) : 1.0);
-    voice.parallel.setDamping(rate > 0.0 ? std::exp(-rate / voice.parallelFrequency) : 1.0);
-    voice.normal.setHand(voice.handPoint, hand, voice.frequency, sampleRate_);
-    voice.parallel.setHand(voice.handPoint, hand, voice.parallelFrequency, sampleRate_);
+    const double normalFrequency = sampleRate_ / voice.normal.currentPeriod;
+    const double parallelFrequency = sampleRate_ / voice.parallel.currentPeriod;
+    voice.normal.setDampingRate(rate, normalFrequency, sampleRate_);
+    voice.parallel.setDampingRate(rate, parallelFrequency, sampleRate_);
+    voice.normal.setHand(voice.handPoint, hand, normalFrequency, sampleRate_);
+    voice.parallel.setHand(voice.handPoint, hand, parallelFrequency, sampleRate_);
 }
 
 void AculyreEngine::setRealismEnhancements(bool enabled) noexcept
@@ -3759,8 +3822,15 @@ void AculyreEngine::setRealismEnhancements(bool enabled) noexcept
         return;
     realismEnhancements_ = enabled;
     if (state_)
+    {
+        if (!enabled)
+        {
+            state_->slips = {};
+            state_->slipCount = 0;
+        }
         for (int index = 0; index < stringCount_; ++index)
             state_->strings[static_cast<std::size_t>(index)].dampingDirty = true;
+    }
 }
 
 void AculyreEngine::setControls(const PlayingControls& controls) noexcept
@@ -3809,6 +3879,8 @@ void AculyreEngine::setControls(const PlayingControls& controls) noexcept
 
 void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
 {
+    if (midiNote < 0 || midiNote > 127)
+        return;
     int index = stringForNote(midiNote);
     bool raise = false;
     if (index < 0 && controls_.levers)
@@ -3861,6 +3933,17 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // there the whole wave stops, as before 0.9.0.
     BarVector preload {};
     const BarVector port = voice.normalPort();
+    // The small saddle slope is the existing authored fanning, not a
+    // measured lyre geometry. Its change of basis is orthogonal and its
+    // returning motion reciprocal (PolarizationRotation.h).
+    const auto rotation = detail::PolarizationRotation::fromSlope(realismEnhancements_ ? 0.0018 * voice.lever : 0.0);
+    const auto preloadPlane = [&] (double force, bool normal)
+    {
+        const double normalForce = (normal ? rotation.cosine : rotation.sine) * force;
+        for (std::size_t c = 0; c < barCoordinates; ++c)
+            preload[c] += normalForce * port[c];
+        preload[2] += (normal ? -rotation.sine : rotation.cosine) * force;
+    };
     const bool pitchChanged = voice.raised != raise || voice.extensionKey != extensionKey;
     const bool plectrum = controls.technique == Technique::Plectrum;
     const bool sounding = voice.keyDown || voice.sustained || voice.energy() > silentEnergy;
@@ -3883,7 +3966,9 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // reach 2 % from the bridge, where POSITION's 6 % sends it.
     // Drawn before the contact, which happens there.
     const double reach = plectrum ? 0.40 : 1.0;
-    const double positionSpread = std::clamp(0.012 + 0.010 * (voice.length - 0.176) / (0.975 - 0.176),
+    const double playingLength = extensionKey >= 0 ? s.extension[static_cast<std::size_t>(extensionKey)].length
+                                                   : voice.pitch[raise ? 1u : 0u].length;
+    const double positionSpread = std::clamp(0.012 + 0.010 * (playingLength - 0.176) / (0.975 - 0.176),
                                              0.012, 0.022);
     const double position = std::clamp(reach * controls.pluckPosition + positionSpread * s.random.gaussian(),
                                        0.02, 0.7);
@@ -3895,7 +3980,10 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // trip does. Returns the share of the wave's amplitude kept.
     const auto contact = [&] (Loop& loop, double hold, double& oldEnergy, double& keptEnergy)
     {
-        const int count = std::clamp(static_cast<int>(std::ceil(loop.loopDelay)), 2, delayCapacity);
+        // Sampling an unbent period after an octave-down bend captured only
+        // half of the sounding cycle, then repeated that half as the next
+        // pluck. The nodal contact must follow the wave being stopped.
+        const int count = std::clamp(static_cast<int>(std::ceil(loop.currentPeriod)), 2, delayCapacity);
         std::array<double, delayCapacity>& wave = s.contactWave;
         std::array<double, delayCapacity>& kept = s.contactKept;
         s.contactLoop = loop;
@@ -3934,8 +4022,18 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             t -= count * std::floor(t / count);
             const int i = static_cast<int>(t);
             const double f = t - i;
-            const auto w = [&] (int j) { return wave[static_cast<std::size_t>(((j % count) + count) % count)]; };
-            const double y0 = w(i - 1), y1 = w(i), y2 = w(i + 1), y3 = w(i + 2);
+            // Only these four neighbours wrap. Rounding a tiny negative t
+            // can produce exactly count above, so normalize that index
+            // AFTER computing f in the original arithmetic. With count>=2,
+            // the taps then lie in [-1,count+1]: one correction replaces
+            // two integer remainders per tap, without changing a sample.
+            const int base = i == count ? 0 : i;
+            const auto w = [&] (int j)
+            {
+                const int wrapped = j < 0 ? j + count : (j >= count ? j - count : j);
+                return wave[static_cast<std::size_t>(wrapped)];
+            };
+            const double y0 = w(base - 1), y1 = w(base), y2 = w(base + 1), y3 = w(base + 2);
             return y1 + 0.5 * f * (y2 - y0 + f * (2.0 * y0 - 5.0 * y1 + 4.0 * y2 - y3 + f * (3.0 * (y1 - y2) + y3 - y0)));
         };
         double after = 0.0;
@@ -3973,11 +4071,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             if (share == 0.0)
                 loop->silence();
             const double stopped = 2.0 * voice.impedance * (1.0 - share) * last;
-            if (loop == &voice.normal)
-                for (std::size_t c = 0; c < barCoordinates; ++c)
-                    preload[c] -= stopped * port[c];
-            else
-                preload[2] -= stopped;
+            preloadPlane(-stopped, loop == &voice.normal);
         }
         const float ratio = oldEnergy > 0.0 ? static_cast<float>(keptEnergy / oldEnergy) : 0.0f;
         for (float& square : voice.squares)
@@ -4078,6 +4172,13 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     s.lastPluck = { position, force, normalShare, release };
     voice.handPoint = position;
 
+    if (voice.keyDown && voice.ownerNote == midiNote)
+    {
+        if (voice.keyPresses < std::numeric_limits<std::uint16_t>::max())
+            ++voice.keyPresses;
+    }
+    else
+        voice.keyPresses = 1;
     voice.keyDown = true;
     voice.sustained = false;
     voice.plucked = true;
@@ -4104,6 +4205,17 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
                         * (1.0 / pluckPoint + 1.0 / (length - pluckPoint)) / length;
     }
     const double releasedRatio = (tensionModulation_ ? 1.0 + voice.glidePerEnergy * releasedEnergy : 1.0) * s.bend;
+    // The new wave must meet a loop of its own period immediately, including
+    // when another string has kept the engine's control clock running.
+    // Waiting for that clock left up to 15 samples at the previous pitch.
+    voice.normal.setLineDelay(voice.normal.lineDelayAt(releasedRatio));
+    voice.parallel.setLineDelay(voice.parallel.lineDelayAt(releasedRatio));
+    voice.normal.currentPeriod = voice.normal.loopDelay / releasedRatio;
+    voice.parallel.currentPeriod = voice.parallel.loopDelay / releasedRatio;
+    voice.normal.retuneHand(voice.frequency * releasedRatio, sampleRate_);
+    voice.parallel.retuneHand(voice.parallelFrequency * releasedRatio, sampleRate_);
+    voice.roundTrip = std::clamp(static_cast<int>(std::lround(sampleRate_ / (voice.frequency * releasedRatio))),
+                                1, delayCapacity - 1);
 
     for (int plane = 0; plane < 2; ++plane)
     {
@@ -4115,65 +4227,36 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         // The displacement the held force sets, A = F x (L - x) / (T L).
         const double amplitude = force * pluckPoint * (length - pluckPoint) / (voice.tension * length)
                                * (plane == 0 ? std::sqrt(normalShare) : strokeSign * std::sqrt(1.0 - normalShare));
-        const double kink = amplitude * (1.0 / pluckPoint + 1.0 / (length - pluckPoint));
-        // The released shape, a triangle.
-        const auto shape = [&] (double x)
-        {
-            return amplitude * x / pluckPoint - kink * std::max(0.0, x - pluckPoint);
-        };
         // The wave reaching the bridge over the next round trip, one period
         // of the loop: first the half that travels straight there,
         // (c/2) y0'(c t), then the half that went to the yoke,
         // (c/2) y0'(2L - c t). Each sample holds its cell's mean slope, which
         // band-limits the release; the last cell ends at the round trip.
         const double period = loop.loopDelay / releasedRatio;
-        const int count = static_cast<int>(std::ceil(period));
-        const double cellLength = 2.0 * length / period;
         std::array<double, delayCapacity>& wave = s.pluckWave;
-        double mean = 0.0;
-        for (int k = 0; k < count; ++k)
-        {
-            const double start = cellLength * k;
-            const double end = std::min(2.0 * length, cellLength * (k + 1));
-            double integral = 0.0;
-            if (end <= length)
-                integral = shape(end) - shape(start);
-            else if (start >= length)
-                integral = shape(2.0 * length - start) - shape(2.0 * length - end);
-            else
-                integral = (shape(length) - shape(start)) + (shape(length) - shape(2.0 * length - end));
-            wave[static_cast<std::size_t>(k)] = 0.5 * waveSpeed * integral / cellLength;
-        }
         // The release: the held force unloads exponentially as the string
         // slides off, as Acustra's slip does (a Gaussian release of the same
         // time left a lyre harp phrase 10 dB short of its recording from
         // 1.25 to 5 kHz, the exponential 7.6 dB). Each kink reaching the
         // bridge arrives smoothed by that one-pole; over the loop's period it
         // runs circularly, starting from its steady state at the period's end.
-        // With realismEnhancements_, fingertip pulp compression under higher
-        // forces (Serina et al., J. Biomech. 30 (1997) 1035; Chadefaux et al.,
-        // JASA 133 (2013) 2444) sharpens the normal-plane edge breakaway at
-        // high velocity while keeping soft plucks round, and the parallel
-        // plane unloads slightly slower along the pulp ramp.
+        // Fingertip pulp stiffens under load (Serina et al., J. Biomech. 30
+        // (1997) 1035; Chadefaux et al., JASA 133 (2013) 2444). The retained
+        // normal/parallel timing factors below are an authored approximation
+        // of that tendency, not a quantitative fit to either study.
         const double pulpCompression = 1.06 - 0.20 * v * v;
         const double planeRelease = realismEnhancements_
             ? (release > 0.0 ? release * (plane == 0 ? pulpCompression : 1.16)
                              : (plane == 1 ? 0.008e-3 : 0.0))
             : release;
-        const double pole = planeRelease > 0.0 ? std::exp(-1.0 / (planeRelease * sampleRate_)) : 0.0;
-        double weighted = 0.0, weight = 1.0;
-        for (int k = count - 1; k >= 0; --k)
-        {
-            weighted += weight * wave[static_cast<std::size_t>(k)];
-            weight *= pole;
-        }
-        double smoothed = (1.0 - pole) * weighted / (1.0 - weight);
+        const int count = detail::releasedPluck(wave, period, position,
+            0.5 * waveSpeed * amplitude / pluckPoint,
+            -0.5 * waveSpeed * amplitude / (length - pluckPoint), planeRelease * sampleRate_);
+        // The held triangle has zero mean slope. Remove only accumulated
+        // floating-point residue; the continuous release itself preserves DC.
+        double mean = 0.0;
         for (int k = 0; k < count; ++k)
-        {
-            smoothed = pole * smoothed + (1.0 - pole) * wave[static_cast<std::size_t>(k)];
-            wave[static_cast<std::size_t>(k)] = smoothed;
-            mean += smoothed;
-        }
+            mean += wave[static_cast<std::size_t>(k)];
         mean /= count;
         for (int k = 0; k < count; ++k)
         {
@@ -4188,44 +4271,39 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
                 square += static_cast<float>(value * value);
             }
         }
-        // The held force stood on the bridge before the release: the body
-        // starts deflected under it, so only what the release changes
-        // reaches it, and the top springs back as the wave's mean force
-        // falls to zero.
+        // Match the body's initial deflection to this periodic release's
+        // first cell. This inexpensive boundary-state approximation is not
+        // the full static held force before a causal slip; soft/high notes
+        // can differ substantially (Docs/validation/realism-audit-2026-11-09.md).
         const double heldForce = 2.0 * voice.impedance * (wave[0] - mean);
-        if (plane == 0)
-        {
-            for (std::size_t c = 0; c < barCoordinates; ++c)
-                preload[c] += heldForce * port[c];
-        }
-        else
-        {
-            preload[2] += heldForce;
-        }
+        preloadPlane(heldForce, plane == 0);
     }
     if (realismEnhancements_)
     {
-        // Non-repeating tribological stick-slip and winding-scrape micro-transient
-        // transmitted to the bridge bar during the initial 8-11 ms slip release.
+        // The authored contact-noise attack already used by 0.12.7, now
+        // owned by its string instead of overwriting the previous pluck's.
+        auto& slip = s.slips[static_cast<std::size_t>(index)];
+        if (slip.remaining == 0)
+            s.activeSlips[static_cast<std::size_t>(s.slipCount++)] = index;
         const double slipDuration = plectrum ? 0.0075
                                              : (controls.technique == Technique::Nail ? 0.0085 : 0.0110);
         const int totalSamples = std::max(8, static_cast<int>(std::lround(slipDuration * sampleRate_)));
-        s.slipSamplesRemaining = totalSamples;
+        slip.remaining = totalSamples;
         const double slipCornerHz = plectrum ? 8500.0
                                              : (controls.technique == Technique::Nail ? 7500.0 : 5500.0);
-        s.slipPole = std::exp(-2.0 * pi * slipCornerHz / sampleRate_);
+        slip.pole = std::exp(-2.0 * pi * slipCornerHz / sampleRate_);
         const double techRoughness = plectrum ? 0.0044
                                               : (controls.technique == Technique::Nail ? 0.0038 : 0.0026);
         const double windingBoost = string.coreDiameter > 0.0 ? 1.45 : 1.0;
-        s.slipEnv = force * (v * v) * techRoughness * windingBoost;
-        s.slipDecay = std::exp(-3.5 / totalSamples);
-        s.slipPrev = 0.0;
-        s.slipLowpass = 0.0;
+        slip.envelope = force * (v * v) * techRoughness * windingBoost;
+        slip.decay = std::exp(-3.5 / totalSamples);
+        slip.previous = 0.0;
+        slip.lowpass = 0.0;
         const auto forceBits = static_cast<std::uint64_t>(std::abs(forceDraw) * 1.0e12) + 1ull;
-        s.slipRng.seed((forceBits * 0x9e3779b97f4a7c15ull)
+        slip.random.seed((forceBits * 0x9e3779b97f4a7c15ull)
                        ^ static_cast<std::uint64_t>((midiNote + 1) * 2654435761u + (index + 1) * 40503u));
         for (std::size_t c = 0; c < barCoordinates; ++c)
-            s.slipCoupling[c] = c == 2 ? 0.35 : port[c];
+            slip.coupling[c] = c == 2 ? 0.35 : port[c];
     }
     voice.squaresSum = 0.0;
     for (int k = 1; k <= voice.roundTrip; ++k)
@@ -4251,6 +4329,12 @@ void AculyreEngine::noteOff(int midiNote) noexcept
         State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
         if (!voice.keyDown || voice.ownerNote != midiNote)
             continue;
+        if (voice.keyPresses > 1)
+        {
+            --voice.keyPresses;
+            continue;
+        }
+        voice.keyPresses = 0;
         voice.keyDown = false;
         voice.sustained = s.sustain;
         updateDamping(index);
@@ -4296,7 +4380,6 @@ void AculyreEngine::sleep() noexcept
     s.massPast = {};
     s.bendVelocityPast = {};
     s.bendForcePast = {};
-    s.lastGeneralizedVelocity = {};
     s.previousLeft = s.previousRight = 0.0;
     s.pressureLeft = s.pressureRight = 0.0;
     s.piezoCircuit.reset();
@@ -4304,7 +4387,8 @@ void AculyreEngine::sleep() noexcept
     s.microphoneCursor = 0;
     s.piezoMountZ1 = s.piezoMountZ2 = 0.0;
     s.room.reset();
-    s.slipSamplesRemaining = 0;
+    s.slips = {};
+    s.slipCount = 0;
     s.idle = true;
 }
 
@@ -4348,9 +4432,7 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
     static_assert(barCoordinates % 2 == 0 && maxStrings % 2 == 0, "the coordinates and the strings pair up");
     alignas(16) std::array<BarVector, maxStrings> coupling;
     alignas(16) double port[barCoordinates][maxStrings] {};
-    double invRoundTrip[maxStrings] {};
-    double axialScale[maxStrings] {};
-    double saddleCross[maxStrings] {};
+    std::array<detail::PolarizationRotation, maxStrings> saddleRotation {};
     for (int index = 0; index < count; ++index)
     {
         const State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
@@ -4365,9 +4447,8 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             c[3 + bend] = twiceZ * voice.bend[bend];
             port[3 + bend][index] = voice.bend[bend];
         }
-        invRoundTrip[index] = 1.0 / voice.roundTrip;
-        axialScale[index] = 0.35 * voice.glidePerEnergy;
-        saddleCross[index] = 0.0018 * voice.lever;
+        saddleRotation[static_cast<std::size_t>(index)]
+            = detail::PolarizationRotation::fromSlope(realismEnhancements_ ? 0.0018 * voice.lever : 0.0);
     }
 
     for (int sample = 0; sample < numSamples; ++sample)
@@ -4397,6 +4478,8 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                 // the pitch bend scales every string alike.
                 const double ratio = (tensionModulation_
                     ? 1.0 + voice.glidePerEnergy * voice.energy() : 1.0) * s.bend;
+                voice.normal.currentPeriod = voice.normal.loopDelay / ratio;
+                voice.parallel.currentPeriod = voice.parallel.loopDelay / ratio;
                 const auto plane = static_cast<std::size_t>(2 * index);
                 if (ratio == 1.0)
                 {
@@ -4432,7 +4515,6 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
                                                                  & (delayCapacity - 1))]);
                     --voice.roundTrip;
                 }
-                invRoundTrip[index] = 1.0 / voice.roundTrip;
             }
         }
 
@@ -4458,12 +4540,9 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             double vpDrive = vp;
             if (realismEnhancements_)
             {
-                // Transverse-to-longitudinal (2 f_n) AC axial tension pull at
-                // the bridge saddle and curved/fanned saddle notch coupling.
-                const double acSquare = static_cast<double>(square) - voice.squaresSum * invRoundTrip[index];
-                const double cross = saddleCross[index];
-                vnDrive += axialScale[index] * acSquare + cross * vp;
-                vpDrive -= cross * vn;
+                const auto& rotation = saddleRotation[static_cast<std::size_t>(index)];
+                vnDrive = rotation.normalForce(vn, vp);
+                vpDrive = rotation.parallelForce(vn, vp);
             }
             const Pair* const c = pairs(coupling[static_cast<std::size_t>(index)].data());
             const Pair n = splat(vnDrive);
@@ -4473,22 +4552,31 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
             d3 += c[3] * n;
             d4 += c[4] * n;
         }
-        if (realismEnhancements_ && s.slipSamplesRemaining > 0)
+        if (realismEnhancements_ && s.slipCount > 0)
         {
-            --s.slipSamplesRemaining;
-            const double raw = s.slipRng.bipolar();
-            const double hp = raw - s.slipPrev;
-            s.slipPrev = raw;
-            s.slipLowpass = s.slipPole * s.slipLowpass + (1.0 - s.slipPole) * hp;
-            const double rubForce = s.slipEnv * s.slipLowpass;
-            s.slipEnv *= s.slipDecay;
-            const Pair* const sc = pairs(s.slipCoupling.data());
-            const Pair rf = splat(rubForce);
-            d0 += sc[0] * rf;
-            d1 += sc[1] * rf;
-            d2 += sc[2] * rf;
-            d3 += sc[3] * rf;
-            d4 += sc[4] * rf;
+            for (int active = 0; active < s.slipCount;)
+            {
+                auto& slip = s.slips[static_cast<std::size_t>(s.activeSlips[static_cast<std::size_t>(active)])];
+                --slip.remaining;
+                const double raw = slip.random.bipolar();
+                const double hp = raw - slip.previous;
+                slip.previous = raw;
+                slip.lowpass = slip.pole * slip.lowpass + (1.0 - slip.pole) * hp;
+                const double rubForce = slip.envelope * slip.lowpass;
+                slip.envelope *= slip.decay;
+                const Pair* const sc = pairs(slip.coupling.data());
+                const Pair rf = splat(rubForce);
+                d0 += sc[0] * rf;
+                d1 += sc[1] * rf;
+                d2 += sc[2] * rf;
+                d3 += sc[3] * rf;
+                d4 += sc[4] * rf;
+                if (slip.remaining == 0)
+                    s.activeSlips[static_cast<std::size_t>(active)]
+                        = s.activeSlips[static_cast<std::size_t>(--s.slipCount)];
+                else
+                    ++active;
+            }
         }
         alignas(16) BarVector drive;
         Pair* const d = pairs(drive.data());
@@ -4557,15 +4645,19 @@ void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
         for (int index = 0; index < count; ++index)
         {
             State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
-            voice.normal.writeSample(normalIn[static_cast<std::size_t>(index)] - normalPort[index]);
-            voice.parallel.writeSample(parallelIn[static_cast<std::size_t>(index)] - velocity[2]);
+            const auto& rotation = saddleRotation[static_cast<std::size_t>(index)];
+            const double normalMotion = realismEnhancements_ ? rotation.normalMotion(normalPort[index], velocity[2])
+                                                             : normalPort[index];
+            const double parallelMotion = realismEnhancements_ ? rotation.parallelMotion(normalPort[index], velocity[2])
+                                                               : velocity[2];
+            voice.normal.writeSample(normalIn[static_cast<std::size_t>(index)] - normalMotion);
+            voice.parallel.writeSample(parallelIn[static_cast<std::size_t>(index)] - parallelMotion);
             if (voice.normal.hand.share > 0.0)
             {
                 voice.normal.touch();
                 voice.parallel.touch();
             }
         }
-        s.lastGeneralizedVelocity = velocity;
 
         // Far-field pressure: rho / (4 pi r) times the volume acceleration,
         // each mode's as its bilinear design takes s times its velocity,

@@ -191,10 +191,13 @@ public:
     // semitone below, its lever raised). A key past the strings, A0 to C8,
     // stretches the lowest or the highest string to its own pitch (one key
     // at a time at each end); a note between strings with the levers off,
-    // or past C8 or below A0, is ignored (a lyre has no frets).
+    // or past C8 or below A0, is ignored (a lyre has no frets). Overlapping
+    // Note Ons of the current pitch each own a press, up to 65535; every
+    // press needs its Note Off. A different pitch taking the same physical
+    // string replaces that ownership. Nonpositive/NaN velocities are ignored.
     void noteOn(int midiNote, float velocity) noexcept;
     // The playing hand damps the string (PlayingControls::release), unless
-    // sustain holds it.
+    // sustain holds it; overlapping presses release only on their last Off.
     void noteOff(int midiNote) noexcept;
     void setSustain(bool down) noexcept;
     void setControls(const PlayingControls& controls) noexcept;
@@ -274,7 +277,8 @@ public:
     [[nodiscard]] int modeCount() const noexcept;
     [[nodiscard]] ModeReport modeReport(int mode) const noexcept;
     // Driving-point mobility of the bridge at a lever arm u (-1 bass end,
-    // +1 treble end), normal to the top, m/s/N, with the strings' load.
+    // +1 treble end), normal to the top, m/s/N. Includes the bridge bar and
+    // soundbox; excludes the strings' load (a structural diagnostic).
     [[nodiscard]] double bridgeMobilityMagnitude(double frequency, double lever) const noexcept;
 
 private:

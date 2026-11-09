@@ -9,6 +9,9 @@
 // the cases in JSON order, for byte comparisons with the same options/platform.
 // --blocks-csv retains paired timings so an elapsed outlier is not retroactively
 // attributed to scheduling using an unrelated run.
+// The stress scenario is the portfolio's stress phrase (standard U12), which
+// judges 256-frame blocks on their fastest of three repeats: block256_percent
+// is one run's, four callbacks a block, as a share of the block's period.
 #include "DSP/AculyrePerformer.h"
 
 #include <algorithm>
@@ -75,7 +78,7 @@ struct Options
     std::string scenario = "dense", samples, csv, patchDirectory;
 };
 
-enum class Scenario { Dense, Gestures, Repluck, Idle, Factory, Burst, Cold };
+enum class Scenario { Dense, Gestures, Repluck, Idle, Factory, Burst, Cold, Stress };
 
 const char* name(Scenario scenario)
 {
@@ -88,6 +91,7 @@ const char* name(Scenario scenario)
     case Scenario::Factory: return "factory";
     case Scenario::Burst: return "burst";
     case Scenario::Cold: return "cold";
+    case Scenario::Stress: return "stress";
     }
     return "unknown";
 }
@@ -101,7 +105,7 @@ Options options(int argc, char** argv)
         if (arg == "--help")
         {
             std::cout << "AculyreCpuProbe [--preset all|0|1|2] [--oversampling all|1|2|4] "
-                         "[--seconds 0.1..30] [--scenario dense|gestures|repluck|idle|factory|burst|cold|all] "
+                         "[--seconds 0.1..30] [--scenario dense|gestures|repluck|idle|factory|burst|cold|stress|all] "
                          "[--patch-dir factory-repatch-directory] "
                          "[--samples output.f32] [--blocks-csv output.csv]\n";
             std::exit(0);
@@ -136,8 +140,8 @@ Options options(int argc, char** argv)
     }
     if (out.scenario != "dense" && out.scenario != "gestures" && out.scenario != "repluck"
         && out.scenario != "idle" && out.scenario != "factory" && out.scenario != "burst"
-        && out.scenario != "cold" && out.scenario != "all")
-        throw std::runtime_error("scenario must be dense, gestures, repluck, idle, factory, burst, cold or all");
+        && out.scenario != "cold" && out.scenario != "stress" && out.scenario != "all")
+        throw std::runtime_error("scenario must be dense, gestures, repluck, idle, factory, burst, cold, stress or all");
     if (!out.samples.empty() && out.samples == out.csv)
         throw std::runtime_error("samples and CSV must use different paths");
     return out;
@@ -230,6 +234,33 @@ void dispatch(aculyre::Performer& performer, aculyre::PlayingControls& controls,
             }
         return;
     }
+    if (scenario == Scenario::Stress)
+    {
+        // The portfolio's stress phrase (standard U12), once a second: an
+        // eight-note chord at full velocity under the sustain pedal,
+        // re-struck note by note, and a second chord on top (16 voices),
+        // re-struck the same way. The chords take every third string from
+        // the lowest and from the second, so they span the compass.
+        const int step = block % 750;
+        const auto strike = [&] (int voice)
+        {
+            const int string = (voice < 8 ? 3 * voice : 3 * (voice - 8) + 1) % spec.stringCount;
+            const int note = spec.strings[static_cast<std::size_t>(string)].midiNote;
+            performer.noteOff(note);
+            performer.noteOn(note, 1.0f);
+        };
+        if (block == 0)
+            performer.setSustain(true);
+        if (step == 0)
+            for (int voice = 0; voice < 8; ++voice) strike(voice);
+        else if (step == 240)
+            for (int voice = 8; voice < 16; ++voice) strike(voice);
+        else if (step % 24 == 0 && step < 240)
+            strike((step / 24 - 1) % 8);
+        else if (step % 24 == 0)
+            strike((step / 24 - 11) % 16);
+        return;
+    }
     if (scenario == Scenario::Factory)
     {
         // 120 BPM eighth notes, rounded to 188 callbacks (250.667 ms).
@@ -300,7 +331,8 @@ void run(aculyre::Performer& performer, const Options& opt, int preset, int fact
     auto controls = patch ? patch->controls : aculyre::Performer::defaultControls(preset);
     performer.setControls(controls);
     const auto& spec = *aculyre::presets[static_cast<std::size_t>(preset)];
-    if (scenario != Scenario::Idle && scenario != Scenario::Factory && scenario != Scenario::Cold)
+    if (scenario != Scenario::Idle && scenario != Scenario::Factory && scenario != Scenario::Cold
+        && scenario != Scenario::Stress)
         for (int i = 0; i < spec.stringCount; ++i)
             performer.noteOn(spec.strings[static_cast<std::size_t>(i)].midiNote, 100.0f / 127.0f);
 
@@ -373,6 +405,14 @@ void run(aculyre::Performer& performer, const Options& opt, int preset, int fact
     distribution("wall", timings, false);
     std::cout << ", ";
     distribution("thread_cpu", timings, true);
+    // Standard U12 judges 256-frame blocks: four callbacks here.
+    std::vector<double> quads;
+    for (std::size_t block = 0; block + 4 <= timings.size(); block += 4)
+        quads.push_back(static_cast<double>(timings[block].cpu + timings[block + 1].cpu + timings[block + 2].cpu
+                                            + timings[block + 3].cpu) / (4.0e7 * period));
+    std::sort(quads.begin(), quads.end());
+    if (!quads.empty())
+        std::cout << ", \"block256_percent\": {\"median\": " << quads[quads.size() / 2] << ", \"max\": " << quads.back() << '}';
     std::cout << '}';
     sampleOffset += static_cast<std::uint64_t>(blocks) * frames;
 }
@@ -417,7 +457,7 @@ int main(int argc, char** argv)
                 const Patch* patch = factory.empty() ? nullptr : &factory[static_cast<std::size_t>(configuration)];
                 const int preset = patch ? patch->preset : configuration;
                 for (Scenario scenario : { Scenario::Dense, Scenario::Gestures, Scenario::Repluck, Scenario::Idle,
-                                           Scenario::Factory, Scenario::Burst, Scenario::Cold })
+                                           Scenario::Factory, Scenario::Burst, Scenario::Cold, Scenario::Stress })
                 {
                     if ((opt.preset >= 0 && opt.preset != preset) || (opt.factor && opt.factor != factor)
                         || (opt.scenario != "all" && opt.scenario != name(scenario)))

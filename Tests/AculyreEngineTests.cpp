@@ -577,6 +577,26 @@ int main()
         }
     }
 
+    // Under velocity 49 the release still follows both laws: only the
+    // release velocity is held within the harpists' 0.2 to 5 m/s, so with
+    // the same draws a pluck at 0.1 slips off slower than one at 0.3.
+    // Holding the laws' product instead let every pluck that soft go alike.
+    {
+        const auto release = [] (float velocity)
+        {
+            aculyre::AculyreEngine engine;
+            engine.prepare(48000.0);
+            engine.setInstrument(aculyre::lyreHarpSteel);
+            engine.noteOn(69, velocity);
+            return engine.lastPluck().release;
+        };
+        const auto law = [] (double v)
+        { return std::clamp(std::pow(v / 0.5, -1.68), 0.4, 10.0) * std::pow(20.0, 1.0 - v); };
+        const double expected = law(static_cast<double>(0.1f)) / law(static_cast<double>(0.3f));
+        check(std::abs(release(0.1f) / release(0.3f) / expected - 1.0) < 1e-9,
+              "soft plucks slip off slower as velocity falls");
+    }
+
     // Velocity moves the tone, not only the level (owner feedback,
     // 2026-10-29): from velocity 64 to 127, with the same draws, the steel
     // E4's 6th and 10th partials gain 6.3 and 5.9 dB against the
@@ -819,9 +839,8 @@ int main()
     // whole wave, and this limit was 1.5 times a fresh pluck); a plectrum's
     // brief contact leaves much more of the old note ringing. A soft
     // re-pluck of a loud A4 at 0.27 keeps the 4th partial at about -6 dB,
-    // under 1 % of the loud note's energy but twice the soft pluck's own.
-    // The reference plucks another string first, so the second pluck takes
-    // the same random draws.
+    // about 0.5 % of the loud note's energy. The reference plucks another
+    // string first, so the second pluck takes the same random draws.
     {
         const auto plucked = [] (aculyre::Technique technique, int first)
         {
@@ -834,6 +853,7 @@ int main()
             std::vector<float> l(12000), r(12000);
             engine.noteOn(first, 0.9f);
             engine.process(l.data(), r.data(), 12000);
+            const double before = engine.stringEnergy(engine.stringForNote(69));
             engine.noteOn(69, 0.1f);
             // 5 ms: the energy tracker has settled (one round trip, 2.3 ms)
             // and the stop is done, and the ringing instrument has not yet
@@ -844,13 +864,24 @@ int main()
             // at 25; the 6 mm top's held 2.65 throughout), which measures
             // the body, not the finger.
             engine.process(l.data(), r.data(), 240);
-            return engine.stringEnergy(engine.stringForNote(69));
+            return std::array<double, 2> { engine.stringEnergy(engine.stringForNote(69)), before };
         };
-        const double finger = plucked(aculyre::Technique::Finger, 69) / plucked(aculyre::Technique::Finger, 60);
-        const double plectrum = plucked(aculyre::Technique::Plectrum, 69) / plucked(aculyre::Technique::Plectrum, 60);
-        std::printf("soft re-pluck of a loud A4, string energy re a fresh pluck: finger %.2f, plectrum %.2f\n",
-                    finger, plectrum);
-        check(finger < 0.25 * plectrum, "a finger stops more of the string it re-plucks than a plectrum");
+        const auto fingerAgain = plucked(aculyre::Technique::Finger, 69);
+        const auto plectrumAgain = plucked(aculyre::Technique::Plectrum, 69);
+        const double finger = fingerAgain[0] / plucked(aculyre::Technique::Finger, 60)[0];
+        const double plectrum = plectrumAgain[0] / plucked(aculyre::Technique::Plectrum, 60)[0];
+        std::printf("soft re-pluck of a loud A4, string energy re a fresh pluck: finger %.2f, plectrum %.2f;"
+                    " re the loud note: finger %.4f, plectrum %.4f\n",
+                    finger, plectrum, fingerAgain[0] / fingerAgain[1], plectrumAgain[0] / plectrumAgain[1]);
+        // The two stops are compared on the share of the loud note left, not
+        // against each technique's fresh pluck: since 0.13.1 a finger's pluck
+        // at velocity 0.1 slips off slowly and carries 0.07 of the energy it
+        // did, while the plectrum's still lets go at once, so the fresh plucks
+        // are no common scale. The stop itself comes before the release and
+        // did not change (finger 0.0091 of the loud note before, 0.0053 now
+        // that its own pluck adds less; plectrum 0.110 both).
+        check(fingerAgain[0] / fingerAgain[1] < 0.25 * plectrumAgain[0] / plectrumAgain[1],
+              "a finger stops more of the string it re-plucks than a plectrum");
         check(plectrum > 2.0, "a plectrum leaves some of the old note");
     }
 

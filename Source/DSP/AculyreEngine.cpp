@@ -4153,7 +4153,11 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // note's takes vary 1.9 dB in brightness over 2.5 kHz, where the DR
     // lyre harp's three takes vary 1.0 and two sampled ukuleles' 3.6 to 4.0
     // (Tools/compare_lyre_harp_samples.py --takes; Aculele's benchmark).
-    release *= std::clamp(std::pow(v / 0.5, -1.4 * 1.2) * std::pow(20.0, 1.0 - v), 0.4, 10.0)
+    // The clamp holds the release velocity within the harpists' 0.2 to
+    // 5 m/s; the slip's length has its own range. Until 0.13.1 it clamped
+    // their product, which every pluck under velocity 49 reached: they all
+    // let go alike, and only their level followed velocity.
+    release *= std::clamp(std::pow(v / 0.5, -1.4 * 1.2), 0.4, 10.0) * std::pow(20.0, 1.0 - v)
              * std::exp(0.4 * s.random.gaussian() - 1.2 * 0.14 * forceDraw);
     if (realismEnhancements_ && release > 0.0)
     {

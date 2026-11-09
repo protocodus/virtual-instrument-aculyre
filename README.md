@@ -30,8 +30,13 @@ reference recording below.
   slip. A soft steel F6 is up to 4.8 dB louder in its first 20 ms, almost
   all of it below 1 kHz. Hard plucks, nails and the plectrum are unchanged.
   The stick-slip micro-transient of 0.12.7 is removed: it sat 58 dB or more
-  under the attack it rode on. Re-plucking every string at once costs a
-  fifth to a quarter of the time it did.
+  under the attack it rode on. Below velocity 49 a softer pluck now slips
+  off slower, so it sounds darker as well as quieter: before, every pluck
+  that soft let go alike and only its level followed velocity. Through the
+  Performer a steel A4 at velocity 12 is 19 dB quieter than before, at 24
+  5.4 dB and at 36 3.6 dB. From velocity 49 to 109 nothing changes, and
+  harder plucks move by under 0.4% in brightness. Re-plucking every string
+  at once costs a fifth to a quarter of the time it did.
   [Measurements](Docs/benchmarks/cpu-repluck-2026-11-09.md).
 
 - **0.13.0** (local candidate): pluck releases integrate the continuous slip
@@ -529,7 +534,10 @@ as the velocity to the -1.68 about the middle of its range. A softer pluck
 also slips further, from the lab's 0.04 mm at the hardest to 0.8 mm, the
 middle of the 0.5 to 1.2 mm most of ten harpists' slips in chords and
 arpeggios fell in (the same paper, Table V), geometrically with velocity: an authored law between two measured
-slips, at the owner's request that the tone follow velocity more. The wave that
+slips, at the owner's request that the tone follow velocity more. Only the
+release velocity is held within the harpists' 0.2 to 5 m/s; the slip keeps
+its own range. Until 0.13.1 the product of the two laws was held instead,
+which every pluck under velocity 49 reached, so they all let go alike. The wave that
 reaches the bridge over the first round trip is loaded as one full period of
 the loop. Its continuous periodic exponential release is integrated over
 each sample cell, including the fractional last cell. Before the pluck the

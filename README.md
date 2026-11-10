@@ -1079,7 +1079,10 @@ Rack's flags, above the 10% ceiling, and 10% natively
   stand 0.3 dB rms. A soft pluck is dark (0.13.1), so its level is its
   fundamental's, which each string's place against the three lowest
   soundbox modes sets; the touch that evens the scale is fitted at
-  velocity 90 alone
+  velocity 90 alone. A release that follows the touch as well as the
+  velocity, which evened Acukoto's soft notes, halves the gut lyre's
+  spread (1.2 dB rms) and un-evens both harps' (0.9 dB rms to 1.2 or
+  more), so it was measured and not taken
   ([audit](Docs/validation/consolidation-audit-2026-11-09.md)).
 - No plug-in yet. The Rack Extension's 0.4.0d1 has been played in Recon
   from a local build; it has not been through Reason Studios' acceptance.

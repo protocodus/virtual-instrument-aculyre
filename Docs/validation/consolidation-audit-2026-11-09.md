@@ -116,7 +116,8 @@ What stands out, and whose doing it is:
   (`StringSpec::touch`) is fitted at velocity 90, where the upper partials
   average the body out. A touch that follows velocity would even it; that
   is a new mechanism and a new fit, so it is written down here and in the
-  README's Known gaps, not built.
+  README's Known gaps, not built. Acukoto's remedy for the same symptom, a
+  release that follows the touch, was measured afterwards (below).
 - **Sustain, brightness and decay vary note to note** (sustain 2.5 to 3.2
   dB rms against the neighbours, centroid 2 to 5 semitones). The
   instrument does this: a note whose fundamental sits on a soundbox mode
@@ -140,6 +141,78 @@ What stands out, and whose doing it is:
 
 No outlier was found whose cause is a wrong formula, so no note was
 changed.
+
+## Soft plucks and a release that follows the touch (added 2026-11-10)
+
+Acukoto 0.25.11 (`93aae28`) made a pluck's release follow the string's
+touch as well as the velocity: a touch is force, the release law is the
+displacement's, so the clamped term became `(v / 0.5)^-1.68 touch^-1.2`.
+There the soft spread between keys fell from 7.6 and 8.4 dB to 3.4.
+Aculyre's law is the same line, so the change was measured here before any
+port, in scratch builds of 0.13.4 with that one line changed. It was not
+ported, and the engine is unchanged.
+
+**The diagnostic.** Played at velocity 32 with the release held at the
+value velocity 64 gives it, each instrument's attack spread is its
+velocity 64 figure: 0.63 / 0.72 / 0.94 dB rms (steel / nylon / gut)
+against 0.63 / 0.72 / 0.93. Held at velocity 90's value: 0.48 / 0.50 /
+0.39. So the release's slowing is what makes soft plucks uneven on all
+three, as said above: at velocity 32 the finger lets go over 0.57 ms, a
+corner near 280 Hz, under most fundamentals. That names the release, not
+the touch; whether the touch is the remedy is what the survey says.
+
+**The survey.** Attack level (20 to 300 ms) against the median of six
+neighbours, dB rms at velocities 32 / 64 / 110:
+
+| Release law | Steel harp | Nylon harp | Gut lyre |
+| --- | --- | --- | --- |
+| 0.13.4: the velocity alone | 0.92 / 0.63 / 0.43 | 0.95 / 0.72 / 0.42 | 2.42 / 0.93 / 0.30 |
+| Acukoto's line, the touches as they are | 1.31 / 2.44 / 0.86 | 1.60 / 2.01 / 0.93 | 1.47 / 0.79 / 0.28 |
+| Acukoto's line, the touches refitted | 1.16 / 1.01 / 0.62 | 1.32 / 1.22 / 0.84 | 1.25 / 0.65 / 0.32 |
+| The touch against the instrument's mean touch, refitted | 2.10 / 0.93 / 0.37 | 2.19 / 0.93 / 0.47 | 1.20 / 0.44 / 0.31 |
+| The touch against the register's slope of touch, refitted | 2.49 / 0.80 / 0.42 | 2.57 / 0.80 / 0.43 | 1.17 / 0.54 / 0.31 |
+
+"Refitted" puts the touches and lever touches back on the velocity 90 line
+as `Aculyre.Engine` measures it (six rounds, to the two decimals the
+presets hold). Under Acukoto's line the harps' did not land: 1.35 and 2.43
+dB off the line after six rounds, against the test's 1 dB and today's 0.42
+and 0.74, because a string's level then goes as more than its touch. The
+last two rows are not proposals. They separate the law's effect on
+evenness from its overall slowing: Acukoto's touches lie on both sides of
+1 (0.58 and 1.85 on the two keys its test names), Aculyre's are at most 1
+(each instrument's strongest string), so the plain line slows every other
+string, and with the touches refitted the harps' mean attack level falls
+8.3 and 8.1 dB at velocity 32, 6.6 and 7.0 at 64 and 1.2 at 110 (the gut
+lyre's 4.2, 1.1 and none).
+
+- **The gut lyre: yes.** Its soft spread falls by two fifths with the
+  touches as they are and halves once they are refitted, under every form of
+  the law (2.42 to 1.47, then 1.17-1.25 dB rms; the worst note from F5's
+  6.15 dB to about 3, D3 or F5). Its touches run from 0.35 to 1.00 with no
+  fall down the register (they rise 0.2 dB a semitone), and its
+  fundamentals, 147 to 698 Hz, lie on the three lowest soundbox modes. The
+  reading that fits, not measured on its own: a string the soundbox favours
+  is favoured more at its fundamental than across its partials, and the
+  slower release its lighter touch earns takes that off.
+- **The harps: no.** Their soft plucks are less even under every form of the
+  law, and under Acukoto's line at every velocity. Their touches fall 0.25
+  and 0.30 dB a semitone, from 1 in the bass to 0.14 and 0.11 in the treble
+  (lever notes 0.11 and 0.10): read as force, the treble is plucked at about
+  an eighth of the bass's, and the law slows its release by up to the
+  clamp's whole factor of 10. Taking the register's slope out of the touch
+  (the last row) does not help either. The reading that fits, again not
+  measured on its own: above the lowest modes a string's fundamental is not
+  favoured as its touch says, and where the release's corner lies under the
+  fundamental the level goes as the touch to the 2.2, which over-applies
+  each string's evening.
+
+One release law serves the three instruments, and the same finger plays
+them. The line that halves the gut lyre's soft spread un-evens both harps,
+and a law switched on for one instrument is a mechanism the physics does
+not give, so nothing was ported and the gut lyre's gap stays in the
+README. What the harps' result says about their touches (that they carry
+the soundbox's treble balance as well as each string's evening, and so are
+not all force) is a question for a measured soundbox, not for this pass.
 
 ## Other findings, not fixed
 

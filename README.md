@@ -24,6 +24,17 @@ reference recording below.
 
 ## Version history
 
+- **0.13.5** (local candidate): two fixes. A key above the highest string
+  opens at its own pitch: its two planes were designed up to 28 cents
+  apart (the gut lyre's C8; 14 on the nylon harp, 8 on the steel), so the
+  note opened sharp and settled, the nylon C8 by 14 cents over its first
+  200 ms, now under 6. The instruments' own strings and the keys below the
+  lowest are unchanged. Turning the instrument control through a second
+  instrument inside the 20 ms fade no longer cuts the first one's tail off
+  with a click: each instrument keeps its own place in the fade, and one
+  turned back to comes back from where its fade stands.
+  [Audit](Docs/validation/fix-pass-audit-2026-11-10.md).
+
 - **0.13.4** (local candidate): lower CPU where the blocks are worst, every
   sample unchanged. A re-pluck's contact with the sounding string, a
   convolution over one period, now runs two outputs to an instruction in
@@ -795,13 +806,15 @@ to C8, are an artificial range no lyre has: the lowest string plays the
 keys below it and the highest the keys above, its speaking length scaled
 by 2^((own - key)/12) at its own tension, so a bass key is a longer string
 and a treble key a shorter one, each designed at setup like a lever's
-pitch. Each end is one string, so it plays one such key at a time, and it
+pitch. A treble key keeps the split between the string's two planes that
+the string itself has (0.13.5). Each end is one string, so it plays one such key at a time, and it
 stays at the key's pitch, as a raised lever stays up, until its own key
 plays it again. With
 the levers on, every key from A0 to C8 sounds; with them off, the notes
 between the strings stay silent, as on the instrument. `AculyrePerformer` designs all three
 instruments once, outside real time, so choosing one is a real-time switch:
-the old instrument fades out over 20 ms while the new one starts, and every
+the old instrument fades out over 20 ms while the new one starts (one
+turned back to inside its fade comes back from where the fade stands), and every
 front end (the Rack adapter now, a plug-in later) plays through it. The
 Performer can run the instruments at 2x or 4x the host rate (at most
 192 kHz) and bring them down through a linear-phase Kaiser-windowed sinc,

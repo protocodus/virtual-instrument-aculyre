@@ -2923,7 +2923,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             voice.bend[static_cast<std::size_t>(bend)] = bendShape(bend, voice.lever);
 
         // One pitch of the string: its speaking length at its tension.
-        const auto designPitch = [&] (State::PitchDesign& pitch, double length, bool refine)
+        const auto designPitch = [&] (State::PitchDesign& pitch, double length, bool refine,
+                                      double endCorrection)
         {
             pitch.length = length;
             const double frequency = waveSpeed / (2.0 * pitch.length);
@@ -2940,7 +2941,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             // decay (0.08-0.6 s) halves against the DR Plucked Lyre Harp
             // samples (C5 7.0 dB/s against the recording's 46; at one
             // diameter 13.6).
-            pitch.parallelLength = pitch.length + spec.diameter;
+            pitch.parallelLength = pitch.length + endCorrection;
             // The wooden yoke, tuning pin and soundboard bridge yield in
             // series with the wire's axial stiffness EA / L (a frame stiffness
             // of 25 kN/m), so a stiff steel bass wire does not stretch as if
@@ -3010,7 +3011,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         };
         for (int raised = 0; raised < 2; ++raised)
             designPitch(voice.pitch[static_cast<std::size_t>(raised)], raised ? spec.length * leverRatio : spec.length,
-                        true);
+                        true, spec.diameter);
         // The edge strings also sound the keys past the instrument's own.
         // Their dispersion takes the first-order fit alone: the sections'
         // refinement over a bass key's hundred partials took 20 to 120 ms
@@ -3019,8 +3020,16 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             if ((index == 0 && key < spec.midiNote) || (index == stringCount_ - 1 && key > spec.midiNote))
             {
                 s.extensionString[static_cast<std::size_t>(key)] = index;
-                designPitch(s.extension[static_cast<std::size_t>(key)],
-                            spec.length * std::pow(2.0, (spec.midiNote - key) / 12.0), false);
+                // A key above the top string is that string at the key's
+                // pitch, not a shorter string of the same wire: its planes
+                // keep the string's own split. One diameter on the imagined
+                // length set them up to 28 cents apart (the gut lyre's C8,
+                // 14 on the nylon harp, 8 on the steel), and the key opened
+                // that much sharp, the normal plane sounding first, before
+                // it settled on its pitch (until 0.13.5).
+                const double length = spec.length * std::pow(2.0, (spec.midiNote - key) / 12.0);
+                designPitch(s.extension[static_cast<std::size_t>(key)], length, false,
+                            spec.diameter * std::min(1.0, length / spec.length));
             }
     }
 

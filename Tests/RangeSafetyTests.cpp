@@ -185,5 +185,31 @@ int main()
             }
         }
     }
+    // A key above the top string is that string at the key's pitch, so its
+    // two planes stand as far apart as the string's own (one diameter on its
+    // length, a few cents) and both within that of the key. Until 0.13.5 the
+    // diameter went onto the imagined shorter length: the gut lyre's C8
+    // opened 28 cents sharp, the nylon harp's 14 and the steel's 8.
+    engine.prepare(48000.0);
+    engine.setTensionModulation(false);  // the periods read are the designs'
+    for (const auto* preset : aculyre::presets)
+    {
+        engine.setInstrument(*preset);
+        const auto& top = preset->strings[static_cast<std::size_t>(preset->stringCount - 1)];
+        const double split = 1200.0 * std::log2(1.0 + top.diameter / top.length);
+        double worst = 0.0;
+        for (int key = top.midiNote + 1; key <= 108; ++key)
+        {
+            engine.reset();
+            engine.noteOn(key, 0.5f);
+            const double pitch = 440.0 * std::pow(2.0, (key - 69) / 12.0);
+            for (bool parallel : { false, true })
+                worst = std::max(worst, std::abs(1200.0 * std::log2(
+                    48000.0 / engine.contactReport(preset->stringCount - 1, parallel).period / pitch)));
+        }
+        std::printf("%s: keys above the top string open within %.2f cents (its planes' split %.2f)\n",
+                    preset->name, worst, split);
+        check(worst <= split + 0.75, "a key above the top string opens within the string's own split of its pitch");
+    }
     return failures ? 1 : 0;
 }

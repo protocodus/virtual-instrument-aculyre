@@ -33,7 +33,10 @@ reference recording below.
   instrument inside the 20 ms fade no longer cuts the first one's tail off
   with a click: each instrument keeps its own place in the fade, and one
   turned back to comes back from where its fade stands.
-  [Audit](Docs/validation/fix-pass-audit-2026-11-10.md).
+  [Audit](Docs/validation/fix-pass-audit-2026-11-10.md). Steady playing
+  also takes 0.3% fewer instructions in the build Reason makes, every
+  sample the same
+  ([measurements](Docs/benchmarks/cpu-fix-pass-2026-11-10.md)).
 
 - **0.13.4** (local candidate): lower CPU where the blocks are worst, every
   sample unchanged. A re-pluck's contact with the sounding string, a
@@ -882,7 +885,10 @@ phrase the portfolio sets (a chord of eight re-struck note by note under
 the pedal, a second chord on top, then again) the harps' worst 256-frame
 block took 11% of a loaded development machine's core in a build with the
 Rack's flags, above the 10% ceiling, and 10% natively
-([measurements](Docs/benchmarks/cpu-consolidation-2026-11-09.md)).
+([measurements](Docs/benchmarks/cpu-consolidation-2026-11-09.md)). A
+second pass found 0.3% more in the steady state and nothing neutral that
+brings that block under
+([2026-11-10](Docs/benchmarks/cpu-fix-pass-2026-11-10.md)).
 
 ## Known gaps
 

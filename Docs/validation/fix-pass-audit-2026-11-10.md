@@ -11,7 +11,8 @@ estimates.
 
 Two defects were found and fixed. Both are audible, so each has a
 level-matched pair for the ear (A is 0.13.4, B the fix); the fixes are in
-0.13.5 unless the owner says otherwise. CPU work of the same day is in
+0.13.5 unless the owner says otherwise. The CPU pass of the same day,
+which shipped one bit-exact change, is in
 [cpu-fix-pass-2026-11-10.md](../benchmarks/cpu-fix-pass-2026-11-10.md).
 
 ## What changed
@@ -19,21 +20,24 @@ level-matched pair for the ear (A is 0.13.4, B the fix); the fixes are in
 | Commit | Version | Change | Evidence | Test |
 | --- | --- | --- | --- | --- |
 | `07653da` | 0.13.5 | A key above the top string keeps that string's own split between its two planes. | Planes up to 28 cents apart before, the string's 3.0 to 5.1 after; the first 200 ms of the nylon C8 read 14.1 cents sharp, now 5.7. | `Aculyre.RangeSafety`: every key above the top string, three instruments; fails on 0.13.4 (7.8, 14.1 and 28.3 cents). |
-| `d19e227` | 0.13.5 | Turning the instrument control through a second instrument inside the 20 ms fade no longer cuts the first one's tail off in one sample. | Sample steps of 0.11 to 0.12 on a ringing string whose own largest step is 0.030; none above it after. | `Aculyre.InstrumentSwitch`: twelve double switches and a single one; eight fail on 0.13.4. |
+| `d19e227` | 0.13.5 | Turning the instrument control through a second instrument inside the 20 ms fade no longer cuts the first one's tail off in one sample. | Sample steps of 0.11 to 0.12 on a ringing string whose own largest step is 0.030; none above 1.5 times it after. | `Aculyre.InstrumentSwitch`: twelve double switches and a single one; eight fail on 0.13.4. |
+| `fd007b8` | 0.13.5 | The place a damping hand would touch a string is worked out only while a hand is on it (CPU). | 30 renders byte-identical in a native build and one with the Rack's flags. | |
+| `4108a45` | (tool) | `AculyreCpuProbe --callgrind-blocks first:count`: the instruction count of one stretch of callbacks. | | |
 
 ## Keys above the top string
 
 A string's two planes end at slightly different places: the plane along
-the top is one string diameter longer than the plane normal to it, which
-is what makes a string's decay two-stage. A key above the top string is
+the top is one string diameter longer than the plane normal to it (the
+end correction at the pins). A key above the top string is
 that string played at the key's pitch, designed as a shorter string of the
 same wire. The diameter was added to that imagined length, so the split
 between the planes grew as the key rose: one diameter is 0.17% of the
 steel harp's 132 mm top string and 0.47% of the 49 mm its C8 is designed
 at.
 
-Designed pitch of the plane normal to the top against the key's pitch
-(`contactReport`, tension glide off), the worst key above the top string:
+The two planes' designed pitches against the key's pitch
+(`contactReport`, tension glide off): the further of the two, in cents, at
+the worst key above the top string:
 
 | | Top string's own split | 0.13.4 | 0.13.5 |
 | --- | --- | --- | --- |
@@ -52,12 +56,14 @@ velocity 80, microphones, 48 kHz), keys above the top string:
 | Gut lyre | -0.2 to +15.0 | -0.5 to +7.0 |
 
 Every key up to the top string reads the same before and after to 0.001
-cent, and the keys below the lowest string are untouched: a longer string
-of the same wire has a smaller split than the string's, which is the
-instrument's. What remains above the top string is the string's own split
-and the soundbox's pull where a key falls on one of its modes (the gut
-lyre's F#5 and G5 at +6.6 and +7.0, the steel harp's A6 at -3.6), which the
-strings of the instrument show as well.
+cent. The keys below the lowest string are untouched: their longer
+imagined string has a smaller split than the string's own, never a larger
+one. What remains above the top string is the string's own split and a
+few readings beyond it. The gut lyre's F#5 and G5 (+6.6 and +7.0; +7.0 and
++8.3 before) stand beside its soundbox's strongest mode at the bar, 781 Hz
+(G5 is 784 Hz), as its own strings beside a mode do. The steel harp's A6
+read +5.0 before and -3.6 after, for a design that moved by 0.4 cent: two
+close components in the window, not followed further in this pass.
 
 From 0.13.5 the correction added to a key above the top string is the
 string's diameter scaled by the key's length over the string's, so the two
@@ -125,5 +131,6 @@ mechanism, a re-voicing or a change to a file this repository only copies.
 
 ## Tests run
 
-GCC 13.3 and Clang 18.1, Release, 48 kHz unless a suite sets its own:
-all 17 CTest tests (14 `unit`, 3 `audio`) and `AculyreDSPCxx17`.
+GCC 13.3 and Clang 18.1, Release: all 17 CTest tests (14 `unit`, 3
+`audio`) pass with each, and `AculyreDSPCxx17` builds with each without a
+warning.

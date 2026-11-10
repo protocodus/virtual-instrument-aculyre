@@ -1,7 +1,8 @@
 // The instrument as a front end plays it. All three presets are designed
 // once in prepare() (not real time), so choosing an instrument is a
 // real-time switch: the old one fades out over 20 ms while the new one
-// starts. The Rack adapter plays through it, and so would a plug-in.
+// starts, and one switched back to within its fade comes back from where
+// the fade stands. The Rack adapter plays through it, and so would a plug-in.
 //
 // Oversampling runs the instruments at 2 or 4 times the host rate and
 // filters the result back down; it changes how finely the strings, bridge
@@ -102,6 +103,8 @@ private:
     [[nodiscard]] bool stageResting() const noexcept { return stageSilence_ > stage_.DelaySamples(); }
 
     void render(float* left, float* right, int numSamples) noexcept;
+    // Only the active instrument sounds, at full level.
+    void endFades() noexcept;
     void downsample(float& left,float& right) const noexcept;
 
     std::array<std::unique_ptr<AculyreEngine>, instrumentCount> engines_;
@@ -119,8 +122,11 @@ private:
     int factor_ { 1 };
     PlayingControls controls_ {};
     int active_ { 0 };
-    int fading_ { -1 };
-    int fadeRemaining_ { 0 };
+    // Each instrument's level in steps of the fade, 0 to fadeLength_ (engine
+    // samples); fading_ while any but the active one's is above 0 or the
+    // active one's is short of full.
+    std::array<int, instrumentCount> level_ {};
+    bool fading_ { false };
     int fadeLength_ { 960 };
 };
 

@@ -89,6 +89,10 @@ if(BUILD_TESTING)
     target_link_libraries(AculyreOwnershipTests PRIVATE AculyreDSP)
     add_test(NAME Aculyre.Ownership COMMAND AculyreOwnershipTests)
     set_tests_properties(Aculyre.Ownership PROPERTIES LABELS unit)
+    add_executable(AculyreInstrumentSwitchTests Tests/InstrumentSwitchTests.cpp)
+    target_link_libraries(AculyreInstrumentSwitchTests PRIVATE AculyreDSP)
+    add_test(NAME Aculyre.InstrumentSwitch COMMAND AculyreInstrumentSwitchTests)
+    set_tests_properties(Aculyre.InstrumentSwitch PROPERTIES LABELS unit)
     foreach(preset IN ITEMS 0 1 2)
         add_test(NAME Aculyre.Keyboard${preset}
                  COMMAND AculyreKeyboardSurvey ${preset} 64 0

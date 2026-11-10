@@ -11,6 +11,7 @@ Performer::Performer()
     for (auto& engine : engines_)
         engine = std::make_unique<AculyreEngine>();
     controls_ = defaultControls(0);
+    endFades();
 }
 
 Performer::~Performer() = default;
@@ -49,8 +50,15 @@ void Performer::prepare(double sampleRate, int oversampling)
         engine.reset();
     }
     fadeLength_ = std::max(1, static_cast<int>(0.02 * engines_[0]->sampleRate()));
-    fading_ = -1;
+    endFades();
     silentPushes_ = 0;
+}
+
+void Performer::endFades() noexcept
+{
+    level_.fill(0);
+    level_[static_cast<std::size_t>(active_)] = fadeLength_;
+    fading_ = false;
 }
 
 void Performer::reset() noexcept
@@ -63,7 +71,7 @@ void Performer::reset() noexcept
     alignmentCursor_ = 0;
     stage_.Reset();
     stageSilence_ = stage_.DelaySamples() + 1;
-    fading_ = -1;
+    endFades();
     silentPushes_ = 0;
 }
 
@@ -72,12 +80,14 @@ void Performer::setInstrument(int index) noexcept
     index = std::clamp(index, 0, instrumentCount - 1);
     if (index == active_)
         return;
-    // A second switch within the fade cuts the tail that was fading.
-    if (fading_ >= 0 && fading_ != index)
-        engines_[static_cast<std::size_t>(fading_)]->reset();
-    fading_ = active_;
+    // A silent instrument starts at once. One still fading from a moment
+    // ago (a control turned there and back) comes back from where its fade
+    // stands, and whatever else is fading goes on fading: until 0.13.5 a
+    // second switch within the fade cut the first tail off in one sample.
+    if (level_[static_cast<std::size_t>(index)] == 0)
+        level_[static_cast<std::size_t>(index)] = fadeLength_;
     active_ = index;
-    fadeRemaining_ = fadeLength_;
+    fading_ = true;
 }
 
 void Performer::setControls(const PlayingControls& controls) noexcept
@@ -111,7 +121,7 @@ void Performer::process(float* left, float* right, int numSamples) noexcept
         finish(left, right, numSamples);
         return;
     }
-    if (fading_ < 0 && engines_[static_cast<std::size_t>(active_)]->idle()
+    if (!fading_ && engines_[static_cast<std::size_t>(active_)]->idle()
         && silentPushes_ >= decimators_[0].length + alignmentSamples_ && stageResting())
     {
         std::fill(left, left + numSamples, 0.0f);
@@ -122,7 +132,7 @@ void Performer::process(float* left, float* right, int numSamples) noexcept
     for (int done = 0; done < numSamples;)
     {
         const int count = std::min(chunk, numSamples - done);
-        const bool silent = fading_ < 0 && engines_[static_cast<std::size_t>(active_)]->idle();
+        const bool silent = !fading_ && engines_[static_cast<std::size_t>(active_)]->idle();
         render(fast_[0].data(), fast_[1].data(), count * factor_);
         silentPushes_ = silent ? silentPushes_ + count * factor_ : 0;
         if (alignmentSamples_ > 0)
@@ -192,29 +202,48 @@ void Performer::finish(float* left, float* right, int numSamples) noexcept
 
 void Performer::render(float* left, float* right, int numSamples) noexcept
 {
-    engines_[static_cast<std::size_t>(active_)]->process(left, right, numSamples);
-    int done = 0;
-    while (fading_ >= 0 && done < numSamples)
+    const auto active = static_cast<std::size_t>(active_);
+    if (level_[active] == fadeLength_)
+        engines_[active]->process(left, right, numSamples);
+    if (!fading_)
+        return;
+    // An instrument's share of the output is its level over the fade's
+    // length: the active one's rises a step a sample, the others' fall.
+    const auto mix = [&] (std::size_t index, int step)
     {
-        constexpr int chunk = 64;
-        float fadeLeft[chunk], fadeRight[chunk];
-        const int count = std::min({ chunk, numSamples - done, fadeRemaining_ });
-        AculyreEngine& fading = *engines_[static_cast<std::size_t>(fading_)];
-        fading.process(fadeLeft, fadeRight, count);
-        for (int i = 0; i < count; ++i)
+        int& level = level_[index];
+        for (int done = 0; done < numSamples && (step > 0 || level > 0);)
         {
-            const float gain = static_cast<float>(fadeRemaining_ - i) / static_cast<float>(fadeLength_);
-            left[done + i] += gain * fadeLeft[i];
-            right[done + i] += gain * fadeRight[i];
+            constexpr int chunk = 64;
+            float fadeLeft[chunk], fadeRight[chunk];
+            const int count = std::min({ chunk, numSamples - done, step > 0 ? chunk : level });
+            engines_[index]->process(fadeLeft, fadeRight, count);
+            for (int i = 0; i < count; ++i)
+            {
+                const float gain = static_cast<float>(level) / static_cast<float>(fadeLength_);
+                left[done + i] += gain * fadeLeft[i];
+                right[done + i] += gain * fadeRight[i];
+                level = std::min(level + step, fadeLength_);
+            }
+            done += count;
         }
-        done += count;
-        fadeRemaining_ -= count;
-        if (fadeRemaining_ <= 0)
-        {
-            fading.reset();
-            fading_ = -1;
-        }
+        // A faded instrument is reset: its strings do not ring on unheard.
+        if (step < 0 && level == 0)
+            engines_[index]->reset();
+    };
+    if (level_[active] < fadeLength_)
+    {
+        std::fill(left, left + numSamples, 0.0f);
+        std::fill(right, right + numSamples, 0.0f);
+        mix(active, 1);
     }
+    fading_ = level_[active] < fadeLength_;
+    for (std::size_t index = 0; index < level_.size(); ++index)
+        if (index != active && level_[index] > 0)
+        {
+            mix(index, -1);
+            fading_ = fading_ || level_[index] > 0;
+        }
 }
 
 void Performer::Decimator::design(int factor) noexcept

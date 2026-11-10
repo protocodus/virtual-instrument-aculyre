@@ -58,8 +58,13 @@ struct StringContact
             g[static_cast<std::size_t>(offset)] = sign * (1.0 - fraction);
             g[static_cast<std::size_t>(offset + 1)] = sign * fraction;
         };
-        tap(outgoingAge, 0, -1.0);
-        tap(returningAge, 2, 1.0);
+        // apply() reads the taps only under a hand; with none on the string
+        // they were a third of this call, on every loop every control period.
+        if (share > 0.0)
+        {
+            tap(outgoingAge, 0, -1.0);
+            tap(returningAge, 2, 1.0);
+        }
     }
 
     void apply(float* line, int mask, int write) const noexcept

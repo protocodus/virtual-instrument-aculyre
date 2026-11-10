@@ -12,6 +12,10 @@
 // The stress scenario is the portfolio's stress phrase (standard U12), which
 // judges 256-frame blocks on their fastest of three repeats: block256_percent
 // is one run's, four callbacks a block, as a share of the block's period.
+// --callgrind-blocks first:count (ACULYRE_PROFILE_CALLGRIND builds) collects
+// instructions over those callbacks alone: 748:4 with --scenario stress
+// --seconds 1.1 is the 256-frame block in which the chord of eight is struck
+// again on strings still sounding, the phrase's dearest.
 #include "DSP/AculyrePerformer.h"
 
 #include <algorithm>
@@ -76,6 +80,7 @@ struct Options
     int preset = -1, factor = 0;
     double seconds = 2.0;
     std::string scenario = "dense", samples, csv, patchDirectory;
+    int profileFirst = 0, profileCount = -1;  // every callback
 };
 
 enum class Scenario { Dense, Gestures, Repluck, Idle, Factory, Burst, Cold, Stress };
@@ -107,7 +112,7 @@ Options options(int argc, char** argv)
             std::cout << "AculyreCpuProbe [--preset all|0|1|2] [--oversampling all|1|2|4] "
                          "[--seconds 0.1..30] [--scenario dense|gestures|repluck|idle|factory|burst|cold|stress|all] "
                          "[--patch-dir factory-repatch-directory] "
-                         "[--samples output.f32] [--blocks-csv output.csv]\n";
+                         "[--samples output.f32] [--blocks-csv output.csv] [--callgrind-blocks first:count]\n";
             std::exit(0);
         }
         if (++i == argc)
@@ -136,6 +141,12 @@ Options options(int argc, char** argv)
         else if (arg == "--samples") out.samples = value;
         else if (arg == "--blocks-csv") out.csv = value;
         else if (arg == "--patch-dir") out.patchDirectory = value;
+        else if (arg == "--callgrind-blocks")
+        {
+            if (std::sscanf(value.c_str(), "%d:%d", &out.profileFirst, &out.profileCount) != 2
+                || out.profileFirst < 0 || out.profileCount < 1)
+                throw std::runtime_error("callgrind-blocks must be first:count");
+        }
         else throw std::runtime_error("unknown option " + arg);
     }
     if (out.scenario != "dense" && out.scenario != "gestures" && out.scenario != "repluck"
@@ -345,11 +356,23 @@ void run(aculyre::Performer& performer, const Options& opt, int preset, int fact
 #if defined(ACULYRE_USE_CALLGRIND)
     // Setup, warm-up, allocations, analysis and export are outside the
     // instruction collection just as they are outside native timing.
-    CALLGRIND_START_INSTRUMENTATION;
-    CALLGRIND_ZERO_STATS;
+    if (opt.profileCount < 0)
+    {
+        CALLGRIND_START_INSTRUMENTATION;
+        CALLGRIND_ZERO_STATS;
+    }
 #endif
     for (int block = 0; block < blocks; ++block)
     {
+#if defined(ACULYRE_USE_CALLGRIND)
+        if (opt.profileCount > 0 && block == opt.profileFirst)
+        {
+            CALLGRIND_START_INSTRUMENTATION;
+            CALLGRIND_ZERO_STATS;
+        }
+        if (opt.profileCount > 0 && block == opt.profileFirst + opt.profileCount)
+            CALLGRIND_STOP_INSTRUMENTATION;
+#endif
         const auto wallStart = wallTime();
         const auto cpuStart = threadTime();
         dispatch(performer, controls, spec, block, scenario);

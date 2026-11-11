@@ -16,7 +16,10 @@ Tools/write_preset_midi.py's Performance, with fixed seeds:
   sit a touch behind the tune, and the jigs lilt: the middle quaver of each
   three comes late and light;
 - velocity: every part follows the phrase's rise and fall, the tune leans on
-  the pulse and plays its high notes stronger, and no two notes land alike.
+  the bar and the pulse and plays its high notes stronger, and no two notes
+  land alike;
+- ornament: the jigs' repeated notes are cut with a grace note from above, as
+  Irish players part them, and the minuet's cadence notes take one too.
 
 The tunes are
 public domain and transposed whole to fit the lyres; the other parts are
@@ -24,19 +27,21 @@ written here.
 
 - Minuet in G, BWV Anh. 114 (Christian Petzold, Notebook for Anna Magdalena
   Bach, 1725), the first strain twice: the melody on the nylon lyre harp (its
-  F sharps take the sharping levers), Petzold's bass on the gut lyre, the
-  harmony broken on the steel lyre harp, and the second time the melody an
-  octave higher on the nail-plucked harp.
+  F sharps take the sharping levers) and Petzold's bass on the gut lyre begin
+  alone; the steel lyre harp joins with the harmony, held and then broken
+  across the bar; the nail-plucked harp takes the melody an octave higher for
+  the last eight bars.
 - The Kesh, Irish jig (traditional; The Session, tune 55, setting 1), in G:
   the tune an octave down on the gut lyre, alone the first time; then a
   damped, picked steel harp keeps the jig's bass and off-beat chords, the
   nylon harp joins the tune at its own octave, and the nail harp rings chord
-  notes above the last time through.
+  notes above the last time through; the bass runs down into each new part.
 - The Butterfly, Irish slip jig (traditional; The Session, tune 10, setting 1),
   a fourth up from E minor to A minor, so the lyre harps' C major strings play
   it without levers: the tune on the steel lyre harp, broken chords on the
   nylon harp, a picked gut lyre marking the pulse, and on each part's repeat
-  the nail harp a chord note under the tune.
+  the nail harp a chord note under the tune; the third part first falls back
+  to the tune over held chords, then everyone plays it out.
 """
 import collections
 import math
@@ -103,19 +108,35 @@ def players(tempo, timing, seed, phrase, swell, lilt, *specs):
             for k, spec in enumerate(specs)]
 
 
-def melody(p, start, notes, loud, accent, lean=0.012, shift=0):
-    """(name, length in beats) from `start`; the first of each group of
-    `accent` beats a little stronger, as a player leans on the pulse, and the
-    bar's high notes stronger than its low ones."""
-    pitches = [n(name) for name, _ in notes if name]
+G_MAJOR, C_MAJOR = (7, 9, 11, 0, 2, 4, 6), (0, 2, 4, 5, 7, 9, 11)
+
+
+def melody(p, start, notes, loud, bar, lean=0.012, shift=0, scale=G_MAJOR, cuts=0.0):
+    """(name, length in beats) from `start`, in bars of `bar` beats: the bar's
+    first note strongest, the first of each other three beats a little
+    stronger, as a player leans on the pulse, and the bar's high notes
+    stronger than its low ones. A name written "~X" takes a grace note, the
+    scale's next note above, just before it (the tune's own octave only);
+    with `cuts` (seconds) so does every note that repeats the one before, as
+    an Irish player cuts a repeated note to part it from the last. A cut that
+    would need a sharping lever (F sharp) is left out."""
+    pitches = [n(name.lstrip("~")) for name, _ in notes if name]
     centre = sum(pitches) / max(1, len(pitches))
-    at = start
+    at, before = start, None
     for name, length in notes:
         if name:
-            strong = abs(at / accent - round(at / accent)) < 1e-6
-            contour = max(-4.0, min(5.0, 0.5 * (n(name) - centre)))
-            p.play(p.at(at, lean=lean), length * (0.96 if length > 1 or not p.lilt else 0.9), at, n(name) + shift,
-                   loud + (6 if strong else 0) + contour)
+            pitch = n(name.lstrip("~")) + shift
+            lead = 3 if abs(at % bar) < 1e-6 else 0
+            strong = abs(at / 3 - round(at / 3)) < 1e-6
+            contour = max(-4.0, min(5.0, 0.5 * (pitch - shift - centre)))
+            onset = p.at(at, lean=lean)
+            grace = 0.07 if name.startswith("~") and not shift else cuts if pitch == before else 0.0
+            above = next(x for x in range(pitch + 1, pitch + 4) if x % 12 in scale)
+            if grace and above % 12 != 6:
+                p.message(onset - grace, (0x90, above, p.velocity(loud - 12)))
+                p.message(onset - 0.006, (0x80, above, 0), 0)
+            p.play(onset, length * (0.96 if length > 1 or not p.lilt else 0.9), at, pitch, loud + (4 + lead if strong else 0) + contour)
+            before = pitch
         at += length
     return at
 
@@ -128,9 +149,9 @@ def roll(p, beat, names, held, loud, spread=0.03, lean=-0.01):
 def minuet():
     # (name, quarters) per bar, the first strain; bars 9-14 repeat 1-6
     head = [[("D5", 1), ("G4", .5), ("A4", .5), ("B4", .5), ("C5", .5)], [("D5", 1), ("G4", 1), ("G4", 1)],
-            [("E5", 1), ("C5", .5), ("D5", .5), ("E5", .5), ("F#5", .5)], [("G5", 1), ("G4", 1), ("G4", 1)],
+            [("E5", 1), ("C5", .5), ("D5", .5), ("E5", .5), ("F#5", .5)], [("~G5", 1), ("G4", 1), ("G4", 1)],
             [("C5", 1), ("D5", .5), ("C5", .5), ("B4", .5), ("A4", .5)], [("B4", 1), ("C5", .5), ("B4", .5), ("A4", .5), ("G4", .5)]]
-    tune = head + [[("F#4", 1), ("G4", .5), ("A4", .5), ("B4", .5), ("G4", .5)], [("A4", 3)]] \
+    tune = head + [[("F#4", 1), ("G4", .5), ("A4", .5), ("B4", .5), ("G4", .5)], [("~A4", 3)]] \
         + head + [[("A4", 1), ("B4", .5), ("A4", .5), ("G4", .5), ("F#4", .5)]]
     bass = [[("G3", 2), ("A3", 1)], [("B3", 3)], [("C4", 3)], [("B3", 3)], [("A3", 3)], [("G3", 3)],
             [("D4", 1), ("B3", 1), ("G3", 1)], [("D4", 1), ("D3", .5), ("C4", .5), ("B3", .5), ("A3", .5)],
@@ -144,7 +165,7 @@ def minuet():
     # a dance at an easy walk: each eight bars swell and give way at their cadence, the last broadly
     tempo = wobble(breathe(116, [(s + 24 * h, 24) for s, _ in passes for h in range(2)][:-1] + [(72, 24)], swell=0.05, settle=0.11, last=0.34),
                    3, 0.012, 1725)
-    parts = players(tempo, 0.009, 1725, 24, 9.0, 0.0, ("melody", "Nylon Lyre Harp", -0.12, 0.0), ("bass", "Gut Lyre", 0.55, -4.0),
+    parts = players(tempo, 0.009, 1725, 24, 9.0, 0.0, ("melody", "Nylon Lyre Harp", -0.06, 0.0), ("bass", "Gut Lyre", 0.55, -6.0),
                     ("harmony", "Lyre Harp", -0.60, -8.0), ("octave", "Bright Nail Harp", 0.25, -10.0))
     lead, low, mid, high = (part.p for part in parts)
     for start, loud in passes:
@@ -153,22 +174,25 @@ def minuet():
         at = start
         for bar in tune:
             at = melody(lead, at, bar, loud, 3)
-        lead.play(lead.at(at, lean=0.012), held, at, n("G4"), loud + 6)
+        melody(lead, at, [("~G4", held)], loud, 3)
         at = start
         for bar in bass:
             at = melody(low, at, bar, loud - 6, 3, lean=-0.008)
         roll(low, at, ["G2", "G3", "D4"] if last else ["G3", "D4"], held, loud - 8, 0.06 if last else 0.03)
+        # The consort gathers: melody and bass begin alone, the harmony joins for the
+        # strain's second half, breaks its chords across the bar the second time,
+        # and the high harp takes the melody up an octave for the last eight bars.
         for bar, notes in enumerate(inner):
             beat = start + 3 * bar
-            if last:   # the second time the chord is broken across the bar and left to ring
+            if last:
                 for k, name in enumerate(notes):
                     mid.play(mid.at(beat + k, lean=-0.004), 2.9 - k, beat + k, n(name), loud - 14 + 2 * k)
-            else:
+            elif bar >= 8:
                 roll(mid, beat, notes[:2], 2.8, loud - 12)
         roll(mid, at, G, held, loud - 12, 0.07 if last else 0.03, lean=0.02)
         if last:
-            at = start
-            for bar in tune:
+            at = start + 24
+            for bar in tune[8:]:
                 at = melody(high, at, bar, loud - 6, 3, lean=0.016, shift=12)
             roll(high, at, ["G5", "B5", "D6"], held, loud - 8, 0.07, lean=0.2)
     return parts
@@ -196,18 +220,18 @@ def kesh():
     form = [(A, chordsA, 74), (A, chordsA, 80), (B, chordsB, 84), (B, chordsB, 88)]
     # a session's jig: steady in the bar, 4 % faster by the end, a breath at each turn of the tune
     tempo = wobble(push(breathe(306, [(48 * i, 48) for i in range(4)], swell=0.025, settle=0.03, last=0.16), 0.04), 6, 0.008, 55)
-    parts = players(tempo, 0.007, 55, 24, 7.0, 0.09, ("melody", "Gut Lyre", 0.05, 0.0), ("backing", "Damped Steel Pick", -0.58, -5.0),
+    parts = players(tempo, 0.007, 55, 24, 7.0, 0.09, ("melody", "Gut Lyre", -0.02, 0.0), ("backing", "Damped Steel Pick", -0.58, -5.0),
                     ("octave", "Nylon Lyre Harp", 0.55, -4.0), ("bells", "Bright Nail Harp", 0.30, -11.0))
     lead, back, upper, bells = (part.p for part in parts)
     for index, (part, chords, loud) in enumerate(form):
         start = 48 * index
         at = start
         for bar in part:
-            at = melody(lead, at, bar, loud, 3)
+            at = melody(lead, at, bar, loud, 6, cuts=0.045)
         if index >= 2:
             at = start
             for bar in part:
-                at = melody(upper, at, bar, loud - 4, 3, lean=0.014, shift=12)
+                at = melody(upper, at, bar, loud - 4, 6, lean=0.014, shift=12, cuts=0.045)
         for bar, pair in enumerate(chords):
             for half, chord in enumerate(pair.split()):
                 beat = start + 6 * bar + 3 * half
@@ -221,6 +245,10 @@ def kesh():
                 if final:   # the close: G rolled up from the bass and left to ring
                     roll(back, beat, ["G2", "D3", "G3", "B3", "D4"], 5.0, loud - 4, 0.035)
                     roll(bells, beat, ["G5", "D6"], 5.0, loud - 10, 0.08, lean=0.15)
+                    continue
+                if bar == 7 and half == 1:   # the turn of the tune: the bass runs down to the next part's G
+                    for k, name in enumerate(["G3", "E3", "D3"]):
+                        back.play(back.at(beat + k, lean=-0.006), 0.9, beat + k, n(name), loud - 4 + 3 * k)
                     continue
                 back.play(back.at(beat, lean=-0.008), 1.6, beat, n(boom[chord][half]), loud + (2 if half == 0 else -3))
                 roll(back, beat + 2, chop[chord], 0.7, loud - 10, 0.008, lean=0.0)
@@ -245,18 +273,19 @@ def butterfly():
     # the gut lyre's pulse, a low note on the beat and one above it before the
     # next; F's are its third and fifth, the lyre's strings having F sharp
     pulse = {"Am": ("A3", "E4"), "C": ("C4", "G4"), "G": ("G3", "D4"), "Em": ("E3", "B3"), "F": ("A3", "C4")}
-    form = [("A", A, 78), ("A", A, 82), ("B", B, 86), ("B", B, 90), ("C", C, 88), ("C", C, 94)]
+    # the third part falls back to the tune over held chords, then everyone plays it out
+    form = [("A", A, 78), ("A", A, 82), ("B", B, 86), ("B", B, 91), ("C", C, 80), ("C", C, 96)]
     # a slip jig that lifts through its second part and broadens into the close
     tempo = wobble(push(breathe(336, [(36 * i, 36) for i in range(len(form))] + [(36 * len(form), 9)], swell=0.03, settle=0.04, last=0.5), 0.03),
                    9, 0.008, 10)
-    parts = players(tempo, 0.006, 10, 18, 7.0, 0.07, ("melody", "Lyre Harp", -0.10, 0.0), ("chords", "Nylon Lyre Harp", 0.55, -5.0),
-                    ("pulse", "Picked Gut Lyre", -0.60, -7.0), ("under", "Bright Nail Harp", 0.25, -8.0))
+    parts = players(tempo, 0.006, 10, 18, 7.0, 0.07, ("melody", "Lyre Harp", -0.10, 0.0), ("chords", "Nylon Lyre Harp", 0.55, -7.0),
+                    ("pulse", "Picked Gut Lyre", -0.60, -9.0), ("under", "Bright Nail Harp", 0.25, -11.0))
     lead, harp, gut, under = (part.p for part in parts)
     for index, (name, part, loud) in enumerate(form):
         start = 36 * index
         at = start
         for bar, notes in enumerate(part):
-            at = melody(lead, at, notes, loud, 3)
+            at = melody(lead, at, notes, loud, 9, scale=C_MAJOR, cuts=0.045)
             if index % 2:   # the repeat: under each note of the tune, the bar's nearest chord note a third or more below
                 beat = start + 9 * bar
                 for pitch, length in notes:
@@ -271,6 +300,10 @@ def butterfly():
                 # A and G are taken an octave up, as its lowest string is B2.
                 r = n(root[chord]) + (12 if root[chord] in ("A2", "G2") else 0)
                 tenth = r + (15 if chord in ("Am", "Em") else 16)
+                if index == 4:   # held: one rolled chord where the harmony changes
+                    if third == 0 or chord != chords.split()[third - 1]:
+                        roll(harp, beat, [r, r + 7, tenth], 2.9, loud - 8, 0.03)
+                    continue
                 for k, (pitch, quiet) in enumerate([(r, 10), (r + 7, 16), (tenth, 14)]):
                     harp.play(harp.at(beat + k, lean=-0.006), 2.9 - k, beat + k, pitch, loud - quiet)
                 if index:
@@ -285,7 +318,7 @@ def butterfly():
         lead.message(t0 + 0.022 * k, (0x90, pitch, max(40, 70 - k)))
         lead.message(t0 + 0.022 * k + 1.2, (0x80, pitch, 0), 0)
     for k, name in enumerate(["A3", "E4", "A4", "C5", "E5", "A5", "C6", "E6"]):
-        lead.play(lead.at(end, lean=0.33 + 0.07 * k, scale=0.4), 8.0, end, n(name), 92 - 3 * k)
+        lead.play(lead.at(end, lean=0.33 + 0.07 * k, scale=0.4), 8.0, end, n(name), 86 - 3 * k)
     roll(harp, end, ["A3", "E4", "C5"], 8.0, 80, 0.09, lean=0.3)
     roll(gut, end, ["A3", "E4"], 8.0, 80, 0.09, lean=0.34)
     roll(under, end, ["A5", "E6"], 8.0, 74, 0.1, lean=0.7)

@@ -63,7 +63,7 @@ function portrait(file, kicker, hook1, hook2) {
   if (hook2) line(ctx, hook2, MX, 726, '72px Bask', '#f6ead6', 'center', ['rgba(255,200,140,0.3)', 26], 10);
   fs.writeFileSync(`${out}/${file}.png`, cv.toBuffer('image/png'));
 }
-landscape('promo-thumb-A', ctx => hero(ctx, heroL, 1.0), 'THREE LYRES · THREE DANCES', 'No samples.', 'Just strings.');
+landscape('promo-thumb-A', ctx => hero(ctx, heroL, 1.0), 'FOUR LYRES · THREE DANCES', 'No samples.', 'Just strings.');
 landscape('promo-thumb-B', ctx => hero(ctx, heroL, 1.0), 'A LYRE HARP, PHYSICALLY MODELLED', '27 strings,', 'all computed.');
 landscape('promo-thumb-C', ctx => {
   // the film's own frame: its strings, the plucked gold and the sympathetic teal
@@ -74,6 +74,6 @@ landscape('promo-thumb-C', ctx => {
   const b = ctx.createLinearGradient(0, 925, 0, 960); b.addColorStop(0, 'rgba(15,8,4,0)'); b.addColorStop(1, 'rgba(15,8,4,1)');
   ctx.fillStyle = b; ctx.fillRect(0, 925, 1920, 155);
 }, 'NO SAMPLES · JUST STRINGS', 'Strings that', 'answer back.', '#7fd6c8');
-portrait('short-minuet-cover', 'NO SAMPLES · JUST STRINGS', 'Minuet in G', 'on a nylon lyre harp');
-portrait('short-kesh-cover', 'NO SAMPLES · JUST STRINGS', 'The Kesh', 'a jig on gut strings');
-portrait('short-butterfly-cover', 'NO SAMPLES · JUST STRINGS', 'The Butterfly', 'on 27 steel strings');
+portrait('short-minuet-cover', 'NO SAMPLES · JUST STRINGS', 'Minuet in G', 'for four lyres');
+portrait('short-kesh-cover', 'NO SAMPLES · JUST STRINGS', 'The Kesh', 'a jig for four lyres');
+portrait('short-butterfly-cover', 'NO SAMPLES · JUST STRINGS', 'The Butterfly', 'a slip jig for four lyres');

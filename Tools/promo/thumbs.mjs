@@ -67,7 +67,7 @@ landscape('promo-thumb-A', ctx => hero(ctx, heroL, 1.0), 'THREE LYRES · THREE D
 landscape('promo-thumb-B', ctx => hero(ctx, heroL, 1.0), 'A LYRE HARP, PHYSICALLY MODELLED', '27 strings,', 'all computed.');
 landscape('promo-thumb-C', ctx => {
   // the film's own frame: its strings, the plucked gold and the sympathetic teal
-  // (its words and progress bar covered: the strings start at x 960, end at y 900)
+  // (its words and progress bar covered: the strings start at x 960, end at y 920)
   ctx.drawImage(frame, 0, 0, 1920, 1080);
   const f = ctx.createLinearGradient(0, 0, 1000, 0); f.addColorStop(0, 'rgba(15,8,4,1)'); f.addColorStop(0.9, 'rgba(15,8,4,1)'); f.addColorStop(1, 'rgba(15,8,4,0)');
   ctx.fillStyle = f; ctx.fillRect(0, 0, 1000, 1080);

@@ -23,7 +23,7 @@
 namespace
 {
 
-// The three instruments' own factory patches, in the panel's units, copied
+// The factory patches the promo's players use, in the panel's units, copied
 // from reason-rack-extensions Examples/Aculyre/Design/generate_patches.py and
 // mapped as Aculyre.cpp's publish() maps the panel.
 struct Patch { int instrument, technique; bool levers; double position, angle, release, mute, sympathy, room, width, volumeDb, piezo; };
@@ -31,6 +31,9 @@ const std::map<std::string, Patch> patches {
     { "Lyre Harp",       { 0, 0, true, 27, 30, 0.6, 0.0, 1.0, 1.0, 100, 2.0, 50 } },
     { "Nylon Lyre Harp", { 1, 0, true, 27, 30, 0.6, 0.0, 1.0, 1.0, 100, 1.0, 50 } },
     { "Gut Lyre",        { 2, 0, true, 11, 32.9, 0.7, 0.0, 1.0, 1.0, 100, 3.6, 50 } },   // asin(sqrt 0.3)
+    { "Bright Nail Harp",  { 0, 1, true, 19, 35, 0.8, 0.0, 1.0, 0.30, 110, -0.6, 0 } },
+    { "Picked Gut Lyre",   { 2, 2, true, 50, 25, 0.4, 0.15, 0.8, 0.25, 100, -1.0, 0 } },
+    { "Damped Steel Pick", { 0, 2, true, 50, 50, 0.2, 0.35, 0.3, 0.20, 90, -0.1, 0 } },
 };
 
 aculyre::PlayingControls controlsOf(const Patch& p)

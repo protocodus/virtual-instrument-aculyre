@@ -1,7 +1,8 @@
 // Aculyre promo: three pieces in one Full HD film, after Respira's promo.mjs.
-// The instrument's own strings are the picture: one horizontal line per
-// string of the lyre playing, bass at the bottom; the performed notes ride in
-// along their string from the right and are plucked at the pluck line. Frames
+// The instruments' own strings are the picture: each player of the consort has
+// a band, one horizontal line per string of its lyre, bass at the bottom; the
+// performed notes ride in along their string from the right and are plucked at
+// the pluck line. Frames
 // are a deterministic function of time and the timeline (notes from the
 // performance; each string's energy and state from the engine's read-only
 // 60 Hz observers, AculyreEngine::stringActivity). Brightness follows the
@@ -43,17 +44,19 @@ SEG.forEach((s, i) => {
   s.in = i ? (s.start + SEG[i - 1].end) / 2 : s.start;
   s.out = i < SEG.length - 1 ? (s.end + SEG[i + 1].start) / 2 : Infinity;
   const span = s.end - s.start;
-  s.shown = s.notes.filter(n => n[0] >= s.src0 - 0.02 && n[0] <= s.src0 + span);
-  s.last = Math.max(...s.shown.map(n => n[1])) - s.src0 + s.start;   // promo time of the last release
-  // the string each note plucks: its own, or with the levers the one a semitone below
-  s.row = p => { const k = s.strings.indexOf(p); if (k >= 0) return [k, false];
-    const j = s.strings.indexOf(p - 1); if (j >= 0) return [j, true];
-    return [p < s.strings[0] ? 0 : s.strings.length - 1, false]; };
+  for (const q of s.players) {
+    q.shown = q.notes.filter(n => n[0] >= s.src0 - 0.02 && n[0] <= s.src0 + span);
+    // the string each note plucks: its own, or with the levers the one a semitone below
+    q.row = p => { const k = q.strings.indexOf(p); if (k >= 0) return [k, false];
+      const j = q.strings.indexOf(p - 1); if (j >= 0) return [j, true];
+      return [p < q.strings[0] ? 0 : q.strings.length - 1, false]; };
+  }
+  s.last = Math.max(...s.players.flatMap(q => q.shown.map(n => n[1]))) - s.src0 + s.start;   // promo time of the last release
 });
 const segAlpha = (s, t) => ease((t - s.in) / XF) * ease((s.out - t) / XF);
 const final = SEG[SEG.length - 1], OUT0 = final.last + 0.2;   // the end card rises as the last chord rings
 // the string field: x0 the bridge, x1 the tuning pins; the pluck line at the patch's 27 % from the bridge
-const R = P ? {x0: 40, x1: 1040, y0: 860, y1: 1640} : {x0: 960, x1: 1784, y0: 160, y1: 900};
+const R = P ? {x0: 40, x1: 1040, y0: 860, y1: 1640} : {x0: 960, x1: 1784, y0: 140, y1: 920};
 R.play = R.x0 + 0.27 * (R.x1 - R.x0);
 const PPS = P ? 190 : 175;   // pixels per second of the notes riding in
 
@@ -67,52 +70,59 @@ function round(ctx, x, y, w, h, r) {
   r = Math.min(r, h / 2, w / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r);
   ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
-const frameAt = (s, u) => clamp(Math.round(u * 60) - 1, 0, s.energy.length - 1);
+const frameAt = (q, u) => clamp(Math.round(u * 60) - 1, 0, q.energy.length - 1);
+const HEAD = P ? 14 : 30;   // above each player's band: its name (landscape), or a gap
 
 // one piece's scene at piece time u, drawn at opacity a
 function scene(ctx, s, u, a) {
-  const n = s.strings.length, gap = (R.y1 - R.y0) / n, f = frameAt(s, u);
-  const yOf = k => R.y1 - (k + 0.5) * gap;
+  const total = s.players.reduce((x, q) => x + q.strings.length, 0);
+  const gap = (R.y1 - R.y0 - HEAD * s.players.length) / total;
   ctx.save(); ctx.globalAlpha = a;
-  // the bridge bar and the pin rail, as planar lines
-  ctx.fillStyle = 'rgba(232,196,140,0.30)'; round(ctx, R.x0 - 10, R.y0 - 6, 6, R.y1 - R.y0 + 12, 3); ctx.fill();
-  ctx.fillStyle = 'rgba(232,196,140,0.18)'; round(ctx, R.x1 + 4, R.y0 - 6, 4, R.y1 - R.y0 + 12, 2); ctx.fill();
-  let plucked = 0, sympathy = 0;
-  for (let k = 0; k < n; k++) {
-    const y = yOf(k), dB = s.energy[f][k], st = s.state[f][k];
-    const lit = clamp((dB + 62) / 56);   // -62 dB dark .. -6 dB full
-    if (st > 0 && dB > -60) plucked++; else if (st === 0 && dB > -50) sympathy++;
-    const c = st > 0 ? GOLD : TEAL, base = st > 0 || dB > -50 ? c : [200, 170, 130];
-    const amp = (P ? 15 : 13) * Math.pow(lit, 1.6), ph = Math.sin(2 * Math.PI * (2.1 + (k % 7) * 0.37) * u + k * 2.3);
-    const wid = 1.2 + 1.6 * (1 - k / n);   // the bass strings drawn heavier
-    for (const [lw, al] of [[wid + 6, 0.10 + 0.30 * lit], [wid, 0.22 + 0.78 * lit]]) {
-      ctx.beginPath(); ctx.moveTo(R.x0, y);
-      ctx.quadraticCurveTo((R.x0 + R.x1) / 2, y + 2 * amp * ph, R.x1, y);   // the vertex sits at amp
-      ctx.strokeStyle = rgba(lit > 0.02 ? mixc(base, IVORY, 0.25 * lit) : [150, 120, 92], al); ctx.lineWidth = lw; ctx.stroke();
+  let plucked = 0, sympathy = 0, top = R.y0;
+  for (const q of s.players) {
+    const n = q.strings.length, f = frameAt(q, u), y0 = top + HEAD, y1 = y0 + n * gap;
+    const yOf = k => y1 - (k + 0.5) * gap;
+    top = y1;
+    if (!P) text(ctx, q.patch.toUpperCase(), R.x0, y0 - 9, '17px InterS', 'rgba(234,223,207,0.85)', 'left', null, 1.5);
+    // the bridge bar and the pin rail, as planar lines
+    ctx.fillStyle = 'rgba(232,196,140,0.30)'; round(ctx, R.x0 - 10, y0 - 2, 6, y1 - y0 + 4, 3); ctx.fill();
+    ctx.fillStyle = 'rgba(232,196,140,0.18)'; round(ctx, R.x1 + 4, y0 - 2, 4, y1 - y0 + 4, 2); ctx.fill();
+    for (let k = 0; k < n; k++) {
+      const y = yOf(k), dB = q.energy[f][k], st = q.state[f][k];
+      const lit = clamp((dB + 62) / 56);   // -62 dB dark .. -6 dB full
+      if (st > 0 && dB > -60) plucked++; else if (st === 0 && dB > -50) sympathy++;
+      const c = st > 0 ? GOLD : TEAL, base = st > 0 || dB > -50 ? c : [200, 170, 130];
+      const amp = Math.min(P ? 15 : 13, 1.6 * gap) * Math.pow(lit, 1.6), ph = Math.sin(2 * Math.PI * (2.1 + (k % 7) * 0.37) * u + k * 2.3);
+      const wid = Math.min(1, gap / 9) * (1.2 + 1.6 * (1 - k / n));   // the bass strings drawn heavier
+      for (const [lw, al] of [[wid + Math.min(6, gap * 0.6), 0.10 + 0.30 * lit], [wid, 0.22 + 0.78 * lit]]) {
+        ctx.beginPath(); ctx.moveTo(R.x0, y);
+        ctx.quadraticCurveTo((R.x0 + R.x1) / 2, y + 2 * amp * ph, R.x1, y);   // the vertex sits at amp
+        ctx.strokeStyle = rgba(lit > 0.02 ? mixc(base, IVORY, 0.25 * lit) : [150, 120, 92], al); ctx.lineWidth = lw; ctx.stroke();
+      }
+    }
+    // the notes riding in on their string, plucked at the line
+    const ahead = (R.x1 - R.play) / PPS, barH = clamp(gap * 0.8, 4, 14);
+    for (const nt of q.shown) {
+      const [st, e, p] = nt;
+      if (st > u + ahead || st < u - 0.25) continue;
+      const [k, raised] = q.row(p), y = yOf(k);
+      const xs = R.play + (st - u) * PPS, len = Math.max(barH, Math.min((e - st) * PPS, R.x1 - xs));
+      const hit = clamp(1 - (u - st) / 0.25), edge = clamp((R.x1 - xs) / 60);
+      ctx.save(); ctx.globalAlpha *= (st <= u ? hit : 0.85) * edge;
+      if (st <= u) { ctx.shadowColor = rgba(GOLD, 0.9); ctx.shadowBlur = 18; }
+      ctx.fillStyle = rgba(st <= u ? IVORY : GOLD, 1);
+      const side = st <= u ? Math.max(barH, 9) : barH;   // the pluck flashes a little larger than its bar
+      round(ctx, Math.max(R.play, xs), y - side / 2, st <= u ? side : Math.min(len, R.x1 - xs), side, side / 2); ctx.fill();
+      if (raised) { ctx.fillStyle = rgba(IVORY, 0.9); ctx.beginPath(); ctx.arc(R.x1 + 18, y, 3, 0, Math.PI * 2); ctx.fill(); }
+      ctx.restore();
     }
   }
-  // the notes riding in on their string, plucked at the line
-  const ahead = (R.x1 - R.play) / PPS, barH = Math.min(14, gap * 0.5);
-  for (const nt of s.shown) {
-    const [st, e, p] = nt;
-    if (st > u + ahead || st < u - 0.25) continue;
-    const [k, raised] = s.row(p), y = yOf(k);
-    const xs = R.play + (st - u) * PPS, len = Math.max(barH, Math.min((e - st) * PPS, R.x1 - xs));
-    const hit = clamp(1 - (u - st) / 0.25), edge = clamp((R.x1 - xs) / 60);
-    ctx.save(); ctx.globalAlpha *= (st <= u ? hit : 0.85) * edge;
-    if (st <= u) { ctx.shadowColor = rgba(GOLD, 0.9); ctx.shadowBlur = 18; }
-    ctx.fillStyle = rgba(st <= u ? IVORY : GOLD, 1);
-    round(ctx, Math.max(R.play, xs), y - barH / 2, st <= u ? barH : Math.min(len, R.x1 - xs), barH, barH / 2); ctx.fill();
-    if (raised) { ctx.fillStyle = rgba(IVORY, 0.9); ctx.beginPath(); ctx.arc(R.x1 + 18, y, 3.5, 0, Math.PI * 2); ctx.fill(); }
-    ctx.restore();
-  }
-  // the piece and its lyre
-  const who = `${s.patch.toUpperCase()}  ·  ${s.how}`;
-  const live = `${plucked} plucked  ·  ${sympathy} in sympathy`;
+  // the piece and its consort
+  const who = `${['', 'ONE LYRE', 'TWO LYRES', 'THREE LYRES', 'FOUR LYRES'][s.players.length]}  ·  ${s.how}`;
   if (P) {
     text(ctx, s.title, MX, 700, '84px Bask', '#f6ecdc', 'center', ['rgba(255,200,140,0.25)', 26]);
     text(ctx, s.sub, MX, 752, '30px InterS', '#e9b95e', 'center');
-    text(ctx, s.patch.toUpperCase(), MX, 800, '24px InterS', '#eadfcf', 'center', null, 2);
+    text(ctx, s.how, MX, 800, '23px InterS', '#eadfcf', 'center', null, 0.5);
   } else {
     text(ctx, s.title, 136, 640, '96px Bask', '#f6ecdc', 'left', ['rgba(255,200,140,0.25)', 26]);
     text(ctx, s.sub, 140, 700, '38px InterS', '#e9b95e');
@@ -133,7 +143,7 @@ function draw(ctx, t) {
   g.addColorStop(0, '#120905'); g.addColorStop(0.5, '#21120a'); g.addColorStop(1, '#0d0603');
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   let energy = 0;
-  for (const [s, a] of live) { const f = frameAt(s, t - s.start + s.src0); energy += a * clamp((Math.max(...s.energy[f]) + 50) / 45); }
+  for (const [s, a] of live) energy += a * clamp((Math.max(...s.players.map(q => Math.max(...q.energy[frameAt(q, t - s.start + s.src0)]))) + 50) / 45);
   const cx = (R.x0 + R.x1) / 2, cy = (R.y0 + R.y1) / 2;
   const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, P ? 640 : 720);
   glow.addColorStop(0, `rgba(150,92,34,${(0.22 + 0.10 * clamp(energy)) * fade})`);

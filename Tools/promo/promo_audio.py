@@ -15,10 +15,10 @@ starts a little before its first downbeat (a 40 ms fade-in) and runs to the
 end of its tail (the last 0.9 s faded); excerpts are matched on integrated
 BS.1770 loudness, overlapped by 0.35 s, then the whole is brought to -16 LUFS
 with true peak <= -1.15 dBTP (4x) by a 5 ms look-ahead limiter. Writes
-out/<set>/<set>.wav, timeline.json and report.json; <set> is the film
-(promo) or one short.
+out/<set>/<set>.wav (48 kHz, 24-bit), timeline.json and report.json; <set> is
+the film (promo), one short, or one piece whole (full-<piece>).
 
-    python3 promo_audio.py promo | short-minuet | short-kesh | short-butterfly
+    python3 promo_audio.py promo | short-<piece> | full-<piece>
 """
 import json
 import os
@@ -47,6 +47,8 @@ SETS = {
     'short-minuet': ([dict(MIN, beat=72)], 0.1),
     'short-kesh': ([dict(KES, beat=96)], 0.1),
     'short-butterfly': ([dict(BUT, beat=108)], 0.1),
+    # each piece whole, from its first note, as a recording of its own
+    'full-minuet': ([dict(MIN, beat=0)], 0.3), 'full-kesh': ([dict(KES, beat=0)], 0.3), 'full-butterfly': ([dict(BUT, beat=0)], 0.3),
 }
 OVERLAP, FADE_IN, FADE_OUT, TAIL, PRE = 0.35, 0.04, 0.9, 2.6, 0.12
 WIDTH = 0.7

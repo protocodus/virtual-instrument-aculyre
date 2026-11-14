@@ -145,42 +145,43 @@ int main()
     // length. Contact coordinates and rate must follow continuous bend
     // updates even when release/sympathy controls have not changed.
     for (double rate : { 44100.0, 48000.0, 96000.0 })
-    {
-        auto engine = std::make_unique<aculyre::AculyreEngine>();
-        engine->prepare(rate);
-        engine->setInstrument(aculyre::lyreHarpSteel);
-        engine->setTensionModulation(false);
-        auto controls = engine->controls();
-        controls.room = 0.0;
-        controls.sympathy = 0.0;
-        engine->setControls(controls);
-        engine->noteOn(69, 0.7f);
-        float left[64], right[64];
-        engine->process(left, right, 64);
-        std::array<std::array<double, 2>, aculyre::maxStrings> periods {};
-        for (int string = 0; string < engine->stringCount(); ++string)
-            for (int plane = 0; plane < 2; ++plane)
-                periods[string][plane] = engine->contactReport(string, plane != 0).period;
-        for (double bend : { 2.0, 12.0, -12.0, 0.0 })
+        for (double sympathy : { 0.0, 1.0 })
         {
-            controls.pitchBend = bend;
+            auto engine = std::make_unique<aculyre::AculyreEngine>();
+            engine->prepare(rate);
+            engine->setInstrument(aculyre::lyreHarpSteel);
+            engine->setTensionModulation(false);
+            auto controls = engine->controls();
+            controls.room = 0.0;
+            controls.sympathy = sympathy;
             engine->setControls(controls);
-            for (int frame = 0; frame < int(0.25 * rate); frame += 64)
-                engine->process(left, right, 64);
+            engine->noteOn(69, 0.7f);
+            float left[64], right[64];
+            engine->process(left, right, 64);
+            std::array<std::array<double, 2>, aculyre::maxStrings> periods {};
             for (int string = 0; string < engine->stringCount(); ++string)
                 for (int plane = 0; plane < 2; ++plane)
-                {
-                    const auto contact = engine->contactReport(string, plane != 0);
-                    check(contact.outgoingAge >= 1.0 && contact.returningAge <= contact.latestAge,
-                          "bent engine contact never addresses retired propagation storage");
-                    const double expected = periods[string][plane] / std::pow(2.0, bend / 12.0);
-                    check(std::abs(contact.period / expected - 1.0) < 1e-8,
-                          "contact follows the full current resonant period through bends");
-                    check(std::abs(contact.returningAge - contact.outgoingAge - contact.requestedSeparation) < 1e-9,
-                          "the default contact's short arc fits every native string over +/-12 semitones");
-                }
+                    periods[string][plane] = engine->contactReport(string, plane != 0).period;
+            for (double bend : { 2.0, 12.0, -12.0, 0.0 })
+            {
+                controls.pitchBend = bend;
+                engine->setControls(controls);
+                for (int frame = 0; frame < int(0.25 * rate); frame += 64)
+                    engine->process(left, right, 64);
+                for (int string = 0; string < engine->stringCount(); ++string)
+                    for (int plane = 0; plane < 2; ++plane)
+                    {
+                        const auto contact = engine->contactReport(string, plane != 0);
+                        check(contact.outgoingAge >= 1.0 && contact.returningAge <= contact.latestAge,
+                              "bent engine contact never addresses retired propagation storage");
+                        const double expected = periods[string][plane] / std::pow(2.0, bend / 12.0);
+                        check(std::abs(contact.period / expected - 1.0) < 1e-8,
+                              "contact follows the full current resonant period through bends");
+                        check(std::abs(contact.returningAge - contact.outgoingAge - contact.requestedSeparation) < 1e-9,
+                              "the default contact's short arc fits every native string over +/-12 semitones");
+                    }
+            }
         }
-    }
     // End-to-end bass regression through the production dispersion filters
     // and bridge. A contact close to the fourth partial's node should spare
     // that partial relative to the second, whose antinode is near it. Compare

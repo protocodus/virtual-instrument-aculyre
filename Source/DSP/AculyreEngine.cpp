@@ -935,7 +935,7 @@ struct Loop
     int dispersionPairs { 0 };
     std::array<std::array<double, 2>, aculyre::dispersionPairs> pair {};
     std::array<std::array<double, 2>, aculyre::dispersionPairs> pairState {};
-    double fraction { 2.0 };
+    double fraction { 0.0 };
     double thiranA1 { 0.0 }, thiranA2 { 0.0 };
     bool firstOrderThiran { false };
     double tx1 { 0.0 }, tx2 { 0.0 }, ty1 { 0.0 }, ty2 { 0.0 };
@@ -952,14 +952,6 @@ struct Loop
     // Sounding fundamental period, refreshed at pluck and control updates.
     // A re-pluck's contact acts on this bent/gliding wave, not the open period.
     double currentPeriod { 70.0 };
-    std::array<double, bendPoints> lagCycles {};
-    std::array<float, delayCapacity> line {};
-    // A pluck's first round trip, still to arrive at the bridge, by sample.
-    // It enters at the loop's output rather than the line because the loop's
-    // filters hold part of a period (the dispersion stages up to a fifth of
-    // it on a bass string): a wave squeezed into the line alone would leave
-    // a gap and pluck at the wrong point.
-    std::array<float, delayCapacity> pending {};
     // How far behind `write` any of the string's designs can read, at any
     // bend and with the round trip's energy window (setInstrument). Older
     // history is overwritten before a read reaches it, so silence() clears
@@ -972,16 +964,27 @@ struct Loop
     double unloading { 0.0 };
     double unloadingDecay { 0.0 };
     int unloadingLeft { 0 };
+    // Waveguide and pending-pluck rings live in State's contiguous storage so
+    // all 27 StringVoice/Loop headers sit together in L1 cache and within
+    // immediate-offset addressing.
+    float* line { nullptr };
+    // A pluck's first round trip, still to arrive at the bridge, by sample.
+    // It enters at the loop's output rather than the line because the loop's
+    // filters hold part of a period (the dispersion stages up to a fifth of
+    // it on a bass string): a wave squeezed into the line alone would leave
+    // a gap and pluck at the wrong point.
+    float* pending { nullptr };
+    std::array<double, bendPoints> lagCycles {};
 
     // Zeroes `length` slots of a ring from `start`, wrapping once.
     template <typename T>
-    static void clearRing(std::array<T, delayCapacity>& ring, int start, int length) noexcept
+    static void clearRing(T* ring, int start, int length) noexcept
     {
         length = std::min(length, delayCapacity);
         start &= delayCapacity - 1;
         const int first = std::min(length, delayCapacity - start);
-        std::fill_n(ring.begin() + start, first, T {});
-        std::fill_n(ring.begin(), length - first, T {});
+        std::fill_n(ring + start, first, T {});
+        std::fill_n(ring, length - first, T {});
     }
 
     // Stops the wave and everything still on its way, keeping the pitch and
@@ -1005,8 +1008,8 @@ struct Loop
     {
         silence();
         // A new instrument's reach may be longer than the last one's.
-        line.fill(0.0f);
-        pending.fill(0.0f);
+        std::fill_n(line, delayCapacity, 0.0f);
+        std::fill_n(pending, delayCapacity, 0.0f);
         // Back to where prepare() leaves the line, so a reset plays as a
         // fresh instance does, sample for sample.
         write = 0;
@@ -1041,6 +1044,14 @@ struct Loop
         // avoids a phase discontinuity when a live bend changes the order.
         const bool shortLine = samples <= 2.0;
         const double current = samples - whole;
+        if (samples >= 8.0 && !firstOrderThiran && current >= 1.1 && current < 2.3)
+        {
+            if (current == fraction)
+                return;
+            fraction = current;
+            thiranCoefficients(fraction, thiranA1, thiranA2);
+            return;
+        }
         // Short loops use the same canonical tap as their exact phase
         // table. Hysteresis can otherwise choose a different Thiran
         // fraction and move an extreme high bend by several cents.
@@ -1106,7 +1117,7 @@ struct Loop
     // One sample of the loop alone, as LoopFilters::read and process() run
     // it, with the bridge held still: what arrives is written back
     // unchanged (both ends' inversions folded in). No hand: setup of a
-    // re-pluck's contact on a copy of the loop, never the playing loop.
+    // re-pluck's contact before silence() clears the ring.
     double freeStep() noexcept
     {
         const double x = readTap();
@@ -1141,7 +1152,7 @@ struct Loop
     // Adjoint interpolation/scattering keeps fractional contacts passive.
     void touch() noexcept
     {
-        hand.apply(line.data(), delayCapacity - 1, write);
+        hand.apply(line, delayCapacity - 1, write);
     }
 
     // Puts the hand at `point` (a fraction of the length from the bridge)
@@ -1219,6 +1230,7 @@ struct Loop
         loopDelay = design.loopDelay;
         currentPeriod = loopDelay;
         lagCycles = design.lagCycles;
+        fraction = 0.0;
         setLineDelay(restLineDelay);
     }
 };
@@ -1299,6 +1311,30 @@ struct LoopFilters
         {
             const int fastCount = prefixOnly ? activePrefix : 0;
             int k = 0;
+            for (; k + 3 < fastCount; k += 4)
+            {
+                const auto i = static_cast<std::size_t>(k);
+                const Pair x0 = *pairs(wave + k), x1 = *pairs(wave + k + 2);
+                const Pair pi0 = *pairs(&previousInput[i]), pi1 = *pairs(&previousInput[i + 2]);
+                const Pair d0 = x0 - pi0, d1 = x1 - pi1;
+                const Pair pd0 = *pairs(&previousDifference[i]), pd1 = *pairs(&previousDifference[i + 2]);
+                const Pair w0 = *pairs(&c0[i]) * d0 + *pairs(&c1[i]) * pd0;
+                const Pair w1 = *pairs(&c0[i + 2]) * d1 + *pairs(&c1[i + 2]) * pd1;
+                const Pair u10 = *pairs(&u1[i]), u11 = *pairs(&u1[i + 2]);
+                const Pair u20 = *pairs(&u2[i]), u21 = *pairs(&u2[i + 2]);
+                const Pair out0 = w0 - *pairs(&a1[i]) * u10 - *pairs(&a2[i]) * u20;
+                const Pair out1 = w1 - *pairs(&a1[i + 2]) * u11 - *pairs(&a2[i + 2]) * u21;
+                *pairs(&previousInput[i]) = x0;
+                *pairs(&previousInput[i + 2]) = x1;
+                *pairs(&previousDifference[i]) = d0;
+                *pairs(&previousDifference[i + 2]) = d1;
+                *pairs(&u2[i]) = u10;
+                *pairs(&u2[i + 2]) = u11;
+                *pairs(&u1[i]) = out0;
+                *pairs(&u1[i + 2]) = out1;
+                *pairs(wave + k) = x0 - out0;
+                *pairs(wave + k + 2) = x1 - out1;
+            }
             for (; k + 1 < fastCount; k += 2)
             {
                 const auto i = static_cast<std::size_t>(k);
@@ -1422,8 +1458,12 @@ struct LoopFilters
     // Loop::setLineDelay while the block holds the loop's section.
     void setLineDelay(Loop& loop, std::size_t i, double samples) noexcept
     {
+        const double clamped = std::clamp(samples, 1.01, static_cast<double>(delayCapacity - 8));
+        const double current = clamped - loop.whole;
+        if (clamped >= 8.0 && !loop.firstOrderThiran && current >= 1.1 && current < 2.3 && current == loop.fraction)
+            return;
         scatterThiran(loop, i);
-        loop.setLineDelay(samples);
+        loop.setLineDelay(clamped);
         gatherThiran(loop, i);
     }
 
@@ -1446,7 +1486,31 @@ struct LoopFilters
         };
         if (firstOrderCount == 0)
         {
-            for (int k = 0; k + 1 < count; k += 2)
+            int k = 0;
+            for (; k + 3 < count; k += 4)
+            {
+                const auto i = static_cast<std::size_t>(k);
+                const Pair x0 = *pairs(wave + k), x1 = *pairs(wave + k + 2);
+                const Pair a10 = *pairs(&thiranA1[i]), a11 = *pairs(&thiranA1[i + 2]);
+                const Pair a20 = *pairs(&thiranA2[i]), a21 = *pairs(&thiranA2[i + 2]);
+                const Pair tx10 = *pairs(&tx1[i]), tx11 = *pairs(&tx1[i + 2]);
+                const Pair tx20 = *pairs(&tx2[i]), tx21 = *pairs(&tx2[i + 2]);
+                const Pair ty10 = *pairs(&ty1[i]), ty11 = *pairs(&ty1[i + 2]);
+                const Pair ty20 = *pairs(&ty2[i]), ty21 = *pairs(&ty2[i + 2]);
+                const Pair y0 = a20 * x0 + a10 * tx10 + tx20 - a10 * ty10 - a20 * ty20;
+                const Pair y1 = a21 * x1 + a11 * tx11 + tx21 - a11 * ty11 - a21 * ty21;
+                *pairs(&tx2[i]) = tx10;
+                *pairs(&tx2[i + 2]) = tx11;
+                *pairs(&tx1[i]) = x0;
+                *pairs(&tx1[i + 2]) = x1;
+                *pairs(&ty2[i]) = ty10;
+                *pairs(&ty2[i + 2]) = ty11;
+                *pairs(&ty1[i]) = y0;
+                *pairs(&ty1[i + 2]) = y1;
+                *pairs(wave + k) = y0;
+                *pairs(wave + k + 2) = y1;
+            }
+            for (; k + 1 < count; k += 2)
                 secondOrderPair(k);
         }
         else
@@ -1481,6 +1545,18 @@ struct LoopFilters
                 break;
             double* const state = stageState[stage].data();
             int j = 0;
+            for (; j + 3 < loopsWithStage; j += 4)
+            {
+                const auto idx = static_cast<std::size_t>(j);
+                const Pair y0 = *pairs(sorted + j), y1 = *pairs(sorted + j + 2);
+                const Pair d0 = *pairs(&dispersion[idx]), d1 = *pairs(&dispersion[idx + 2]);
+                const Pair s0 = *pairs(state + j), s1 = *pairs(state + j + 2);
+                const Pair out0 = d0 * y0 + s0, out1 = d1 * y1 + s1;
+                *pairs(state + j) = y0 - d0 * out0;
+                *pairs(state + j + 2) = y1 - d1 * out1;
+                *pairs(sorted + j) = out0;
+                *pairs(sorted + j + 2) = out1;
+            }
             for (; j + 1 < loopsWithStage; j += 2)
             {
                 const Pair y = *pairs(sorted + j);
@@ -1513,6 +1589,21 @@ struct LoopFilters
                 double* const s0 = pairS0[k].data();
                 double* const s1 = pairS1[k].data();
                 int j = 0;
+                for (; j + 3 < loopsWithPair; j += 4)
+                {
+                    const Pair y0 = *pairs(sorted + j), y1 = *pairs(sorted + j + 2);
+                    const Pair c20 = *pairs(c2 + j), c21 = *pairs(c2 + j + 2);
+                    const Pair s00 = *pairs(s0 + j), s01 = *pairs(s0 + j + 2);
+                    const Pair out0 = c20 * y0 + s00, out1 = c21 * y1 + s01;
+                    const Pair c10 = *pairs(c1 + j), c11 = *pairs(c1 + j + 2);
+                    const Pair s10 = *pairs(s1 + j), s11 = *pairs(s1 + j + 2);
+                    *pairs(s0 + j) = c10 * (y0 - out0) + s10;
+                    *pairs(s0 + j + 2) = c11 * (y1 - out1) + s11;
+                    *pairs(s1 + j) = y0 - c20 * out0;
+                    *pairs(s1 + j + 2) = y1 - c21 * out1;
+                    *pairs(sorted + j) = out0;
+                    *pairs(sorted + j + 2) = out1;
+                }
                 for (; j + 1 < loopsWithPair; j += 2)
                 {
                     const Pair y = *pairs(sorted + j);
@@ -1612,7 +1703,7 @@ struct BarMatrix
 // A matrix stored by its columns, applied to v: each column is one vector
 // step over the rows, two rows a Pair, and every row adds its terms in
 // column order, as row by row.
-BarVector applyColumns(const BarMatrix& columns, const BarVector& v) noexcept
+inline BarVector applyColumns(const BarMatrix& columns, const BarVector& v) noexcept
 {
     static_assert(barCoordinates == 10, "the rows pair up");
     Pair r0 = splat(0.0), r1 = splat(0.0), r2 = splat(0.0), r3 = splat(0.0), r4 = splat(0.0);
@@ -1716,7 +1807,7 @@ struct Room
     static constexpr int earlyCapacity = 8192;
     std::array<std::array<float, capacity>, lineCount> lines {};
     std::array<int, lineCount> lengths {};
-    std::array<int, lineCount> positions {};
+    int position { 0 };
     std::array<double, lineCount> gains {};
     std::array<double, lineCount> poles {};
     std::array<double, lineCount> filterStates {};
@@ -1781,7 +1872,7 @@ struct Room
     {
         for (auto& line : lines)
             line.fill(0.0f);
-        positions.fill(0);
+        position = 0;
         filterStates.fill(0.0);
         early.fill(0.0f);
         earlyPosition = 0;
@@ -1798,6 +1889,9 @@ struct Room
                 (earlyPosition - delay) & (earlyCapacity - 1))]);
         };
         double earlyLeft = 0.0, earlyRight = 0.0;
+#if defined(__clang__)
+#pragma unroll
+#endif
         for (std::size_t tap = 0; tap < 6; ++tap)
         {
             earlyLeft += earlyGainsLeft[tap] * earlyAt(earlyTapsLeft[tap]);
@@ -1806,6 +1900,9 @@ struct Room
         double delayed = earlyAt(predelay);
         earlyPosition = (earlyPosition + 1) & (earlyCapacity - 1);
         constexpr double diffuserGains[diffuserCount] { 0.75, 0.75, 0.625, 0.625 };
+#if defined(__clang__)
+#pragma unroll
+#endif
         for (std::size_t index = 0; index < diffuserCount; ++index)
         {
             auto& line = diffusers[index];
@@ -1817,15 +1914,21 @@ struct Room
         }
         diffuserPosition = (diffuserPosition + 1) & (diffuserCapacity - 1);
 
-        const int pos = positions[0];
-        std::array<double, lineCount> values {};
+        const int pos = position;
+        alignas(16) std::array<double, lineCount> values;
+#if defined(__clang__)
+#pragma unroll
+#endif
         for (std::size_t index = 0; index < lineCount; ++index)
         {
             const int readPosition = pos - lengths[index];
             values[index] = lines[index][static_cast<std::size_t>(
                 readPosition & (capacity - 1))];
         }
-        std::array<double, lineCount> outputs {};
+        alignas(16) std::array<double, lineCount> outputs;
+#if defined(__clang__)
+#pragma unroll
+#endif
         for (std::size_t index = 0; index < lineCount; index += 2)
         {
             const Pair v = *pairs(&values[index]);
@@ -1835,15 +1938,24 @@ struct Room
             *pairs(&outputs[index]) = *pairs(&gains[index]) * fs;
         }
         double sum = 0.0;
+#if defined(__clang__)
+#pragma unroll
+#endif
         for (std::size_t index = 0; index < lineCount; ++index)
             sum += outputs[index];
         const double householder = 2.0 / lineCount * sum;
         const double inputShare = 0.35 * delayed;
         const auto writePos = static_cast<std::size_t>(pos);
+#if defined(__clang__)
+#pragma unroll
+#endif
         for (std::size_t index = 0; index < lineCount; ++index)
             lines[index][writePos] = static_cast<float>((outputs[index] - householder) + inputShare);
-        positions[0] = (pos + 1) & (capacity - 1);
+        position = (pos + 1) & (capacity - 1);
         double lateLeft = 0.0, lateRight = 0.0;
+#if defined(__clang__)
+#pragma unroll
+#endif
         for (std::size_t index = 0; index < lineCount; ++index)
         {
             lateLeft += (index & 1u) ? -outputs[index] : outputs[index];
@@ -2062,8 +2174,6 @@ constexpr double restingHandPoint = 0.27;
 
 struct AculyreEngine::State
 {
-    InstrumentSpec instrument {};
-
     // A string's pitch with its lever down or up: the lever shortens the
     // speaking length a semitone's worth at the same tension.
     struct PitchDesign
@@ -2080,9 +2190,10 @@ struct AculyreEngine::State
 
     struct StringVoice
     {
-        Loop normal {};
-        Loop parallel {};
-        std::array<PitchDesign, 2> pitch {};  // lever down, lever up
+        // Compact per-string state (~2.4 KB total across both Loop headers);
+        // the 64 KB waveguide/pending/squares rings and PitchDesign tables live
+        // in State's contiguous storage below so all 27 StringVoices sit at
+        // offset 0 of State inside L1/L2 cache and immediate-offset addressing.
         // The sounding pitch (pitch[raised ? 1 : 0], or the extension's):
         // the note it is tuned to, and each plane's own.
         double note { 0.0 };
@@ -2106,8 +2217,7 @@ struct AculyreEngine::State
         // pluck's, whose square single precision would next hold as a
         // subnormal (a palm-muted string a second after its pluck, an idle
         // string's first arrival), slow to compute with on x86.
-        static float squareOf(double value) noexcept { return value > 1.0e-30 ? static_cast<float>(value) : 0.0f; }
-        std::array<float, delayCapacity> squares {};
+        static float squareOf(double value) noexcept { return detail::narrowAbove(value, 1.0e-30); }
         int squaresIndex { 0 };
         int roundTrip { 1 };
         double squaresSum { 0.0 };
@@ -2127,13 +2237,17 @@ struct AculyreEngine::State
         bool sustained { false };
         bool plucked { false };   // played, and still sounding from that pluck
         bool raised { false };    // the sharping lever is up
-        int extensionKey { -1 };  // the key past the strings it sounds, or -1
         bool dampingDirty { true };
+        bool upStroke { false };  // a plectrum's last stroke on it went up
+        int extensionKey { -1 };  // the key past the strings it sounds, or -1
         int midiNote { -1 };      // its own note, lever down
         int ownerNote { -1 };     // the note that last plucked it
         double handPoint { restingHandPoint };  // where the playing hand last plucked it
         std::int64_t lastOnset { 0 };
-        bool upStroke { false };  // a plectrum's last stroke on it went up
+        float* squares { nullptr };
+        PitchDesign* pitch { nullptr };
+        Loop normal {};
+        Loop parallel {};
 
         // How the bar's coordinates move the string's end normal to the top:
         // the heave, the rock at its lever, no sway, and each bend where it
@@ -2148,45 +2262,114 @@ struct AculyreEngine::State
             return port;
         }
     };
+
     std::array<StringVoice, maxStrings> strings {};
-    // Keys past the strings, lowestKey to highestKey: the edge string (the
-    // lowest below them, the highest above) with its speaking length scaled
-    // to sound the key at its own tension. No instrument has these strings:
-    // it is an artificial range, so that every key of a keyboard sounds at
-    // its own pitch (owner request, 2026-10-31). extensionString is the
-    // string, or -1 where the instrument's own strings play the key or none.
-    std::array<PitchDesign, 128> extension {};
-    std::array<int, 128> extensionString {};
 
-    std::array<Mode, maxModes> modes {};
-    int modeCount { 0 };
-    // setInstrument()'s working space for the soundbox's coupled modes.
-    std::array<std::array<double, coupledCapacity>, coupledCapacity> coupledSystem {}, coupledVectors {},
-        coupledOverlaps {};
-    ModeBank bank {};
-    // process() runs its sample loop compiled for AVX2 and FMA3 (prepare()).
+    bool idle { true };
     bool fusedProcess { false };
-    // The modes' state at the bridge, sum(pull s1): process() sums it as it
-    // updates them, noteOn's preload makes it stale.
-    BarVector modalPast {};
     bool modalPastStale { true };
+    bool sustain { false };
+    int quietSamples { 0 };
+    int controlCountdown { 0 };
+    int microphoneCursor { 0 };
+    int modeCount { 0 };
+    int bendCount { 0 };
+    std::int64_t clock { 0 };
 
-    // The bridge junction (process() derives it): the immediate generalized
-    // mobility Y0 of the modes, the strings' generalized impedance Zg, the
-    // bridge bar's own impedance Zb (diagonal, its present-sample term in
-    // massImpedance) and solve = (I + Y0 (Zg + Zb))^-1. massPast holds the
-    // force Zb's past adds; each bend keeps its last velocity and force and
-    // the taps of its zeros (setInstrument()).
-    BarMatrix immediateMobility {};
-    BarMatrix stringImpedance {};
+    double radiationScale { 0.0 };
+    double previousLeft { 0.0 };
+    double previousRight { 0.0 };
+    double pressureLeft { 0.0 };
+    double pressureRight { 0.0 };
+    double outputGain { 1.0 };
+    double piezoGain { 0.0 };
+    double piezoMountZ1 { 0.0 }, piezoMountZ2 { 0.0 };
+    double releaseRate { 0.0 };
+    double sympathyRate { 0.0 };
+    double muteRate { 0.0 };
+    double bendTarget { 1.0 };
+    double bend { 1.0 };
+    double outputSmoothing { 0.0 };
+    double bendSmoothing { 0.0 };
+
+    std::array<double, 5> piezoMount { 1.0, 0.0, 0.0, 0.0, 0.0 };
+    std::array<double, 6> outputTarget {};
+    std::array<double, 6> output {};
+    std::array<std::array<double, AculyreEngine::latencySamples>, 2> microphoneDelay {};
+
+    BarVector modalPast {};
     BarVector massImpedance {};
-    BarMatrix solve {};
     BarVector massPast {};
     BarVector bendVelocityPast {}, bendForcePast {}, bendTap1 {}, bendTap2 {};
-    // The bar's bends in vacuo (setInstrument()); bends past bendCount are
-    // left out and their coordinates stay still.
     std::array<double, maxBends> bendFrequency {};
-    int bendCount { 0 };
+
+    BarMatrix immediateMobilityColumns {};
+    BarMatrix stringImpedanceColumns {};
+    BarMatrix solveColumns {};
+    BarMatrix immediateMobility {};
+    BarMatrix stringImpedance {};
+    BarMatrix solve {};
+
+    std::array<Loop*, 2 * maxStrings> loops {};
+    std::array<BarVector, maxStrings> coupling {};
+    std::array<std::array<double, maxStrings>, barCoordinates> port {};
+    std::array<detail::PolarizationRotation, maxStrings> saddleRotation {};
+
+    ModeBank bank {};
+    LoopFilters filters {};
+    PiezoCircuit piezoCircuit {};
+    Room room {};
+    Random random {};
+    PluckReport lastPluck {};
+
+    InstrumentSpec instrument {};
+
+    // Stagger each 64 KB ring by 32 floats (128 bytes, one Apple Silicon L1D
+    // line / two x86 lines) so lockstep `write` and `squaresIndex` cursors
+    // across all 54 loops and 27 strings distribute across distinct L1D/L2
+    // cache sets instead of aliasing modulo 64 KB.
+    static constexpr std::size_t ringStride = static_cast<std::size_t>(delayCapacity) + 32;
+    std::array<std::array<float, ringStride>, 2 * maxStrings> loopLines {};
+    std::array<std::array<float, ringStride>, 2 * maxStrings> loopPending {};
+    std::array<std::array<float, ringStride>, maxStrings> stringSquares {};
+    std::array<std::array<PitchDesign, 2>, maxStrings> stringPitch {};
+    std::array<PitchDesign, 128> extension {};
+    std::array<int, 128> extensionString {};
+    std::array<Mode, maxModes> modes {};
+    std::array<std::array<double, coupledCapacity>, coupledCapacity> coupledSystem {}, coupledVectors {},
+        coupledOverlaps {};
+    std::array<double, delayCapacity> pluckWave {};
+    std::array<double, delayCapacity> contactWave {};
+    std::array<double, delayCapacity> contactKept {};
+    std::array<double, delayCapacity> contactKernel {};
+
+    State() noexcept
+    {
+        for (int index = 0; index < maxStrings; ++index)
+            bindVoice(index);
+    }
+
+    void bindVoice(int index) noexcept
+    {
+        const auto i = static_cast<std::size_t>(index);
+        StringVoice& voice = strings[i];
+        voice.normal.line = loopLines[2 * i].data();
+        voice.normal.pending = loopPending[2 * i].data();
+        voice.parallel.line = loopLines[2 * i + 1].data();
+        voice.parallel.pending = loopPending[2 * i + 1].data();
+        voice.squares = stringSquares[i].data();
+        voice.pitch = stringPitch[i].data();
+    }
+
+    void updateSaddleRotation(int stringCount, bool realismEnhancements) noexcept
+    {
+        for (int index = 0; index < stringCount; ++index)
+        {
+            const double lever = strings[static_cast<std::size_t>(index)].lever;
+            saddleRotation[static_cast<std::size_t>(index)]
+                = detail::PolarizationRotation::fromSlope(realismEnhancements ? 0.0018 * lever : 0.0);
+        }
+    }
 
     // The bar's own impedance on coordinate i at omega: its mass, and for
     // each bend its loss and stiffness, as the junction's are.
@@ -2201,53 +2384,6 @@ struct AculyreEngine::State
         const double bent = 2.0 * pi * bendFrequency[bend];
         return Complex(mass * bent / woodQ(bendFrequency[bend]), omega * mass - mass * bent * bent / omega);
     }
-
-    double radiationScale { 0.0 };
-    double previousLeft { 0.0 };
-    double previousRight { 0.0 };
-    double pressureLeft { 0.0 };
-    double pressureRight { 0.0 };
-    Room room {};
-    double outputGain { 1.0 };
-    double piezoGain { 0.0 };
-    PiezoCircuit piezoCircuit {};
-    std::array<std::array<double, AculyreEngine::latencySamples>, 2> microphoneDelay {};
-    int microphoneCursor { 0 };
-    // The strip's compliance under the bar's mass (setInstrument()), a
-    // biquad on the bar's heave force: b0 b1 b2 a1 a2, transposed direct
-    // form II.
-    std::array<double, 5> piezoMount { 1.0, 0.0, 0.0, 0.0, 0.0 };
-    double piezoMountZ1 { 0.0 }, piezoMountZ2 { 0.0 };
-    bool sustain { false };
-    Random random {};
-    LoopFilters filters {};
-    PluckReport lastPluck {};
-    bool idle { true };
-    int quietSamples { 0 };
-    int controlCountdown { 0 };
-    std::array<double, delayCapacity> pluckWave {};
-    // A re-pluck's working space: the period the ringing loop would bring to
-    // the bridge, and that period after the contact.
-    std::array<double, delayCapacity> contactWave {};
-    std::array<double, delayCapacity> contactKept {};
-    std::array<double, delayCapacity> contactKernel {};
-    // Samples processed since prepare() or reset(); when a string was last
-    // plucked, on it.
-    std::int64_t clock { 0 };
-
-    // PlayingControls as the signal path uses them. The hands' damping as
-    // decay rates (1/s, they add); the output gains glide to their targets
-    // over about 10 ms (per sample), the bend at the control rate.
-    double releaseRate { 0.0 };
-    double sympathyRate { 0.0 };
-    double muteRate { 0.0 };
-    double bendTarget { 1.0 };
-    double bend { 1.0 };
-    // Room send, direct and crossed gain, volume, piezo blend, piezo sign.
-    std::array<double, 6> outputTarget {};
-    std::array<double, 6> output {};
-    double outputSmoothing { 0.0 };
-    double bendSmoothing { 0.0 };
 };
 
 AculyreEngine::AculyreEngine() : state_(std::make_unique<State>()) {}
@@ -2277,7 +2413,11 @@ void AculyreEngine::prepare(double sampleRate)
     state_->piezoCircuit.prepare(sampleRate_);
     state_->bendSmoothing = 1.0 - std::exp(-controlPeriod / (0.01 * sampleRate_));
     if (stringCount_ > 0)
+    {
+        const PlayingControls controls = controls_;
         setInstrument(state_->instrument);
+        setControls(controls);
+    }
 }
 
 namespace
@@ -2879,8 +3019,16 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     s.extensionString.fill(-1);
     for (int index = 0; index < stringCount_; ++index)
     {
-        State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+        const auto vi = static_cast<std::size_t>(index);
+        State::StringVoice& voice = s.strings[vi];
         voice = {};
+        s.loopLines[2 * vi].fill(0.0f);
+        s.loopPending[2 * vi].fill(0.0f);
+        s.loopLines[2 * vi + 1].fill(0.0f);
+        s.loopPending[2 * vi + 1].fill(0.0f);
+        s.stringSquares[vi].fill(0.0f);
+        s.stringPitch[vi] = {};
+        s.bindVoice(index);
         const StringSpec& spec = instrument.strings[static_cast<std::size_t>(index)];
         voice.midiNote = spec.midiNote;
         const bool wound = spec.coreDiameter > 0.0;
@@ -3072,7 +3220,10 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
                          mode.radiationLeft * warp, mode.radiationRight * warp);
         }
         bank.count = (bank.count + ModeBank::lanes - 1) / ModeBank::lanes * ModeBank::lanes;
-        (part == 0 ? bank.evenEnd : bank.oddEnd) = bank.count;
+        if (part == 0)
+            bank.evenEnd = bank.count;
+        else if (part == 1)
+            bank.oddEnd = bank.count;
     }
     for (std::size_t c = 0; c < barCoordinates; ++c)
     {
@@ -3144,6 +3295,9 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         for (std::size_t j = 0; j < barCoordinates; ++j)
             junction.m[i][j] += product.m[i][j];
     s.solve.m = inverse(junction.m);
+    s.immediateMobilityColumns = s.immediateMobility.transposed();
+    s.stringImpedanceColumns = s.stringImpedance.transposed();
+    s.solveColumns = s.solve.transposed();
 
     // ---- Tuning: each port's reflection phase from the continuous model --
     std::array<std::array<std::size_t, barCoordinates>, maxModes> modeCoords {};
@@ -3376,7 +3530,7 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             for (std::size_t k = 0; k < bendPoints; ++k)
                 reach = std::max(reach, (1.0 - design.lagCycles[k]) * design.loopDelay / bendRatios[k]);
         };
-        for (const State::PitchDesign& pitch : voice.pitch)
+        for (const State::PitchDesign& pitch : s.stringPitch[static_cast<std::size_t>(index)])
             for (const LoopDesign& design : pitch.planes)
                 reachOf(design);
         for (int key = lowestKey; key <= highestKey; ++key)
@@ -3389,6 +3543,28 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
         voice.parallel.whole = wholeFor(voice.pitch[0].planes[1].restLineDelay);
         applyPitch(index, false);
     }
+    s.loops = {};
+    s.coupling = {};
+    s.port = {};
+    for (int index = 0; index < stringCount_; ++index)
+    {
+        State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+        const auto at = static_cast<std::size_t>(index);
+        s.loops[static_cast<std::size_t>(2 * index)] = &voice.normal;
+        s.loops[static_cast<std::size_t>(2 * index + 1)] = &voice.parallel;
+        const double twiceZ = 2.0 * voice.impedance;
+        BarVector& c = s.coupling[at];
+        c[0] = twiceZ;
+        c[1] = twiceZ * voice.lever;
+        c[2] = twiceZ;
+        s.port[1][at] = voice.lever;
+        for (std::size_t bend = 0; bend < maxBends; ++bend)
+        {
+            c[3 + bend] = twiceZ * voice.bend[bend];
+            s.port[3 + bend][at] = voice.bend[bend];
+        }
+    }
+    s.updateSaddleRotation(stringCount_, realismEnhancements_);
 
     // The piezo strip is no rigid seat: the bar's mass rides on the element,
     // so the force the element feels falls away above their resonance.
@@ -3459,7 +3635,7 @@ void AculyreEngine::reset() noexcept
         applyPitch(index, false);
         voice.normal.reset();
         voice.parallel.reset();
-        voice.squares.fill(0.0f);
+        std::fill_n(voice.squares, delayCapacity, 0.0f);
         voice.squaresSum = 0.0;
         voice.squaresIndex = 0;
         voice.keyDown = voice.sustained = voice.plucked = false;
@@ -3609,6 +3785,7 @@ void AculyreEngine::setRealismEnhancements(bool enabled) noexcept
     realismEnhancements_ = enabled;
     if (state_)
     {
+        state_->updateSaddleRotation(stringCount_, realismEnhancements_);
         for (int index = 0; index < stringCount_; ++index)
             state_->strings[static_cast<std::size_t>(index)].dampingDirty = true;
     }
@@ -3620,6 +3797,8 @@ void AculyreEngine::setControls(const PlayingControls& controls) noexcept
     const PlayingControls previous = controls_;
     PlayingControls& c = controls_;
     c = controls;
+    if (c.technique != Technique::Finger && c.technique != Technique::Nail && c.technique != Technique::Plectrum)
+        c.technique = Technique::Finger;
     c.pluckPosition = std::clamp(unitClamp(c.pluckPosition), 0.05, 0.7);
     c.normalShare = std::clamp(unitClamp(c.normalShare), 0.01, 0.9);
     c.release = unitClamp(c.release);
@@ -3655,7 +3834,26 @@ void AculyreEngine::setControls(const PlayingControls& controls) noexcept
     if (!c.levers && previous.levers)
         for (int index = 0; index < stringCount_; ++index)
             if (s.strings[static_cast<std::size_t>(index)].raised)
+            {
                 applyPitch(index, false);
+                if (!s.idle)
+                {
+                    State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
+                    const double ratio = (tensionModulation_
+                        ? 1.0 + voice.glidePerEnergy * voice.energy() : 1.0) * s.bend;
+                    voice.normal.setLineDelay(voice.normal.lineDelayAt(ratio));
+                    voice.parallel.setLineDelay(voice.parallel.lineDelayAt(ratio));
+                    voice.normal.currentPeriod = voice.normal.loopDelay / ratio;
+                    voice.parallel.currentPeriod = voice.parallel.loopDelay / ratio;
+                    voice.roundTrip = std::clamp(
+                        detail::nearest(sampleRate_ / (voice.frequency * ratio)), 1, delayCapacity - 1);
+                    voice.squaresSum = 0.0;
+                    for (int k = 1; k <= voice.roundTrip; ++k)
+                        voice.squaresSum += voice.squares[static_cast<std::size_t>(
+                            (voice.squaresIndex - k) & (delayCapacity - 1))];
+                    updateDamping(index);
+                }
+            }
 }
 
 void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
@@ -3717,7 +3915,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // The small saddle slope is the existing authored fanning, not a
     // measured lyre geometry. Its change of basis is orthogonal and its
     // returning motion reciprocal (PolarizationRotation.h).
-    const auto rotation = detail::PolarizationRotation::fromSlope(realismEnhancements_ ? 0.0018 * voice.lever : 0.0);
+    const auto& rotation = s.saddleRotation[static_cast<std::size_t>(index)];
     const auto preloadPlane = [&] (double force, bool normal)
     {
         const double normalForce = (normal ? rotation.cosine : rotation.sine) * force;
@@ -4015,7 +4213,8 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             {
                 float& square = voice.squares[static_cast<std::size_t>((voice.squaresIndex - voice.roundTrip + k)
                                                                        & (delayCapacity - 1))];
-                square += State::StringVoice::squareOf(value * value);
+                const double valSq = detail::magnitude(value) > 1.0e-120 ? value : 0.0;
+                square += State::StringVoice::squareOf(valSq * valSq);
             }
         }
         // The periodic wave starts below the held force wherever the slip is
@@ -4036,14 +4235,22 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     for (int k = 1; k <= voice.roundTrip; ++k)
         voice.squaresSum += voice.squares[static_cast<std::size_t>((voice.squaresIndex - k) & (delayCapacity - 1))];
     ModeBank& bank = s.bank;
-    for (int k = 0; k < bank.count; ++k)
+    Pair pre[barCoordinates];
+    for (std::size_t c = 0; c < barCoordinates; ++c)
+        pre[c] = splat(preload[c]);
+    for (int k = 0; k < bank.count; k += 2)
     {
         const auto m = static_cast<std::size_t>(k);
-        double modal = 0.0;
+        Pair modal = splat(0.0);
+#if defined(__clang__)
+#pragma unroll
+#endif
         for (std::size_t c = 0; c < barCoordinates; ++c)
-            modal += bank.shape[c][m] * preload[c];
-        bank.s1[m] -= modal;
-        bank.s2[m] -= modal;
+            modal += *pairs(&bank.shape[c][m]) * pre[c];
+        auto& group = bank.groups[m / ModeBank::lanes];
+        const std::size_t lane = m % ModeBank::lanes;
+        *pairs(&group.s1[lane]) -= modal;
+        *pairs(&group.s2[lane]) -= modal;
     }
     s.modalPastStale = true;
 }
@@ -4093,7 +4300,7 @@ void AculyreEngine::sleep() noexcept
         auto& voice = s.strings[static_cast<std::size_t>(index)];
         voice.normal.silence();
         voice.parallel.silence();
-        voice.squares.fill(0.0f);
+        std::fill_n(voice.squares, delayCapacity, 0.0f);
         voice.squaresSum = 0.0;
         if (voice.plucked)
         {
@@ -4120,6 +4327,8 @@ bool AculyreEngine::idle() const noexcept { return state_->idle; }
 
 void AculyreEngine::process(float* left, float* right, int numSamples) noexcept
 {
+    if (numSamples <= 0)
+        return;
 #if defined(ACULYRE_HAS_FUSED_KERNELS)
     if (state_->fusedProcess)
     {
@@ -4158,49 +4367,30 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
         return;
     }
     const int count = stringCount_;
-    std::array<double, maxStrings> normalIn {};
-    std::array<double, maxStrings> parallelIn {};
-    const BarMatrix y0 = s.immediateMobility.transposed();
-    const BarMatrix zg = s.stringImpedance.transposed();
-    const BarMatrix solve = s.solve.transposed();
-    // Normal and parallel plane of each string in turn. Nothing during a
-    // block changes a loop's sections: a lever moves between blocks.
-    std::array<Loop*, 2 * maxStrings> loops {};
-    for (int index = 0; index < count; ++index)
-    {
-        loops[static_cast<std::size_t>(2 * index)] = &s.strings[static_cast<std::size_t>(index)].normal;
-        loops[static_cast<std::size_t>(2 * index + 1)] = &s.strings[static_cast<std::size_t>(index)].parallel;
-    }
+    // Normal and parallel plane of each string in turn (s.loops, s.coupling,
+    // s.port, s.saddleRotation and the transposed junction matrices are set
+    // up in setInstrument()). Nothing during a block changes a loop's
+    // sections: a lever moves between blocks.
+    double normalIn[maxStrings];
+    double parallelIn[maxStrings];
+    double wave[2 * maxStrings];
+    const BarMatrix& y0 = s.immediateMobilityColumns;
+    const BarMatrix& zg = s.stringImpedanceColumns;
+    const BarMatrix& solve = s.solveColumns;
+    Loop* const* const loops = s.loops.data();
     LoopFilters& filters = s.filters;
-    filters.gather(loops.data(), 2 * count);
-    std::array<double, 2 * maxStrings> wave {};
-    // How each string drives the bar and how the bar moves each string's
-    // end, laid out for vectors: `coupling` is a string's 2Z times its
-    // normal port (sway, coordinate 2, takes the parallel plane at 2Z), in
-    // coordinate pairs; `port` holds the rock's lever and each bend's shape
-    // by coordinate, two strings a Pair. Products and sums run in the order
-    // of the scalar loops they replace, so every sample is the same.
+    filters.gather(loops, 2 * count);
     static_assert(barCoordinates % 2 == 0 && maxStrings % 2 == 0, "the coordinates and the strings pair up");
     alignas(16) std::array<BarVector, maxStrings> coupling;
-    alignas(16) double port[barCoordinates][maxStrings] {};
-    std::array<detail::PolarizationRotation, maxStrings> saddleRotation {};
-    for (int index = 0; index < count; ++index)
-    {
-        const State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
-        const double twiceZ = 2.0 * voice.impedance;
-        BarVector& c = coupling[static_cast<std::size_t>(index)];
-        c[0] = twiceZ;
-        c[1] = twiceZ * voice.lever;
-        c[2] = twiceZ;
-        port[1][index] = voice.lever;
-        for (std::size_t bend = 0; bend < maxBends; ++bend)
-        {
-            c[3 + bend] = twiceZ * voice.bend[bend];
-            port[3 + bend][index] = voice.bend[bend];
-        }
-        saddleRotation[static_cast<std::size_t>(index)]
-            = detail::PolarizationRotation::fromSlope(realismEnhancements_ ? 0.0018 * voice.lever : 0.0);
-    }
+    alignas(16) std::array<std::array<double, maxStrings>, barCoordinates> port;
+#if defined(__GNUC__) || defined(__clang__)
+    __builtin_memcpy(&coupling, &s.coupling, sizeof(coupling));
+    __builtin_memcpy(&port, &s.port, sizeof(port));
+#else
+    std::memcpy(&coupling, &s.coupling, sizeof(coupling));
+    std::memcpy(&port, &s.port, sizeof(port));
+#endif
+    const auto& saddleRotation = s.saddleRotation;
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
@@ -4268,18 +4458,20 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
             }
         }
 
-        filters.read(loops.data(), 2 * count, wave.data());
+        filters.read(loops, 2 * count, wave);
         Pair d0 = splat(0.0), d1 = splat(0.0), d2 = splat(0.0), d3 = splat(0.0), d4 = splat(0.0);
         for (int index = 0; index < count; ++index)
         {
             State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
             const double vn = voice.normal.finishRead(wave[static_cast<std::size_t>(2 * index)]);
             const double vp = voice.parallel.finishRead(wave[static_cast<std::size_t>(2 * index + 1)]);
-            normalIn[static_cast<std::size_t>(index)] = vn;
-            parallelIn[static_cast<std::size_t>(index)] = vp;
+            normalIn[index] = vn;
+            parallelIn[index] = vp;
             // The loop's mean squared velocity over a round trip; both
             // directions' slopes count, hence the factor in glidePerEnergy.
-            const float square = State::StringVoice::squareOf(vn * vn + vp * vp);
+            const double vnSq = detail::magnitude(vn) > 1.0e-120 ? vn : 0.0;
+            const double vpSq = detail::magnitude(vp) > 1.0e-120 ? vp : 0.0;
+            const float square = State::StringVoice::squareOf(vnSq * vnSq + vpSq * vpSq);
             float& slot = voice.squares[static_cast<std::size_t>(voice.squaresIndex)];
             const float leaving = voice.squares[static_cast<std::size_t>((voice.squaresIndex - voice.roundTrip)
                                                                          & (delayCapacity - 1))];
@@ -4321,19 +4513,31 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
             s.modalPast = {};
             for (std::size_t c = 0; c < barCoordinates; ++c)
                 for (int k = 0; k < bank.count; ++k)
-                    s.modalPast[c] += bank.shape[c][static_cast<std::size_t>(k)] * bank.s1[static_cast<std::size_t>(k)];
+                {
+                    const auto m = static_cast<std::size_t>(k);
+                    s.modalPast[c] += bank.shape[c][m] * bank.groups[m / ModeBank::lanes].s1[m % ModeBank::lanes];
+                }
             s.modalPastStale = false;
         }
         const BarVector& past = s.modalPast;
-        BarVector net {};
-        for (std::size_t i = 0; i < barCoordinates; ++i)
-            net[i] = drive[i] - s.massPast[i];
-        BarVector rhs = applyColumns(y0, net);
-        for (std::size_t i = 0; i < barCoordinates; ++i)
-            rhs[i] += past[i];
+        alignas(16) BarVector net;
+#if defined(__clang__)
+#pragma unroll
+#endif
+        for (std::size_t p = 0; p < barCoordinates / 2; ++p)
+            pairs(net.data())[p] = d[p] - pairs(s.massPast.data())[p];
+        alignas(16) BarVector rhs = applyColumns(y0, net);
+#if defined(__clang__)
+#pragma unroll
+#endif
+        for (std::size_t p = 0; p < barCoordinates / 2; ++p)
+            pairs(rhs.data())[p] += pairs(past.data())[p];
         const BarVector velocity = applyColumns(solve, rhs);
         const BarVector stringLoad = applyColumns(zg, velocity);
-        BarVector plateForce {};
+        alignas(16) BarVector plateForce;
+#if defined(__clang__)
+#pragma unroll
+#endif
         for (std::size_t i = 0; i < barCoordinates; ++i)
         {
             const double massForce = s.massImpedance[i] * velocity[i] + s.massPast[i];
@@ -4361,9 +4565,13 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
         alignas(16) double normalPort[maxStrings];
         for (int index = 0; index < count; index += 2)
         {
-            Pair sum = splat(velocity[0]) + *pairs(&port[1][index]) * splat(velocity[1]);
+            const auto at = static_cast<std::size_t>(index);
+            Pair sum = splat(velocity[0]) + *pairs(&port[1][at]) * splat(velocity[1]);
+#if defined(__clang__)
+#pragma unroll
+#endif
             for (std::size_t bend = 0; bend < maxBends; ++bend)
-                sum += *pairs(&port[3 + bend][index]) * splat(velocity[3 + bend]);
+                sum += *pairs(&port[3 + bend][at]) * splat(velocity[3 + bend]);
             *pairs(&normalPort[index]) = sum;
         }
         for (int index = 0; index < count; ++index)
@@ -4374,8 +4582,8 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
                                                              : normalPort[index];
             const double parallelMotion = realismEnhancements_ ? rotation.parallelMotion(normalPort[index], velocity[2])
                                                                : velocity[2];
-            voice.normal.writeSample(normalIn[static_cast<std::size_t>(index)] - normalMotion);
-            voice.parallel.writeSample(parallelIn[static_cast<std::size_t>(index)] - parallelMotion);
+            voice.normal.writeSample(normalIn[index] - normalMotion);
+            voice.parallel.writeSample(parallelIn[index] - parallelMotion);
             if (voice.normal.hand.share > 0.0)
             {
                 voice.normal.touch();
@@ -4398,8 +4606,17 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
         s.previousRight = radiatedRight;
         s.pressureLeft = pressureLeft;
         s.pressureRight = pressureRight;
-        for (std::size_t i = 0; i < s.output.size(); ++i)
-            s.output[i] += (s.outputTarget[i] - s.output[i]) * s.outputSmoothing;
+        {
+            const Pair smooth = splat(s.outputSmoothing);
+#if defined(__clang__)
+#pragma unroll
+#endif
+            for (std::size_t p = 0; p < s.output.size() / 2; ++p)
+            {
+                Pair& out = pairs(s.output.data())[p];
+                out += (pairs(s.outputTarget.data())[p] - out) * smooth;
+            }
+        }
         // The room runs even unsent, so turning it up meets a live tail.
         double wetLeft = 0.0, wetRight = 0.0;
         s.room.process(0.5 * (pressureLeft + pressureRight), wetLeft, wetRight);
@@ -4440,19 +4657,22 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
         // second before the engine sleeps, and the output stage squares its
         // input in single precision (its level detector), subnormal from
         // 1e-19 down: both are slow to compute with on x86.
-        const auto sent = [] (double x) noexcept { return x > 1.0e-15 || x < -1.0e-15 ? static_cast<float>(x) : 0.0f; };
+        const auto sent = [] (double x) noexcept
+        {
+            return detail::narrowAbove(x, 1.0e-15);
+        };
         left[sample] = sent(volume * ((1.0 - blend) * micLeft + blend * pickup));
         right[sample] = sent(volume * ((1.0 - blend) * micRight + blend * pickup));
         if (s.quietSamples >= static_cast<int>(0.5 * sampleRate_))
         {
-            filters.scatter(loops.data(), 2 * count);
+            filters.scatter(loops, 2 * count);
             sleep();
             std::fill(left + sample + 1, left + numSamples, 0.0f);
             std::fill(right + sample + 1, right + numSamples, 0.0f);
             return;
         }
     }
-    filters.scatter(loops.data(), 2 * count);
+    filters.scatter(loops, 2 * count);
 }
 
 AculyreEngine::StringReport AculyreEngine::stringReport(int string) const noexcept
@@ -4500,7 +4720,7 @@ AculyreEngine::ContactReport AculyreEngine::contactReport(int string, bool paral
         return {};
     const auto& voice = state_->strings[static_cast<std::size_t>(string)];
     const auto& loop = parallel ? voice.parallel : voice.normal;
-    const auto& hand = loop.hand;
+    const auto hand = loop.hand.withGeometry();
     return { hand.point, hand.period, hand.requestedSeparation,
              hand.outgoingAge, hand.returningAge, hand.share, hand.latestAge, loop.last };
 }

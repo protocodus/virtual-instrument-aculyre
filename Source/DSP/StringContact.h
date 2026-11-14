@@ -24,29 +24,55 @@ struct StringContact
 {
     double point { 0.27 }, period { 0.0 }, requestedSeparation { 0.0 };
     double outgoingAge { 0.0 }, returningAge { 0.0 }, share { 0.0 };
-    int latestAge { 0 };
+    double configuredFrequency { 0.0 }, configuredSampleRate { 0.0 };
+    int latestAge { 0 }, configuredWhole { 0 };
     std::array<int, 4> ages {};
     // g samples the velocity difference between the two interpolated taps.
     std::array<double, 4> g {};
 
-    void configure(double position, double rate, double frequency,
-                   double sampleRate, int whole) noexcept
+    void updateGeometry() noexcept
     {
-        point = position;
-        period = sampleRate / frequency;
-        share = rate > 0.0 ? std::min(0.25, rate / (2.0 * frequency)) : 0.0;
-        latestAge = std::max(1, whole - 1);
-        outgoingAge = 0.5 * position * period;
-        returningAge = (1.0 - 0.5 * position) * period;
+        period = configuredSampleRate / configuredFrequency;
+        latestAge = std::max(1, configuredWhole - 1);
+        outgoingAge = 0.5 * point * period;
+        returningAge = (1.0 - 0.5 * point) * period;
         requestedSeparation = returningAge - outgoingAge;
         if (outgoingAge < 1.0 || returningAge > latestAge)
         {
-            requestedSeparation = std::min(position, 1.0 - position) * period;
+            requestedSeparation = std::min(point, 1.0 - point) * period;
             const double separation = std::min(requestedSeparation, static_cast<double>(latestAge - 1));
             const double middle = 0.5 * (1.0 + latestAge);
             outgoingAge = middle - 0.5 * separation;
             returningAge = middle + 0.5 * separation;
         }
+    }
+
+    StringContact withGeometry() const noexcept
+    {
+        if (share > 0.0 || !(configuredFrequency > 0.0))
+            return *this;
+        StringContact copy = *this;
+        copy.updateGeometry();
+        return copy;
+    }
+
+    void configure(double position, double rate, double frequency,
+                   double sampleRate, int whole) noexcept
+    {
+        point = position;
+        configuredFrequency = frequency;
+        configuredSampleRate = sampleRate;
+        configuredWhole = whole;
+        // apply() reads the taps only under a hand; with none on the string
+        // they and the period's division are skipped, and contactReport()
+        // resolves the diagnostic geometry on demand (withGeometry()).
+        if (!(rate > 0.0))
+        {
+            share = 0.0;
+            return;
+        }
+        updateGeometry();
+        share = std::min(0.25, rate / (2.0 * frequency));
         const auto tap = [&] (double age, int offset, double sign)
         {
             // Ages are never negative, so the cast is the floor (a library
@@ -58,13 +84,8 @@ struct StringContact
             g[static_cast<std::size_t>(offset)] = sign * (1.0 - fraction);
             g[static_cast<std::size_t>(offset + 1)] = sign * fraction;
         };
-        // apply() reads the taps only under a hand; with none on the string
-        // they were a third of this call, on every loop every control period.
-        if (share > 0.0)
-        {
-            tap(outgoingAge, 0, -1.0);
-            tap(returningAge, 2, 1.0);
-        }
+        tap(outgoingAge, 0, -1.0);
+        tap(returningAge, 2, 1.0);
     }
 
     void apply(float* line, int mask, int write) const noexcept

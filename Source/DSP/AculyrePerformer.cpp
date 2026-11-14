@@ -29,6 +29,8 @@ PlayingControls Performer::defaultControls(int index) noexcept
 
 void Performer::prepare(double sampleRate, int oversampling)
 {
+    sampleRate = std::isfinite(sampleRate) && sampleRate >= 22050.0 && sampleRate <= maxEngineRate
+        ? sampleRate : 48000.0;
     factor_ = 1;
     while (factor_ * 2 <= std::min(oversampling, maxOversampling) && sampleRate * factor_ * 2 <= maxEngineRate)
         factor_ *= 2;
@@ -104,7 +106,8 @@ void Performer::noteOn(int midiNote, float velocity) noexcept
 
 void Performer::noteOff(int midiNote) noexcept
 {
-    engines_[static_cast<std::size_t>(active_)]->noteOff(midiNote);
+    for (auto& engine : engines_)
+        engine->noteOff(midiNote);
 }
 
 void Performer::setSustain(bool down) noexcept
@@ -115,6 +118,8 @@ void Performer::setSustain(bool down) noexcept
 
 void Performer::process(float* left, float* right, int numSamples) noexcept
 {
+    if (numSamples <= 0)
+        return;
     if (factor_ == 1)
     {
         render(left, right, numSamples);
@@ -307,6 +312,9 @@ void Performer::downsample(float& left,float& right) const noexcept
     const double* const __restrict r=b.history.data()+b.cursor;
     const int len=a.length;
     Stereo sum {0.0,0.0};
+#if defined(__clang__)
+#pragma unroll 4
+#endif
     for(int i=0;i<len;++i)
     {
         const double t=taps[i];

@@ -179,6 +179,8 @@ int main()
 {
     // Modes per part, and how many of its coordinates each part lists.
     const int layouts[][2][3] {
+        { { 16, 24, 0 }, { 5, 5, 0 } },
+        { { 19, 13, 0 }, { 4, 3, 0 } },
         { { 16, 24, 40 }, { 5, 5, 10 } },
         { { 9, 3, 21 }, { 4, 3, 9 } },
         { { 24, 8, 12 }, { 3, 2, 7 } },

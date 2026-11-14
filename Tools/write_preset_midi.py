@@ -431,6 +431,68 @@ def scarborough_fair():
     return p
 
 
+def saltarello():
+    """Vincenzo Galilei's Saltarello (Florence, 16th century), the lute dance
+    in D major, here a tone lower in C on the steel lyre harp, so every note
+    is an open string. The notes are the Mutopia Project's public-domain
+    setting (Mutopia-2014/02/23-110, typeset by Emre Akbas): its bars 1-33
+    and closing chord, played once without the repeat, every note a tone
+    lower and an octave higher than the guitar's. Its bar 34, a chord of guitar
+    harmonics whose top note lies above the harp's highest string, is left
+    out. The bass's D A D under every bar becomes C G C, each string left
+    ringing until it is struck again; the tune is plucked over it with the
+    setting's own echoes, forte, then piano for the repeated phrase."""
+    # The tune of each bar as the setting writes it, in D major: (beat, note, beats).
+    tune = {
+        1: "0 D4 .5|.5 E4 .5|1 F#4 1|2 G4 1", 2: "0 A4 2|2 B4 1", 3: "0 G4 1|1 E4 1|2 A4 1", 4: "0 F#4 3",
+        5: "0 E4 .5|.5 D4 .5|1 E4 .5|1.5 F#4 .5|2 G4 .5|2.5 E4 .5", 6: "0 F#4 2|2 G4 2",
+        7: "1 E4 1|2 E4 .5|2.5 F#4 .5", 8: "0 D4 3",
+        14: "0 F#4 1|1 E4 .5|1.5 F#4 .5|2 G4 .5|2.5 F#4 .5",
+        15: "0 E4 .5|.5 D4 .5|1 C#4 .5|1.5 D4 .5|2 E4 .5|2.5 F#4 .5", 16: "0 D4 3",
+        17: "0 F#4 1|1 E4 1|2 D4 1", 18: "0 F#4 3", 19: "0 F#4 1|1 E4 1|2 D4 1", 20: "0 A4 3",
+        21: "0 F#4 1|1 E4 1|2 D4 1", 22: "0 A4 2|2 G4 2", 23: "1 E4 1.5|2.5 F#4 .5", 24: "0 D4 3",
+        25: "0 G4 .5|.5 F#4 .5|1 E4 1|2 D4 1", 26: "0 F#4 3", 27: "0 G4 .5|.5 F#4 .5|1 E4 1|2 D4 1",
+        28: "0 A4 3", 30: "0 F#4 1|1 G4 .5|1.5 F#4 .5|2 E4 .5|2.5 D4 .5",
+        31: "0 C#4 .5|.5 B3 .5|1 C#4 .5|1.5 D4 .5|2 E4 .5|2.5 F#4 .5", 32: "0 D4 3",
+    }
+    for echo, bar in ((9, 1), (10, 2), (11, 3), (12, 4), (13, 5), (29, 5)):
+        tune[echo] = tune[bar]
+    shift = 10  # D major down a tone to C and up an octave: the tune's B3-B4 is A4-A5
+    bars = 33
+    # The setting's dynamics, (first beat, forte): f, p for the echo from bar
+    # 9, f from bar 14's second beat, p 19-20, f 21-24, p from 25, f from
+    # bar 30's second beat.
+    dynamics = [(0, True), (24, False), (40, True), (54, False), (60, True), (72, False), (88, True)]
+
+    def forte(beat):
+        return [loud for start, loud in dynamics if start <= beat][-1]
+
+    phrases = [(0, 24), (24, 24), (48, 24), (72, 27)]
+    p = Performance(breathe(112, phrases, swell=0.03, settle=0.05, last=0.3), seed=1563, timing=0.008)
+    p.voice = "lyre"
+    for bar in range(1, bars + 1):
+        start = 3 * (bar - 1)
+        for beat, name in enumerate(("D2", "A2", "D3")):
+            at = start + beat
+            loud = forte(at)
+            # The thumb leads the bar by a hair; each bass string rings on
+            # until it is struck again a bar later.
+            p.play(p.at(at, lean=-0.008 if beat == 0 else 0.0), 2.9, at, n(name) + shift,
+                   (72 if loud else 54) + (5 if beat == 0 else 0))
+        for item in tune[bar].split("|") if bar in tune else []:
+            beat, name, beats = item.split()
+            at = start + float(beat)
+            loud = forte(at)
+            downbeat = float(beat) == 0
+            p.play(p.at(at, lean=0.006), float(beats) * 1.02, at, n(name) + shift,
+                   (90 if loud else 68) + (4 if downbeat else -3 if float(beat) % 1 else 0))
+    # The closing chord, rolled up slowly and left to ring.
+    close = 3 * bars
+    for index, name in enumerate(("D2", "A2", "D3", "D4", "F#4", "D5")):
+        p.play(p.at(close, lean=0.07 * index, scale=0.6), 6.0, close, n(name) + shift, 84 - 3 * index)
+    return p
+
+
 class _PartFile:
     """One part of a song, shaped like a phrase for DEMOS."""
 
@@ -447,6 +509,7 @@ class _PartFile:
 SONGS = {
     "canon-in-c": (canon_in_c, {"ground": (1, -0.3, -6.0), "canon": (0, 0.3, 0.0)}),
     "scarborough-fair": (scarborough_fair, {"tune": (0, 0.7, 0.0), "chords": (1, -0.7, -0.8)}),
+    "saltarello": (saltarello, {"lyre": (0, 0.0, 0.0)}),
 }
 
 

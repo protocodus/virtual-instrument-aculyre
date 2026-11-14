@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Aculyre VERSION 0.13.5 LANGUAGES CXX)
+project(Aculyre VERSION 0.13.6 LANGUAGES CXX)
 
 # An experimental prototype: the DSP and its Performer, no plug-in yet.
 option(BUILD_TESTING "Build the tests" ON)
@@ -16,14 +16,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(AculyreDSP STATIC Source/DSP/AculyreEngine.cpp Source/DSP/AculyrePerformer.cpp)
 target_include_directories(AculyreDSP PUBLIC Source/DSP)
 if(NOT MSVC)
-    target_compile_options(AculyreDSP PRIVATE -Wall -Wextra)
+    target_compile_options(AculyreDSP PRIVATE -Wall -Wextra -Werror)
 endif()
 
 # The Rack toolchain is C++17 without exceptions: prove the DSP builds there.
 add_library(AculyreDSPCxx17 STATIC Source/DSP/AculyreEngine.cpp Source/DSP/AculyrePerformer.cpp)
 set_target_properties(AculyreDSPCxx17 PROPERTIES CXX_STANDARD 17)
 if(NOT MSVC)
-    target_compile_options(AculyreDSPCxx17 PRIVATE -fno-exceptions -Wall -Wextra)
+    target_compile_options(AculyreDSPCxx17 PRIVATE -fno-exceptions -Wall -Wextra -Werror)
 endif()
 
 add_executable(RenderAculyreDemo Tools/RenderDemos.cpp)

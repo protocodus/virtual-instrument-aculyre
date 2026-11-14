@@ -24,6 +24,26 @@ reference recording below.
 
 ## Version history
 
+- **0.13.6** (local candidate): lower CPU across all three instruments with
+  every rendered sample bit-identical across all 72 probe cases, plus
+  correctness fixes for ARM64 subnormal exceptions, crossfade note-off
+  ownership, mid-note lever-off pitch bends, standalone `prepare()`, and
+  mixed-parity `ModeBank` packing. In the Rack-like build steady `dense`
+  playing takes 9.2%, 9.4% and 13.2% fewer retired instructions on the steel
+  harp, nylon harp and gut lyre (6.9%, 7.2% and 10.3% natively), and median
+  calling-thread callback time drops 8.1%, 8.2% and 15.2% in Rack-like
+  (4.9%, 5.1% and 9.8% natively)
+  ([measurements](Docs/benchmarks/cpu-optimization-2026-11-14.md)). With
+  flush-to-zero off on ARM64, the subnormal thresholds no longer raise
+  `FE_UNDERFLOW` when squaring a small signal (`Aculyre.Denormals` 36/36);
+  `AculyrePerformer::noteOff` releases fading engines as well as the active
+  one so a note released across an instrument switch never latches `held`;
+  turning `levers` off while a raised string rings under pitch bend drops
+  cleanly to the open pitch at the current bend; standalone
+  `AculyreEngine::prepare` keeps prior `setControls` state when switching
+  sample rates; and `setInstrument` records `ModeBank::oddEnd` only after the
+  odd parity pass.
+
 - **0.13.5** (local candidate): two fixes. A key above the highest string
   opens at its own pitch: its two planes were designed up to 28 cents
   apart (the gut lyre's C8; 14 on the nylon harp, 8 on the steel), so the
@@ -886,9 +906,11 @@ the pedal, a second chord on top, then again) the harps' worst 256-frame
 block took 11% of a loaded development machine's core in a build with the
 Rack's flags, above the 10% ceiling, and 10% natively
 ([measurements](Docs/benchmarks/cpu-consolidation-2026-11-09.md)). A
-second pass found 0.3% more in the steady state and nothing neutral that
-brings that block under
-([2026-11-10](Docs/benchmarks/cpu-fix-pass-2026-11-10.md)).
+second pass found 0.3% more in the steady state
+([2026-11-10](Docs/benchmarks/cpu-fix-pass-2026-11-10.md)), and 0.13.6 cuts
+another 9-13% of the Rack-like steady instructions (8-15% off median
+calling-thread callback time on an ARM64 development machine, bit-identical)
+([2026-11-14](Docs/benchmarks/cpu-optimization-2026-11-14.md)).
 
 ## Known gaps
 

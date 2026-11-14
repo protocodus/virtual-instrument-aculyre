@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DspMath.h"
 #include "Pair.h"
 
 #include <array>
@@ -52,7 +53,7 @@ void fingerContact(const std::array<double, capacity>& wave, std::array<double, 
     // Reading the period at j + offset adds these four taps at offset.
     const auto shiftBy = [&] (double offset, double w)
     {
-        offset -= count * std::floor(offset / count);
+        offset -= count * floorValue(offset / count);
         int i = static_cast<int>(offset);
         const double f = offset - i;
         // Rounding a tiny negative offset can give exactly count.
@@ -121,6 +122,9 @@ void fingerContact(const std::array<double, capacity>& wave, std::array<double, 
             for (; j + 1 < end; j += 2)
             {
                 Pair sum = *pairs(to + j);
+#if defined(__clang__)
+#pragma unroll
+#endif
                 for (int t = 0; t < batch; ++t)
                     sum = sum + weights[t] * *pairs(from + (j + shift[t]));
                 *pairs(to + j) = sum;
@@ -128,6 +132,9 @@ void fingerContact(const std::array<double, capacity>& wave, std::array<double, 
             if (j < end)
             {
                 double sum = to[j];
+#if defined(__clang__)
+#pragma unroll
+#endif
                 for (int t = 0; t < batch; ++t)
                     sum += weightOf[t] * from[j + shift[t]];
                 to[j] = sum;

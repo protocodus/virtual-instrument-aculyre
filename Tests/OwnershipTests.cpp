@@ -103,5 +103,23 @@ int main()
     check(held(string), "sleep preserves a remaining source's key ownership");
     performer->noteOff(60);
     check(!held(string), "the sleeping string releases its final owner");
+
+    // A Note Off arriving while an earlier instrument is fading out (and then
+    // switched back to within the 20 ms crossfade) must still release that
+    // instrument's key owner instead of leaving the string permanently held.
+    controls.mute = 0.0;
+    performer->setControls(controls);
+    performer->reset();
+    performer->setInstrument(0);
+    performer->noteOn(60, 0.7f);
+    performer->process(left.data(), right.data(), 64);
+    check(held(string), "string is held before switching instruments");
+    performer->setInstrument(1);
+    performer->process(left.data(), right.data(), 64);
+    performer->noteOff(60);
+    performer->process(left.data(), right.data(), 64);
+    performer->setInstrument(0);
+    check(!held(string), "Note Off during an instrument crossfade releases the outgoing instrument's owner");
+    performer->process(left.data(), right.data(), 0);
     return failures ? 1 : 0;
 }

@@ -211,5 +211,45 @@ int main()
                     preset->name, worst, split);
         check(worst <= split + 0.75, "a key above the top string opens within the string's own split of its pitch");
     }
+
+    // Lowering levers mid-note under a held pitch bend must keep the live
+    // bend on the lowered string immediately rather than jumping to the
+    // unbent rest delay until the next control tick.
+    {
+        engine.prepare(48000.0);
+        engine.setTensionModulation(false);
+        engine.setInstrument(aculyre::lyreHarpSteel);
+        auto c = engine.controls();
+        c.room = 0.0;
+        c.levers = true;
+        c.pitchBend = -12.0;
+        engine.setControls(c);
+        const int c4String = engine.stringForNote(60);
+        engine.noteOn(61, 0.6f);  // C#4 via sharping lever on C4 string
+        std::array<float, 64> l {}, r {};
+        engine.process(l.data(), r.data(), 5);  // mid-control-period (countdown > 0)
+        const double raisedBentPeriod = engine.contactReport(c4String).period;
+        c.levers = false;
+        engine.setControls(c);
+        const double loweredBentPeriod = engine.contactReport(c4String).period;
+        const double expectedRatio = std::pow(2.0, 1.0 / 12.0);
+        check(std::abs(loweredBentPeriod / raisedBentPeriod - expectedRatio) < 0.01,
+              "disabling levers mid-note preserves live pitch bend immediately");
+        engine.process(l.data(), r.data(), 64);
+        for (int i = 0; i < 64; ++i)
+            check(std::isfinite(l[i]) && std::isfinite(r[i]) && std::abs(l[i]) < 4.0f,
+                  "disabling levers under bend stays finite and bounded");
+
+        // Re-preparing an already-configured engine at a new sample rate
+        // preserves its live playing controls, and zero-length callbacks are no-ops.
+        c.pluckPosition = 0.42;
+        c.piezo = 0.65;
+        engine.setControls(c);
+        engine.prepare(96000.0);
+        check(std::abs(engine.controls().pluckPosition - 0.42) < 1e-12
+              && std::abs(engine.controls().piezo - 0.65) < 1e-12,
+              "prepare() at a new sample rate preserves live controls");
+        engine.process(nullptr, nullptr, 0);
+    }
     return failures ? 1 : 0;
 }

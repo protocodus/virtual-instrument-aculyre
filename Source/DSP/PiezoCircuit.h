@@ -22,6 +22,7 @@
 // this audio-rate reduction with its DC/AC/overload/harmonic fixtures.
 #pragma once
 
+#include "DspMath.h"
 #include "PiezoCircuitBlampTable.h"
 
 #include <algorithm>
@@ -140,20 +141,24 @@ public:
         piezoStage_.fill(0.0);
         piezoOutputVolts_ = 0.0;
         lastPiezoOpen_ = lastPiezoVoltage_ = lastPiezoInput_ = lastPiezoDrive_ = 0.0;
+        piezoQuiet_ = true;
     }
 
     double process(double elementForceNewtons) noexcept
     {
         using D = Design;
-        if (!std::isfinite(elementForceNewtons) || piezoMidbandGain_ <= 0.0)
+        if (!detail::isFinite(elementForceNewtons) || piezoMidbandGain_ <= 0.0)
         {
             reset();
             return 0.0;
         }
         // 5 pN is a picovolt at the element, about 130 dB below its
         // capacitance's thermal noise; avoid carrying last-bit residue.
-        const double input = std::abs(elementForceNewtons) < 5.0e-12
+        const double input = detail::magnitude(elementForceNewtons) < 5.0e-12
             ? 0.0 : elementForceNewtons;
+        if (input == 0.0 && piezoQuiet_)
+            return 0.0;
+        piezoQuiet_ = false;
         // 2. The element's open-circuit voltage.
         const double open = D::voltsPerNewton * input;
         // 3. The input section (trapezoidal; U1A's output stopping at its input
@@ -295,14 +300,14 @@ public:
             for (double value : { piezoFrontW_, piezoFrontC2_, piezoLastOpen_, piezoLastClamp_,
                                   piezoC3_, piezoC4_, piezoC5_, piezoLastBuffer_,
                                   piezoLastStage_, u[0], u[1], u[2], u[3] })
-                quiet = quiet && std::abs(value) < floor;
+                quiet = quiet && detail::magnitude(value) < floor;
             for (double value : stage)
-                quiet = quiet && std::abs(value) < floor;
+                quiet = quiet && detail::magnitude(value) < floor;
             if (quiet)
                 reset();
         }
         const double result = piezoOutputVolts_ / midbandVoltsPerNewton();
-        if (!std::isfinite(result))
+        if (!detail::isFinite(result))
         {
             reset();
             return 0.0;
@@ -392,5 +397,6 @@ private:
     double piezoOutputVolts_ { 0.0 };
     double piezoMidbandGain_ {};
     double lastPiezoOpen_ {}, lastPiezoVoltage_ {}, lastPiezoInput_ {}, lastPiezoDrive_ {};
+    bool piezoQuiet_ { true };
 };
 } // namespace aculyre

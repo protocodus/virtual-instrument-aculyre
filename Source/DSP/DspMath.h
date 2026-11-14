@@ -26,8 +26,24 @@ inline double squareRoot(double x) noexcept { return std::sqrt(x); }
 
 #if defined(__GNUC__) || defined(__clang__)
 inline double magnitude(double x) noexcept { return __builtin_fabs(x); }
+inline bool isFinite(double x) noexcept { return __builtin_isfinite(x); }
 #else
 inline double magnitude(double x) noexcept { return std::fabs(x); }
+inline bool isFinite(double x) noexcept { return std::isfinite(x); }
+#endif
+
+#if defined(__clang__) && defined(__has_builtin)
+#if __has_builtin(__builtin_elementwise_floor)
+#define ACULYRE_ELEMENTWISE_FLOOR 1
+#endif
+#endif
+
+#if defined(ACULYRE_ELEMENTWISE_FLOOR)
+inline double floorValue(double x) noexcept { return __builtin_elementwise_floor(x); }
+#elif defined(__GNUC__) || defined(__clang__)
+inline double floorValue(double x) noexcept { return __builtin_floor(x); }
+#else
+inline double floorValue(double x) noexcept { return std::floor(x); }
 #endif
 
 // std::lround of a positive value that fits an int.

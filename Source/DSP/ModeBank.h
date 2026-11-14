@@ -18,6 +18,46 @@
 
 namespace aculyre::detail
 {
+
+// Four floats as one 128-bit vector with natural 4-byte scalar alignment so
+// heap-allocated state stays within the 8-byte alignment ceiling.
+#if defined(__GNUC__) || defined(__clang__)
+typedef float Float4 __attribute__((vector_size(16), aligned(4), may_alias));
+typedef float Float2 __attribute__((vector_size(8), aligned(4), may_alias));
+inline Pair widenLo(Float4 v) noexcept
+{
+    return __builtin_convertvector(__builtin_shufflevector(v, v, 0, 1), Pair);
+}
+inline Pair widenHi(Float4 v) noexcept
+{
+    return __builtin_convertvector(__builtin_shufflevector(v, v, 2, 3), Pair);
+}
+inline Float4 packFloat4(Pair lo, Pair hi) noexcept
+{
+    return __builtin_shufflevector(__builtin_convertvector(lo, Float2),
+                                   __builtin_convertvector(hi, Float2), 0, 1, 2, 3);
+}
+#else
+struct Float4
+{
+    float v[4];
+    Float4 operator+(Float4 o) const noexcept { return { { v[0] + o.v[0], v[1] + o.v[1], v[2] + o.v[2], v[3] + o.v[3] } }; }
+    Float4 operator*(Float4 o) const noexcept { return { { v[0] * o.v[0], v[1] * o.v[1], v[2] * o.v[2], v[3] * o.v[3] } }; }
+    Float4& operator+=(Float4 o) noexcept { return *this = *this + o; }
+    float operator[](int i) const noexcept { return v[i]; }
+};
+inline Pair widenLo(Float4 v) noexcept { return Pair { static_cast<double>(v[0]), static_cast<double>(v[1]) }; }
+inline Pair widenHi(Float4 v) noexcept { return Pair { static_cast<double>(v[2]), static_cast<double>(v[3]) }; }
+inline Float4 packFloat4(Pair lo, Pair hi) noexcept
+{
+    return Float4 { static_cast<float>(lo[0]), static_cast<float>(lo[1]),
+                    static_cast<float>(hi[0]), static_cast<float>(hi[1]) };
+}
+#endif
+inline Float4* float4s(float* p) noexcept { return reinterpret_cast<Float4*>(p); }
+inline const Float4* float4s(const float* p) noexcept { return reinterpret_cast<const Float4*>(p); }
+inline Float4 splatFloat4(float x) noexcept { return Float4 { x, x, x, x }; }
+
 // The modes in transposed direct form II, b0 (1 - z^-2) / (1 + a1 z^-1 +
 // a2 z^-2) each, as a structure of arrays padded with silent modes to whole
 // groups of `lanes`. The modes that meet only the even bar coordinates come
@@ -26,13 +66,12 @@ namespace aculyre::detail
 // its own coordinates: those of its parity that some mode meets (a bar whose
 // higher bends are left out meets none of them), listed in `coordinates`.
 //
-// A mode's force is b0 sum(participation force) and its pull on the bar
-// sum(participation state). Until 0.13.2 the bank kept both tables, b0
-// participation and participation: 40 KB read every sample on the harps,
-// more than a 32 KB first-level cache holds beside the strings. Kept with
-// its state divided by sqrt(b0), a mode reads one table for both,
-// `shape` = sqrt(b0) participation, and needs no b0 at all: 28 KB.
-// setMode() does the scaling; s1 and s2 are the scaled state.
+// `shape` = sqrt(b0) participation is stored in single precision (17 KB across
+// 424 capacity x 10 coordinates, fitting inside 32 KB L1D alongside the
+// strings) and accumulated 4 lanes per vector (`Float4`) for both the
+// generalized bar-force dot product and the bar-pull dot product, while each
+// mode's recursive biquad state `(a1, a2, s1, s2)` and Nyquist-zero radiation
+// sum `(left, right)` stay in 64-bit `double`.
 struct ModeBank
 {
     static constexpr int lanes = 8;
@@ -41,29 +80,24 @@ struct ModeBank
     static constexpr int capacity = maxModes + 3 * lanes;
     using BarVector = std::array<double, barCoordinates>;
 
-    // One eight-mode group's recursion, state and radiation arrays, packed
-    // within 384 bytes so one pointer addresses all six via paired vector
-    // loads/stores (ARM64 ldp/stp q immediate range is 1008 bytes) inside 19 KB
-    // of L1 cache.
     struct Group
     {
         std::array<double, lanes> a1 {}, a2 {}, s1 {}, s2 {}, left {}, right {};
+        std::array<float, lanes> s1Float {};
     };
 
     std::array<Group, capacity / lanes> groups {};
-    std::array<std::array<double, capacity>, barCoordinates> shape {};
+    std::array<std::array<float, capacity>, barCoordinates> shape {};
     std::array<std::array<std::size_t, barCoordinates>, 3> coordinates {};
     std::array<int, 3> coordinateCount {};
     int evenEnd { 0 }, oddEnd { 0 }, count { 0 };
 
-    // Mode k from its coefficients, its shape at the bar's coordinates and
-    // what a unit of its velocity radiates to each microphone. b0 > 0.
     void setMode(std::size_t k, double b0, double a1Value, double a2Value, const BarVector& participation,
                  double radiatesLeft, double radiatesRight) noexcept
     {
         const double root = squareRoot(b0);
         for (std::size_t c = 0; c < barCoordinates; ++c)
-            shape[c][k] = root * participation[c];
+            shape[c][k] = static_cast<float>(root * participation[c]);
         Group& g = groups[k / lanes];
         const std::size_t lane = k % lanes;
         g.a1[lane] = a1Value;
@@ -78,79 +112,58 @@ struct ModeBank
         {
             g.s1.fill(0.0);
             g.s2.fill(0.0);
+            g.s1Float.fill(0.0f);
         }
     }
 };
+static_assert(alignof(ModeBank) <= 8, "ModeBank must fit within the 8-byte heap alignment ceiling");
 
-// Drives and steps one parity part of `bank` when the part couples to a small
-// fixed number `width` of bar coordinates, keeping the coordinates' forces and
-// shape pointers in registers across all groups of eight modes.
 template <int width>
 inline void stepPart(ModeBank& bank, const std::size_t* coords, const ModeBank::BarVector& force,
                      int begin, int end, Pair (&accLeft)[ModeBank::lanes / 2],
                      Pair (&accRight)[ModeBank::lanes / 2]) noexcept
 {
-    const double* sh0 = width > 0 ? bank.shape[coords[0]].data() + begin : nullptr;
-    const Pair f0 = width > 0 ? splat(force[coords[0]]) : splat(0.0);
-    const double* sh1 = width > 1 ? bank.shape[coords[1]].data() + begin : nullptr;
-    const Pair f1 = width > 1 ? splat(force[coords[1]]) : splat(0.0);
-    const double* sh2 = width > 2 ? bank.shape[coords[2]].data() + begin : nullptr;
-    const Pair f2 = width > 2 ? splat(force[coords[2]]) : splat(0.0);
-    const double* sh3 = width > 3 ? bank.shape[coords[3]].data() + begin : nullptr;
-    const Pair f3 = width > 3 ? splat(force[coords[3]]) : splat(0.0);
-    const double* sh4 = width > 4 ? bank.shape[coords[4]].data() + begin : nullptr;
-    const Pair f4 = width > 4 ? splat(force[coords[4]]) : splat(0.0);
+    const float* sh0 = width > 0 ? bank.shape[coords[0]].data() + begin : nullptr;
+    const Float4 f0 = width > 0 ? splatFloat4(static_cast<float>(force[coords[0]])) : splatFloat4(0.0f);
+    const float* sh1 = width > 1 ? bank.shape[coords[1]].data() + begin : nullptr;
+    const Float4 f1 = width > 1 ? splatFloat4(static_cast<float>(force[coords[1]])) : splatFloat4(0.0f);
+    const float* sh2 = width > 2 ? bank.shape[coords[2]].data() + begin : nullptr;
+    const Float4 f2 = width > 2 ? splatFloat4(static_cast<float>(force[coords[2]])) : splatFloat4(0.0f);
+    const float* sh3 = width > 3 ? bank.shape[coords[3]].data() + begin : nullptr;
+    const Float4 f3 = width > 3 ? splatFloat4(static_cast<float>(force[coords[3]])) : splatFloat4(0.0f);
+    const float* sh4 = width > 4 ? bank.shape[coords[4]].data() + begin : nullptr;
+    const Float4 f4 = width > 4 ? splatFloat4(static_cast<float>(force[coords[4]])) : splatFloat4(0.0f);
+    const float* sh5 = width > 5 ? bank.shape[coords[5]].data() + begin : nullptr;
+    const Float4 f5 = width > 5 ? splatFloat4(static_cast<float>(force[coords[5]])) : splatFloat4(0.0f);
+    const float* sh6 = width > 6 ? bank.shape[coords[6]].data() + begin : nullptr;
+    const Float4 f6 = width > 6 ? splatFloat4(static_cast<float>(force[coords[6]])) : splatFloat4(0.0f);
+    const float* sh7 = width > 7 ? bank.shape[coords[7]].data() + begin : nullptr;
+    const Float4 f7 = width > 7 ? splatFloat4(static_cast<float>(force[coords[7]])) : splatFloat4(0.0f);
+    const float* sh8 = width > 8 ? bank.shape[coords[8]].data() + begin : nullptr;
+    const Float4 f8 = width > 8 ? splatFloat4(static_cast<float>(force[coords[8]])) : splatFloat4(0.0f);
+    const float* sh9 = width > 9 ? bank.shape[coords[9]].data() + begin : nullptr;
+    const Float4 f9 = width > 9 ? splatFloat4(static_cast<float>(force[coords[9]])) : splatFloat4(0.0f);
 
     ModeBank::Group* gp = bank.groups.data() + begin / ModeBank::lanes;
 
     for (int groups = (end - begin) / ModeBank::lanes; groups > 0; --groups)
     {
-        Pair sum0 = splat(0.0), sum1 = splat(0.0), sum2 = splat(0.0), sum3 = splat(0.0);
-        if constexpr (width > 0)
-        {
-            const Pair* const p = pairs(sh0);
-            sh0 += ModeBank::lanes;
-            sum0 += p[0] * f0;
-            sum1 += p[1] * f0;
-            sum2 += p[2] * f0;
-            sum3 += p[3] * f0;
-        }
-        if constexpr (width > 1)
-        {
-            const Pair* const p = pairs(sh1);
-            sh1 += ModeBank::lanes;
-            sum0 += p[0] * f1;
-            sum1 += p[1] * f1;
-            sum2 += p[2] * f1;
-            sum3 += p[3] * f1;
-        }
-        if constexpr (width > 2)
-        {
-            const Pair* const p = pairs(sh2);
-            sh2 += ModeBank::lanes;
-            sum0 += p[0] * f2;
-            sum1 += p[1] * f2;
-            sum2 += p[2] * f2;
-            sum3 += p[3] * f2;
-        }
-        if constexpr (width > 3)
-        {
-            const Pair* const p = pairs(sh3);
-            sh3 += ModeBank::lanes;
-            sum0 += p[0] * f3;
-            sum1 += p[1] * f3;
-            sum2 += p[2] * f3;
-            sum3 += p[3] * f3;
-        }
-        if constexpr (width > 4)
-        {
-            const Pair* const p = pairs(sh4);
-            sh4 += ModeBank::lanes;
-            sum0 += p[0] * f4;
-            sum1 += p[1] * f4;
-            sum2 += p[2] * f4;
-            sum3 += p[3] * f4;
-        }
+        Float4 sumF0 = splatFloat4(0.0f), sumF1 = splatFloat4(0.0f);
+        if constexpr (width > 0) { const Float4* const p = float4s(sh0); sh0 += ModeBank::lanes; sumF0 += p[0] * f0; sumF1 += p[1] * f0; }
+        if constexpr (width > 1) { const Float4* const p = float4s(sh1); sh1 += ModeBank::lanes; sumF0 += p[0] * f1; sumF1 += p[1] * f1; }
+        if constexpr (width > 2) { const Float4* const p = float4s(sh2); sh2 += ModeBank::lanes; sumF0 += p[0] * f2; sumF1 += p[1] * f2; }
+        if constexpr (width > 3) { const Float4* const p = float4s(sh3); sh3 += ModeBank::lanes; sumF0 += p[0] * f3; sumF1 += p[1] * f3; }
+        if constexpr (width > 4) { const Float4* const p = float4s(sh4); sh4 += ModeBank::lanes; sumF0 += p[0] * f4; sumF1 += p[1] * f4; }
+        if constexpr (width > 5) { const Float4* const p = float4s(sh5); sh5 += ModeBank::lanes; sumF0 += p[0] * f5; sumF1 += p[1] * f5; }
+        if constexpr (width > 6) { const Float4* const p = float4s(sh6); sh6 += ModeBank::lanes; sumF0 += p[0] * f6; sumF1 += p[1] * f6; }
+        if constexpr (width > 7) { const Float4* const p = float4s(sh7); sh7 += ModeBank::lanes; sumF0 += p[0] * f7; sumF1 += p[1] * f7; }
+        if constexpr (width > 8) { const Float4* const p = float4s(sh8); sh8 += ModeBank::lanes; sumF0 += p[0] * f8; sumF1 += p[1] * f8; }
+        if constexpr (width > 9) { const Float4* const p = float4s(sh9); sh9 += ModeBank::lanes; sumF0 += p[0] * f9; sumF1 += p[1] * f9; }
+
+        const Pair sum0 = widenLo(sumF0);
+        const Pair sum1 = widenHi(sumF0);
+        const Pair sum2 = widenLo(sumF1);
+        const Pair sum3 = widenHi(sumF1);
 
         ModeBank::Group& g = *gp++;
         Pair* const s1 = pairs(g.s1.data());
@@ -159,6 +172,7 @@ inline void stepPart(ModeBank& bank, const std::size_t* coords, const ModeBank::
         const Pair* const a2 = pairs(g.a2.data());
         const Pair* const toLeft = pairs(g.left.data());
         const Pair* const toRight = pairs(g.right.data());
+        Float4* const s1f = float4s(g.s1Float.data());
 
         const Pair y0 = sum0 + s1[0], y1 = sum1 + s1[1], y2 = sum2 + s1[2], y3 = sum3 + s1[3];
         const Pair n0 = s2[0] - a1[0] * y0, n1 = s2[1] - a1[1] * y1, n2 = s2[2] - a1[2] * y2, n3 = s2[3] - a1[3] * y3;
@@ -170,6 +184,8 @@ inline void stepPart(ModeBank& bank, const std::size_t* coords, const ModeBank::
         s1[1] = n1;
         s1[2] = n2;
         s1[3] = n3;
+        s1f[0] = packFloat4(n0, n1);
+        s1f[1] = packFloat4(n2, n3);
         accLeft[0] += toLeft[0] * y0;
         accLeft[1] += toLeft[1] * y1;
         accLeft[2] += toLeft[2] * y2;
@@ -181,168 +197,125 @@ inline void stepPart(ModeBank& bank, const std::size_t* coords, const ModeBank::
     }
 }
 
-// One part's pull on `width` of its coordinates in one pass over the part's
-// modes, when no mixed-parity modes follow (oddEnd == count): each parity's
-// coordinates are distinct, so the lane sums reduce straight into `pull`
-// without a 640-byte stack table.
+// One part's pull on `width` (up to 6) of its coordinates in one pass over the
+// part's modes in 4-lane Float4: 12 accumulators + 2 state vectors + 2 shape
+// vectors = 16 vector registers (fits without spilling on both ARM64 and x86_64).
 template <int width>
 inline void pullOnBarDirect(const ModeBank& bank, const std::size_t* list, int begin, int end,
                             ModeBank::BarVector& pull) noexcept
 {
-    const double* sh0 = bank.shape[list[0]].data() + begin;
-    const double* sh1 = width > 1 ? bank.shape[list[1]].data() + begin : nullptr;
-    const double* sh2 = width > 2 ? bank.shape[list[2]].data() + begin : nullptr;
-    const double* sh3 = width > 3 ? bank.shape[list[3]].data() + begin : nullptr;
-    const double* sh4 = width > 4 ? bank.shape[list[4]].data() + begin : nullptr;
-    Pair c0v0 = splat(0.0), c0v1 = splat(0.0), c0v2 = splat(0.0), c0v3 = splat(0.0);
-    Pair c1v0 = splat(0.0), c1v1 = splat(0.0), c1v2 = splat(0.0), c1v3 = splat(0.0);
-    Pair c2v0 = splat(0.0), c2v1 = splat(0.0), c2v2 = splat(0.0), c2v3 = splat(0.0);
-    Pair c3v0 = splat(0.0), c3v1 = splat(0.0), c3v2 = splat(0.0), c3v3 = splat(0.0);
-    Pair c4v0 = splat(0.0), c4v1 = splat(0.0), c4v2 = splat(0.0), c4v3 = splat(0.0);
+    const float* sh0 = bank.shape[list[0]].data() + begin;
+    const float* sh1 = width > 1 ? bank.shape[list[1]].data() + begin : nullptr;
+    const float* sh2 = width > 2 ? bank.shape[list[2]].data() + begin : nullptr;
+    const float* sh3 = width > 3 ? bank.shape[list[3]].data() + begin : nullptr;
+    const float* sh4 = width > 4 ? bank.shape[list[4]].data() + begin : nullptr;
+    const float* sh5 = width > 5 ? bank.shape[list[5]].data() + begin : nullptr;
+    Float4 c0v0 = splatFloat4(0.0f), c0v1 = splatFloat4(0.0f);
+    Float4 c1v0 = splatFloat4(0.0f), c1v1 = splatFloat4(0.0f);
+    Float4 c2v0 = splatFloat4(0.0f), c2v1 = splatFloat4(0.0f);
+    Float4 c3v0 = splatFloat4(0.0f), c3v1 = splatFloat4(0.0f);
+    Float4 c4v0 = splatFloat4(0.0f), c4v1 = splatFloat4(0.0f);
+    Float4 c5v0 = splatFloat4(0.0f), c5v1 = splatFloat4(0.0f);
 
     const ModeBank::Group* gp = bank.groups.data() + begin / ModeBank::lanes;
     for (int groups = (end - begin) / ModeBank::lanes; groups > 0; --groups)
     {
-        const Pair* const s = pairs((gp++)->s1.data());
-        const Pair s0 = s[0], s1 = s[1], s2 = s[2], s3 = s[3];
+        const Float4* const s = float4s((gp++)->s1Float.data());
+        const Float4 s0 = s[0], s1 = s[1];
         {
-            const Pair* const p = pairs(sh0);
+            const Float4* const p = float4s(sh0);
             sh0 += ModeBank::lanes;
             c0v0 += p[0] * s0;
             c0v1 += p[1] * s1;
-            c0v2 += p[2] * s2;
-            c0v3 += p[3] * s3;
         }
         if constexpr (width > 1)
         {
-            const Pair* const p = pairs(sh1);
+            const Float4* const p = float4s(sh1);
             sh1 += ModeBank::lanes;
             c1v0 += p[0] * s0;
             c1v1 += p[1] * s1;
-            c1v2 += p[2] * s2;
-            c1v3 += p[3] * s3;
         }
         if constexpr (width > 2)
         {
-            const Pair* const p = pairs(sh2);
+            const Float4* const p = float4s(sh2);
             sh2 += ModeBank::lanes;
             c2v0 += p[0] * s0;
             c2v1 += p[1] * s1;
-            c2v2 += p[2] * s2;
-            c2v3 += p[3] * s3;
         }
         if constexpr (width > 3)
         {
-            const Pair* const p = pairs(sh3);
+            const Float4* const p = float4s(sh3);
             sh3 += ModeBank::lanes;
             c3v0 += p[0] * s0;
             c3v1 += p[1] * s1;
-            c3v2 += p[2] * s2;
-            c3v3 += p[3] * s3;
         }
         if constexpr (width > 4)
         {
-            const Pair* const p = pairs(sh4);
+            const Float4* const p = float4s(sh4);
             sh4 += ModeBank::lanes;
             c4v0 += p[0] * s0;
             c4v1 += p[1] * s1;
-            c4v2 += p[2] * s2;
-            c4v3 += p[3] * s3;
+        }
+        if constexpr (width > 5)
+        {
+            const Float4* const p = float4s(sh5);
+            sh5 += ModeBank::lanes;
+            c5v0 += p[0] * s0;
+            c5v1 += p[1] * s1;
         }
     }
 
-    pull[list[0]] = (((0.0 + c0v0[0]) + c0v0[1]) + c0v1[0]) + c0v1[1];
-    pull[list[0]] = (((pull[list[0]] + c0v2[0]) + c0v2[1]) + c0v3[0]) + c0v3[1];
-    if constexpr (width > 1)
+    const auto reduce = [] (Float4 a, Float4 b) noexcept
     {
-        double total = (((0.0 + c1v0[0]) + c1v0[1]) + c1v1[0]) + c1v1[1];
-        pull[list[1]] = (((total + c1v2[0]) + c1v2[1]) + c1v3[0]) + c1v3[1];
-    }
-    if constexpr (width > 2)
-    {
-        double total = (((0.0 + c2v0[0]) + c2v0[1]) + c2v1[0]) + c2v1[1];
-        pull[list[2]] = (((total + c2v2[0]) + c2v2[1]) + c2v3[0]) + c2v3[1];
-    }
-    if constexpr (width > 3)
-    {
-        double total = (((0.0 + c3v0[0]) + c3v0[1]) + c3v1[0]) + c3v1[1];
-        pull[list[3]] = (((total + c3v2[0]) + c3v2[1]) + c3v3[0]) + c3v3[1];
-    }
-    if constexpr (width > 4)
-    {
-        double total = (((0.0 + c4v0[0]) + c4v0[1]) + c4v1[0]) + c4v1[1];
-        pull[list[4]] = (((total + c4v2[0]) + c4v2[1]) + c4v3[0]) + c4v3[1];
-    }
+        const Pair lo = widenLo(a) + widenHi(a);
+        const Pair hi = widenLo(b) + widenHi(b);
+        return (lo[0] + lo[1]) + (hi[0] + hi[1]);
+    };
+    pull[list[0]] = reduce(c0v0, c0v1);
+    if constexpr (width > 1) pull[list[1]] = reduce(c1v0, c1v1);
+    if constexpr (width > 2) pull[list[2]] = reduce(c2v0, c2v1);
+    if constexpr (width > 3) pull[list[3]] = reduce(c3v0, c3v1);
+    if constexpr (width > 4) pull[list[4]] = reduce(c4v0, c4v1);
+    if constexpr (width > 5) pull[list[5]] = reduce(c5v0, c5v1);
 }
 
 template <int width>
 inline void pullOnBar(const ModeBank& bank, const std::size_t* list, int begin, int end,
-                      Pair (*lanePull)[ModeBank::lanes / 2]) noexcept
+                      Float4 (*lanePull)[ModeBank::lanes / 4]) noexcept
 {
-    const double* sh0 = bank.shape[list[0]].data() + begin;
-    const double* sh1 = width > 1 ? bank.shape[list[1]].data() + begin : nullptr;
-    const double* sh2 = width > 2 ? bank.shape[list[2]].data() + begin : nullptr;
-    Pair c0v0 = lanePull[list[0]][0], c0v1 = lanePull[list[0]][1], c0v2 = lanePull[list[0]][2], c0v3 = lanePull[list[0]][3];
-    Pair c1v0 = width > 1 ? lanePull[list[1]][0] : splat(0.0);
-    Pair c1v1 = width > 1 ? lanePull[list[1]][1] : splat(0.0);
-    Pair c1v2 = width > 1 ? lanePull[list[1]][2] : splat(0.0);
-    Pair c1v3 = width > 1 ? lanePull[list[1]][3] : splat(0.0);
-    Pair c2v0 = width > 2 ? lanePull[list[2]][0] : splat(0.0);
-    Pair c2v1 = width > 2 ? lanePull[list[2]][1] : splat(0.0);
-    Pair c2v2 = width > 2 ? lanePull[list[2]][2] : splat(0.0);
-    Pair c2v3 = width > 2 ? lanePull[list[2]][3] : splat(0.0);
+    const float* sh0 = bank.shape[list[0]].data() + begin;
+    const float* sh1 = width > 1 ? bank.shape[list[1]].data() + begin : nullptr;
+    const float* sh2 = width > 2 ? bank.shape[list[2]].data() + begin : nullptr;
+    const float* sh3 = width > 3 ? bank.shape[list[3]].data() + begin : nullptr;
+    const float* sh4 = width > 4 ? bank.shape[list[4]].data() + begin : nullptr;
+    Float4 c0v0 = lanePull[list[0]][0], c0v1 = lanePull[list[0]][1];
+    Float4 c1v0 = width > 1 ? lanePull[list[1]][0] : splatFloat4(0.0f);
+    Float4 c1v1 = width > 1 ? lanePull[list[1]][1] : splatFloat4(0.0f);
+    Float4 c2v0 = width > 2 ? lanePull[list[2]][0] : splatFloat4(0.0f);
+    Float4 c2v1 = width > 2 ? lanePull[list[2]][1] : splatFloat4(0.0f);
+    Float4 c3v0 = width > 3 ? lanePull[list[3]][0] : splatFloat4(0.0f);
+    Float4 c3v1 = width > 3 ? lanePull[list[3]][1] : splatFloat4(0.0f);
+    Float4 c4v0 = width > 4 ? lanePull[list[4]][0] : splatFloat4(0.0f);
+    Float4 c4v1 = width > 4 ? lanePull[list[4]][1] : splatFloat4(0.0f);
 
     const ModeBank::Group* gp = bank.groups.data() + begin / ModeBank::lanes;
     for (int groups = (end - begin) / ModeBank::lanes; groups > 0; --groups)
     {
-        const Pair* const s = pairs((gp++)->s1.data());
-        const Pair s0 = s[0], s1 = s[1], s2 = s[2], s3 = s[3];
-        {
-            const Pair* const p = pairs(sh0);
-            sh0 += ModeBank::lanes;
-            c0v0 += p[0] * s0;
-            c0v1 += p[1] * s1;
-            c0v2 += p[2] * s2;
-            c0v3 += p[3] * s3;
-        }
-        if constexpr (width > 1)
-        {
-            const Pair* const p = pairs(sh1);
-            sh1 += ModeBank::lanes;
-            c1v0 += p[0] * s0;
-            c1v1 += p[1] * s1;
-            c1v2 += p[2] * s2;
-            c1v3 += p[3] * s3;
-        }
-        if constexpr (width > 2)
-        {
-            const Pair* const p = pairs(sh2);
-            sh2 += ModeBank::lanes;
-            c2v0 += p[0] * s0;
-            c2v1 += p[1] * s1;
-            c2v2 += p[2] * s2;
-            c2v3 += p[3] * s3;
-        }
+        const Float4* const s = float4s((gp++)->s1Float.data());
+        const Float4 s0 = s[0], s1 = s[1];
+        { const Float4* const p = float4s(sh0); sh0 += ModeBank::lanes; c0v0 += p[0] * s0; c0v1 += p[1] * s1; }
+        if constexpr (width > 1) { const Float4* const p = float4s(sh1); sh1 += ModeBank::lanes; c1v0 += p[0] * s0; c1v1 += p[1] * s1; }
+        if constexpr (width > 2) { const Float4* const p = float4s(sh2); sh2 += ModeBank::lanes; c2v0 += p[0] * s0; c2v1 += p[1] * s1; }
+        if constexpr (width > 3) { const Float4* const p = float4s(sh3); sh3 += ModeBank::lanes; c3v0 += p[0] * s0; c3v1 += p[1] * s1; }
+        if constexpr (width > 4) { const Float4* const p = float4s(sh4); sh4 += ModeBank::lanes; c4v0 += p[0] * s0; c4v1 += p[1] * s1; }
     }
 
     lanePull[list[0]][0] = c0v0;
     lanePull[list[0]][1] = c0v1;
-    lanePull[list[0]][2] = c0v2;
-    lanePull[list[0]][3] = c0v3;
-    if constexpr (width > 1)
-    {
-        lanePull[list[1]][0] = c1v0;
-        lanePull[list[1]][1] = c1v1;
-        lanePull[list[1]][2] = c1v2;
-        lanePull[list[1]][3] = c1v3;
-    }
-    if constexpr (width > 2)
-    {
-        lanePull[list[2]][0] = c2v0;
-        lanePull[list[2]][1] = c2v1;
-        lanePull[list[2]][2] = c2v2;
-        lanePull[list[2]][3] = c2v3;
-    }
+    if constexpr (width > 1) { lanePull[list[1]][0] = c1v0; lanePull[list[1]][1] = c1v1; }
+    if constexpr (width > 2) { lanePull[list[2]][0] = c2v0; lanePull[list[2]][1] = c2v1; }
+    if constexpr (width > 3) { lanePull[list[3]][0] = c3v0; lanePull[list[3]][1] = c3v1; }
+    if constexpr (width > 4) { lanePull[list[4]][0] = c4v0; lanePull[list[4]][1] = c4v1; }
 }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -350,11 +323,11 @@ __attribute__((noinline))
 #endif
 inline void runModesMixedPull(const ModeBank& bank, const int (&bounds)[4], ModeBank::BarVector& pull) noexcept
 {
-    constexpr int vectors = ModeBank::lanes / 2;
-    Pair lanePull[ModeBank::barCoordinates][vectors];
+    constexpr int floatVectors = ModeBank::lanes / 4;
+    alignas(16) Float4 lanePull[ModeBank::barCoordinates][floatVectors];
     for (auto& lane : lanePull)
-        for (int v = 0; v < vectors; ++v)
-            lane[v] = splat(0.0);
+        for (int v = 0; v < floatVectors; ++v)
+            lane[v] = splatFloat4(0.0f);
     for (std::size_t part = 0; part < 3; ++part)
     {
         const int begin = bounds[part], end = bounds[part + 1];
@@ -362,10 +335,12 @@ inline void runModesMixedPull(const ModeBank& bank, const int (&bounds)[4], Mode
             continue;
         const std::size_t* list = bank.coordinates[part].data();
         int remaining = bank.coordinateCount[part];
-        for (; remaining >= 3; remaining -= 3, list += 3)
-            pullOnBar<3>(bank, list, begin, end, lanePull);
+        for (; remaining >= 5; remaining -= 5, list += 5)
+            pullOnBar<5>(bank, list, begin, end, lanePull);
         switch (remaining)
         {
+            case 4: pullOnBar<4>(bank, list, begin, end, lanePull); break;
+            case 3: pullOnBar<3>(bank, list, begin, end, lanePull); break;
             case 2: pullOnBar<2>(bank, list, begin, end, lanePull); break;
             case 1: pullOnBar<1>(bank, list, begin, end, lanePull); break;
             default: break;
@@ -373,23 +348,12 @@ inline void runModesMixedPull(const ModeBank& bank, const int (&bounds)[4], Mode
     }
     for (std::size_t c = 0; c < ModeBank::barCoordinates; ++c)
     {
-        double total = 0.0;
-        for (int v = 0; v < vectors; ++v)
-            for (int i = 0; i < 2; ++i)
-                total += lanePull[c][v][i];
-        pull[c] = total;
+        const Pair lo = widenLo(lanePull[c][0]) + widenHi(lanePull[c][0]);
+        const Pair hi = widenLo(lanePull[c][1]) + widenHi(lanePull[c][1]);
+        pull[c] = (lo[0] + lo[1]) + (hi[0] + hi[1]);
     }
 }
 
-// Runs the bank's modes one sample on under the force on the bar. Returns
-// what they radiate to each microphone and their pull on the bar's next
-// velocity. A group's generalized force and its recursion run together,
-// while the force is still in registers; the pulls follow, up to three
-// coordinates a pass so each load of a mode's state serves them all without
-// spilling vector registers. Every sum keeps one accumulator per lane (a
-// mode's place in its group of eight) and adds the lanes in order at the end,
-// so the fused kernel below, four lanes a vector, adds the same terms in the
-// same order.
 inline void runModes(ModeBank& bank, const ModeBank::BarVector& force, double& left, double& right,
                      ModeBank::BarVector& pull) noexcept
 {
@@ -406,54 +370,17 @@ inline void runModes(ModeBank& bank, const ModeBank::BarVector& force, double& l
         const std::size_t* const coords = bank.coordinates[part].data();
         switch (coordCount)
         {
-            case 0:
-                stepPart<0>(bank, coords, force, begin, end, accLeft, accRight);
-                break;
-            case 1:
-                stepPart<1>(bank, coords, force, begin, end, accLeft, accRight);
-                break;
-            case 2:
-                stepPart<2>(bank, coords, force, begin, end, accLeft, accRight);
-                break;
-            case 3:
-                stepPart<3>(bank, coords, force, begin, end, accLeft, accRight);
-                break;
-            case 4:
-                stepPart<4>(bank, coords, force, begin, end, accLeft, accRight);
-                break;
-            case 5:
-                stepPart<5>(bank, coords, force, begin, end, accLeft, accRight);
-                break;
-            default:
-                for (int group = begin; group < end; group += ModeBank::lanes)
-                {
-                    Pair sum[vectors] { splat(0.0), splat(0.0), splat(0.0), splat(0.0) };
-                    for (int n = 0; n < coordCount; ++n)
-                    {
-                        const std::size_t c = coords[n];
-                        const Pair* const shape = pairs(bank.shape[c].data() + group);
-                        const Pair fc = splat(force[c]);
-                        for (int v = 0; v < vectors; ++v)
-                            sum[v] += shape[v] * fc;
-                    }
-                    ModeBank::Group& g = bank.groups[static_cast<std::size_t>(group / ModeBank::lanes)];
-                    Pair* const s1 = pairs(g.s1.data());
-                    Pair* const s2 = pairs(g.s2.data());
-                    const Pair* const a1 = pairs(g.a1.data());
-                    const Pair* const a2 = pairs(g.a2.data());
-                    const Pair* const toLeft = pairs(g.left.data());
-                    const Pair* const toRight = pairs(g.right.data());
-                    for (int v = 0; v < vectors; ++v)
-                    {
-                        const Pair y = sum[v] + s1[v];
-                        const Pair next = s2[v] - a1[v] * y;
-                        s2[v] = -sum[v] - a2[v] * y;
-                        s1[v] = next;
-                        accLeft[v] += toLeft[v] * y;
-                        accRight[v] += toRight[v] * y;
-                    }
-                }
-                break;
+            case 0:  stepPart<0>(bank, coords, force, begin, end, accLeft, accRight); break;
+            case 1:  stepPart<1>(bank, coords, force, begin, end, accLeft, accRight); break;
+            case 2:  stepPart<2>(bank, coords, force, begin, end, accLeft, accRight); break;
+            case 3:  stepPart<3>(bank, coords, force, begin, end, accLeft, accRight); break;
+            case 4:  stepPart<4>(bank, coords, force, begin, end, accLeft, accRight); break;
+            case 5:  stepPart<5>(bank, coords, force, begin, end, accLeft, accRight); break;
+            case 6:  stepPart<6>(bank, coords, force, begin, end, accLeft, accRight); break;
+            case 7:  stepPart<7>(bank, coords, force, begin, end, accLeft, accRight); break;
+            case 8:  stepPart<8>(bank, coords, force, begin, end, accLeft, accRight); break;
+            case 9:  stepPart<9>(bank, coords, force, begin, end, accLeft, accRight); break;
+            default: stepPart<10>(bank, coords, force, begin, end, accLeft, accRight); break;
         }
     }
     left = right = 0.0;
@@ -478,51 +405,35 @@ inline void runModes(ModeBank& bank, const ModeBank::BarVector& force, double& l
             continue;
         const std::size_t* list = bank.coordinates[part].data();
         int remaining = bank.coordinateCount[part];
-#if defined(__aarch64__) || defined(_M_ARM64)
-        for (; remaining >= 5; remaining -= 5, list += 5)
-            pullOnBarDirect<5>(bank, list, begin, end, pull);
+        for (; remaining >= 6; remaining -= 6, list += 6)
+            pullOnBarDirect<6>(bank, list, begin, end, pull);
         switch (remaining)
         {
+            case 5: pullOnBarDirect<5>(bank, list, begin, end, pull); break;
             case 4: pullOnBarDirect<4>(bank, list, begin, end, pull); break;
             case 3: pullOnBarDirect<3>(bank, list, begin, end, pull); break;
             case 2: pullOnBarDirect<2>(bank, list, begin, end, pull); break;
             case 1: pullOnBarDirect<1>(bank, list, begin, end, pull); break;
             default: break;
         }
-#else
-        for (; remaining >= 3; remaining -= 3, list += 3)
-            pullOnBarDirect<3>(bank, list, begin, end, pull);
-        switch (remaining)
-        {
-            case 2: pullOnBarDirect<2>(bank, list, begin, end, pull); break;
-            case 1: pullOnBarDirect<1>(bank, list, begin, end, pull); break;
-            default: break;
-        }
-#endif
     }
 }
 
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__)) && !defined(ACULYRE_DISABLE_AVX2)
 #define ACULYRE_HAS_FUSED_KERNELS 1
 
-// The same sums for CPUs with AVX2 and FMA3: four lanes a vector, each
-// product and its sum one fused instruction. Every sum keeps its order and
-// its lanes but rounds once per term instead of twice, so the output meets
-// the portable bank's to rounding, not to the bit (Tests/ModeBankTests.cpp
-// holds it there; Docs/benchmarks/cpu-consolidation-2026-11-09.md has the
-// null test). Chosen in prepare().
 typedef double Double4 __attribute__((vector_size(32), aligned(8), may_alias));
 
-// One part's pull on `width` of its coordinates, in one pass over the
-// part's modes: ten lane sums and a group's state at a width of five, within
-// AVX2's sixteen registers.
 template <int width>
 __attribute__((target("avx2,fma"))) inline void pullOnBarFused(const ModeBank& bank, const std::size_t* list,
                                                                 int begin, int end,
-                                                                Double4 (*lanePull)[2]) noexcept
+                                                                Float4 (*lanePull)[2]) noexcept
 {
-    Double4 lo[width], hi[width];
-    const double* row[width];
+    Float4 lo[width], hi[width];
+    const float* row[width];
+#if defined(__clang__)
+#pragma unroll
+#endif
     for (int c = 0; c < width; ++c)
     {
         lo[c] = lanePull[list[c]][0];
@@ -532,15 +443,20 @@ __attribute__((target("avx2,fma"))) inline void pullOnBarFused(const ModeBank& b
     const ModeBank::Group* const groups = bank.groups.data();
     for (int group = begin; group < end; group += ModeBank::lanes)
     {
-        const double* const s = groups[group / ModeBank::lanes].s1.data();
-        const Double4 s0 = *reinterpret_cast<const Double4*>(s);
-        const Double4 s1 = *reinterpret_cast<const Double4*>(s + 4);
+        const Float4* const s = float4s(groups[group / ModeBank::lanes].s1Float.data());
+        const Float4 s0 = s[0], s1 = s[1];
+#if defined(__clang__)
+#pragma unroll
+#endif
         for (int c = 0; c < width; ++c)
         {
-            lo[c] = __builtin_ia32_vfmaddpd256(*reinterpret_cast<const Double4*>(row[c] + group), s0, lo[c]);
-            hi[c] = __builtin_ia32_vfmaddpd256(*reinterpret_cast<const Double4*>(row[c] + group + 4), s1, hi[c]);
+            lo[c] = __builtin_ia32_vfmaddps(*float4s(row[c] + group), s0, lo[c]);
+            hi[c] = __builtin_ia32_vfmaddps(*float4s(row[c] + group + 4), s1, hi[c]);
         }
     }
+#if defined(__clang__)
+#pragma unroll
+#endif
     for (int c = 0; c < width; ++c)
     {
         lanePull[list[c]][0] = lo[c];
@@ -558,15 +474,14 @@ __attribute__((target("avx2,fma"))) inline void runModesFused(ModeBank& bank, co
     for (std::size_t part = 0; part < 3; ++part)
         for (int group = bounds[part]; group < bounds[part + 1]; group += ModeBank::lanes)
         {
-            Double4 sum[vectors] {};
+            Float4 sumF[vectors] {};
             for (int n = 0; n < bank.coordinateCount[part]; ++n)
             {
                 const std::size_t c = bank.coordinates[part][static_cast<std::size_t>(n)];
-                const Double4* const shape = reinterpret_cast<const Double4*>(bank.shape[c].data() + group);
-                const double share = force[c];
-                const Double4 f { share, share, share, share };
+                const Float4* const shape = float4s(bank.shape[c].data() + group);
+                const Float4 f = splatFloat4(static_cast<float>(force[c]));
                 for (int v = 0; v < vectors; ++v)
-                    sum[v] = __builtin_ia32_vfmaddpd256(shape[v], f, sum[v]);
+                    sumF[v] = __builtin_ia32_vfmaddps(shape[v], f, sumF[v]);
             }
             ModeBank::Group& g = bank.groups[static_cast<std::size_t>(group / ModeBank::lanes)];
             Double4* const s1 = reinterpret_cast<Double4*>(g.s1.data());
@@ -575,12 +490,15 @@ __attribute__((target("avx2,fma"))) inline void runModesFused(ModeBank& bank, co
             const Double4* const a2 = reinterpret_cast<const Double4*>(g.a2.data());
             const Double4* const toLeft = reinterpret_cast<const Double4*>(g.left.data());
             const Double4* const toRight = reinterpret_cast<const Double4*>(g.right.data());
+            Float4* const s1f = float4s(g.s1Float.data());
             for (int v = 0; v < vectors; ++v)
             {
-                const Double4 y = sum[v] + s1[v];
+                const Double4 sum = __builtin_convertvector(sumF[v], Double4);
+                const Double4 y = sum + s1[v];
                 const Double4 next = __builtin_ia32_vfmaddpd256(-a1[v], y, s2[v]);
-                s2[v] = __builtin_ia32_vfmaddpd256(-a2[v], y, -sum[v]);
+                s2[v] = __builtin_ia32_vfmaddpd256(-a2[v], y, -sum);
                 s1[v] = next;
+                s1f[v] = __builtin_convertvector(next, Float4);
                 accLeft[v] = __builtin_ia32_vfmaddpd256(toLeft[v], y, accLeft[v]);
                 accRight[v] = __builtin_ia32_vfmaddpd256(toRight[v], y, accRight[v]);
             }
@@ -593,7 +511,7 @@ __attribute__((target("avx2,fma"))) inline void runModesFused(ModeBank& bank, co
             right += accRight[v][i];
         }
 
-    Double4 lanePull[ModeBank::barCoordinates][vectors] {};
+    alignas(16) Float4 lanePull[ModeBank::barCoordinates][vectors] {};
     for (std::size_t part = 0; part < 3; ++part)
     {
         const int begin = bounds[part], end = bounds[part + 1];
@@ -612,11 +530,11 @@ __attribute__((target("avx2,fma"))) inline void runModesFused(ModeBank& bank, co
     }
     for (std::size_t c = 0; c < ModeBank::barCoordinates; ++c)
     {
-        double total = 0.0;
-        for (int v = 0; v < vectors; ++v)
-            for (int i = 0; i < 4; ++i)
-                total += lanePull[c][v][i];
-        pull[c] = total;
+        const Float4 a = lanePull[c][0], b = lanePull[c][1];
+        pull[c] = ((static_cast<double>(a[0]) + static_cast<double>(a[1]))
+                 + (static_cast<double>(a[2]) + static_cast<double>(a[3])))
+                + ((static_cast<double>(b[0]) + static_cast<double>(b[1]))
+                 + (static_cast<double>(b[2]) + static_cast<double>(b[3])));
     }
 }
 #endif

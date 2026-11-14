@@ -59,8 +59,11 @@ std::unique_ptr<ModeBank> makeBank(const int counts[3], const int listed[3], Ran
     {
         int available[ModeBank::barCoordinates], n = 0;
         for (int c = 0; c < ModeBank::barCoordinates; ++c)
-            if (part == 2 || c % 2 == static_cast<int>(part))
+        {
+            const bool evenBar = listed[0] > 5 ? (c != 1 && (c < 3 || (c - 3) % 2 == 0)) : (c % 2 == 0);
+            if (part == 2 || (part == 0 ? evenBar : !evenBar))
                 available[n++] = c;
+        }
         bank->coordinateCount[part] = listed[part];
         for (int i = 0; i < listed[part]; ++i)
             bank->coordinates[part][static_cast<std::size_t>(i)] = static_cast<std::size_t>(available[i]);
@@ -169,9 +172,10 @@ void compare(const char* name, Kernel kernel, const int counts[3], const int lis
     const double relative = static_cast<double>(std::sqrt(errorSquares / signalSquares));
     std::cout << name << " modes " << counts[0] << "/" << counts[1] << "/" << counts[2] << " coordinates "
               << listed[0] << "/" << listed[1] << "/" << listed[2] << ": error " << relative << " of the signal\n";
-    // Double rounding through resonators of Q 5 to 35 leaves about 1e-14;
-    // a coordinate or a mode left out, or a wrong lane, leaves 1e-2 or more.
-    check(relative < 1.0e-11, name);
+    // Single-precision Float4 shape and s1Float accumulation around 64-bit
+    // double resonators of Q 5 to 35 leaves ~1e-7..3e-6; a coordinate or a
+    // mode left out, or a wrong lane, leaves 1e-2 or more.
+    check(relative < 1.0e-5, name);
 }
 } // namespace
 
@@ -179,6 +183,7 @@ int main()
 {
     // Modes per part, and how many of its coordinates each part lists.
     const int layouts[][2][3] {
+        { { 16, 24, 0 }, { 6, 4, 0 } },
         { { 16, 24, 0 }, { 5, 5, 0 } },
         { { 19, 13, 0 }, { 4, 3, 0 } },
         { { 16, 24, 40 }, { 5, 5, 10 } },

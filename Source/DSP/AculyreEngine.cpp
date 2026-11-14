@@ -2269,6 +2269,7 @@ struct AculyreEngine::State
     bool fusedProcess { false };
     bool modalPastStale { true };
     bool sustain { false };
+    bool stringsActive { false };
     int quietSamples { 0 };
     int controlCountdown { 0 };
     int microphoneCursor { 0 };
@@ -2386,7 +2387,10 @@ struct AculyreEngine::State
     }
 };
 
-AculyreEngine::AculyreEngine() : state_(std::make_unique<State>()) {}
+AculyreEngine::AculyreEngine() : state_(std::make_unique<State>())
+{
+    static_assert(alignof(State) <= 8, "State must fit within the 8-byte heap alignment ceiling");
+}
 AculyreEngine::~AculyreEngine() = default;
 
 void AculyreEngine::prepare(double sampleRate)
@@ -3182,9 +3186,42 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     }
 
     // ---- The junction ---------------------------------------------------
+    // Prune soundbox modes from the real-time junction and ModeBank when their
+    // peak resonant bar mobility (Q / omega * ||P||^2) or peak resonant
+    // radiated pressure per unit bar force (Q * ||P|| * max(|rL|, |rR|)) sits
+    // more than 80 dB (factor 1e-4) below the strongest mode's.
+    std::array<bool, maxModes> keepInBank {};
+    {
+        std::array<double, maxModes> peakMobility {}, peakRadiation {};
+        double maxMobility = 0.0, maxRadiation = 0.0;
+        for (int index = 0; index < s.modeCount; ++index)
+        {
+            const Mode& mode = s.modes[static_cast<std::size_t>(index)];
+            double p2 = 0.0;
+            for (const double p : mode.participation)
+                p2 += p * p;
+            const double omega = 2.0 * pi * mode.frequency;
+            const double mob = (mode.q / omega) * p2;
+            const double rad = mode.q * std::sqrt(p2)
+                             * std::max(std::abs(mode.radiationLeft), std::abs(mode.radiationRight));
+            peakMobility[static_cast<std::size_t>(index)] = mob;
+            peakRadiation[static_cast<std::size_t>(index)] = rad;
+            maxMobility = std::max(maxMobility, mob);
+            maxRadiation = std::max(maxRadiation, rad);
+        }
+        const double mobilityFloor = 1.0e-4 * maxMobility;
+        const double radiationFloor = 1.0e-4 * maxRadiation;
+        for (int index = 0; index < s.modeCount; ++index)
+        {
+            const auto m = static_cast<std::size_t>(index);
+            keepInBank[m] = peakMobility[m] >= mobilityFloor && peakRadiation[m] >= radiationFloor;
+        }
+    }
     BarMatrix y0m {};
     for (int index = 0; index < s.modeCount; ++index)
     {
+        if (!keepInBank[static_cast<std::size_t>(index)])
+            continue;
         const Mode& mode = s.modes[static_cast<std::size_t>(index)];
         for (std::size_t i = 0; i < barCoordinates; ++i)
             for (std::size_t j = 0; j < barCoordinates; ++j)
@@ -3204,6 +3241,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     {
         for (int index = 0; index < s.modeCount; ++index)
         {
+            if (!keepInBank[static_cast<std::size_t>(index)])
+                continue;
             const Mode& mode = s.modes[static_cast<std::size_t>(index)];
             const bool even = meets(mode, true), odd = meets(mode, false);
             if (part != (!odd ? 0 : !even ? 1 : 2))
@@ -3229,7 +3268,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     {
         bool met = false;
         for (int index = 0; index < s.modeCount; ++index)
-            met = met || s.modes[static_cast<std::size_t>(index)].participation[c] != 0.0;
+            if (keepInBank[static_cast<std::size_t>(index)])
+                met = met || s.modes[static_cast<std::size_t>(index)].participation[c] != 0.0;
         if (!met)
             continue;
         for (std::size_t part = 0; part < 3; ++part)
@@ -3663,6 +3703,7 @@ void AculyreEngine::reset() noexcept
     s.sustain = false;
     s.idle = true;
     s.quietSamples = 0;
+    s.stringsActive = false;
     s.controlCountdown = 0;
     s.random.seed(0x5eed1ac0ffeeull);
     s.bend = s.bendTarget;
@@ -3885,6 +3926,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         s.controlCountdown = 0;
     }
     s.quietSamples = 0;
+    s.stringsActive = true;
     State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
     const InstrumentSpec& instrument = s.instrument;
     const PlayingControls& controls = controls_;
@@ -4104,8 +4146,12 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // The clamp holds the release velocity within the harpists' 0.2 to
     // 5 m/s; the slip's length has its own range. Until 0.13.1 it clamped
     // their product, which every pluck under velocity 49 reached: they all
-    // let go alike, and only their level followed velocity.
-    release *= std::clamp(std::pow(v / 0.5, -1.4 * 1.2), 0.4, 10.0) * std::pow(20.0, 1.0 - v)
+    // let go alike, and only their level followed velocity. Below v = 0.5,
+    // soft plucks also follow each string's touch through the D^1.2 law
+    // (capped at 3.2, after Acukoto 0.25.11; Docs/decisions.md, 2026-11-14).
+    const double softRamp = v < 0.5 ? std::min(1.0, (0.5 - v) / 0.19) : 0.0;
+    const double softTouch = softRamp > 0.0 ? std::pow(std::min(std::pow(std::max(touch, 0.05), -1.2), 3.2), softRamp) : 1.0;
+    release *= std::clamp(std::pow(v / 0.5, -1.4 * 1.2), 0.4, 10.0) * std::pow(20.0, 1.0 - v) * softTouch
              * std::exp(0.4 * s.random.gaussian() - 1.2 * 0.14 * forceDraw);
     if (realismEnhancements_ && release > 0.0)
     {
@@ -4235,22 +4281,29 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     for (int k = 1; k <= voice.roundTrip; ++k)
         voice.squaresSum += voice.squares[static_cast<std::size_t>((voice.squaresIndex - k) & (delayCapacity - 1))];
     ModeBank& bank = s.bank;
-    Pair pre[barCoordinates];
+    detail::Float4 pre[barCoordinates];
     for (std::size_t c = 0; c < barCoordinates; ++c)
-        pre[c] = splat(preload[c]);
-    for (int k = 0; k < bank.count; k += 2)
+        pre[c] = detail::splatFloat4(static_cast<float>(preload[c]));
+    for (int k = 0; k < bank.count; k += 4)
     {
         const auto m = static_cast<std::size_t>(k);
-        Pair modal = splat(0.0);
+        detail::Float4 modalF = detail::splatFloat4(0.0f);
 #if defined(__clang__)
 #pragma unroll
 #endif
         for (std::size_t c = 0; c < barCoordinates; ++c)
-            modal += *pairs(&bank.shape[c][m]) * pre[c];
+            modalF += *detail::float4s(&bank.shape[c][m]) * pre[c];
         auto& group = bank.groups[m / ModeBank::lanes];
         const std::size_t lane = m % ModeBank::lanes;
-        *pairs(&group.s1[lane]) -= modal;
-        *pairs(&group.s2[lane]) -= modal;
+        const Pair modal0 { static_cast<double>(modalF[0]), static_cast<double>(modalF[1]) };
+        const Pair modal1 { static_cast<double>(modalF[2]), static_cast<double>(modalF[3]) };
+        *pairs(&group.s1[lane]) -= modal0;
+        *pairs(&group.s1[lane + 2]) -= modal1;
+        *pairs(&group.s2[lane]) -= modal0;
+        *pairs(&group.s2[lane + 2]) -= modal1;
+        *detail::float4s(&group.s1Float[lane]) = detail::Float4 {
+            static_cast<float>(group.s1[lane]), static_cast<float>(group.s1[lane + 1]),
+            static_cast<float>(group.s1[lane + 2]), static_cast<float>(group.s1[lane + 3]) };
     }
     s.modalPastStale = true;
 }
@@ -4320,6 +4373,7 @@ void AculyreEngine::sleep() noexcept
     s.microphoneCursor = 0;
     s.piezoMountZ1 = s.piezoMountZ2 = 0.0;
     s.room.reset();
+    s.stringsActive = false;
     s.idle = true;
 }
 
@@ -4391,6 +4445,14 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
     std::memcpy(&port, &s.port, sizeof(port));
 #endif
     const auto& saddleRotation = s.saddleRotation;
+    // While any string carries energy above idleEnergy (-130 dB), the bilinear
+    // bridge mass/bends (z = +-1) and radiation pole (z = -1) stay exact (1.0).
+    // Once all strings have died away, a sub-audible 2.5 Hz bleed relaxes only
+    // the Nyquist poles (z = -1 -> -bleedPole) while preserving the bar bends'
+    // exact DC spring pole (z = +1), draining any (-1)^n deadband left by
+    // 24-bit Float4 modal rounding without discharging silent static preload.
+    const double bleedPole = 1.0 - 16.0 / sampleRate_;
+    double nyquistPole = s.stringsActive ? 1.0 : bleedPole;
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
@@ -4398,6 +4460,7 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
         {
             s.controlCountdown = controlPeriod - 1;
             s.bend += (s.bendTarget - s.bend) * s.bendSmoothing;
+            bool anyActive = false;
             for (int index = 0; index < count; ++index)
             {
                 State::StringVoice& voice = s.strings[static_cast<std::size_t>(index)];
@@ -4413,7 +4476,10 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
                 // A held key or pedal does not keep a string sounding: a
                 // string that has died away under it lets the engine sleep.
                 if (voice.energy() > idleEnergy)
+                {
                     s.quietSamples = 0;
+                    anyActive = true;
+                }
                 // Tension modulation (Kirchhoff-Carrier): the string's mean
                 // squared slope stretches it, Delta f / f = EA <y'^2> / (4T);
                 // the pitch bend scales every string alike.
@@ -4455,7 +4521,11 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
                                                                  & (delayCapacity - 1))]);
                     --voice.roundTrip;
                 }
+                if (voice.normal.unloadingLeft > 0 || voice.parallel.unloadingLeft > 0)
+                    anyActive = true;
             }
+            s.stringsActive = anyActive;
+            nyquistPole = anyActive ? 1.0 : bleedPole;
         }
 
         filters.read(loops, 2 * count, wave);
@@ -4515,7 +4585,8 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
                 for (int k = 0; k < bank.count; ++k)
                 {
                     const auto m = static_cast<std::size_t>(k);
-                    s.modalPast[c] += bank.shape[c][m] * bank.groups[m / ModeBank::lanes].s1[m % ModeBank::lanes];
+                    s.modalPast[c] += static_cast<double>(bank.shape[c][m])
+                        * bank.groups[m / ModeBank::lanes].s1[m % ModeBank::lanes];
                 }
             s.modalPastStale = false;
         }
@@ -4544,11 +4615,12 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
             plateForce[i] = drive[i] - stringLoad[i] - massForce;
             if (i < 3)
             {
-                s.massPast[i] = -massForce - s.massImpedance[i] * velocity[i];
+                s.massPast[i] = -nyquistPole * (massForce + s.massImpedance[i] * velocity[i]);
             }
             else
             {
-                s.massPast[i] = s.bendTap1[i] * velocity[i] + s.bendTap2[i] * s.bendVelocityPast[i] + s.bendForcePast[i];
+                s.massPast[i] = s.bendTap1[i] * velocity[i] + s.bendTap2[i] * s.bendVelocityPast[i]
+                              + (1.0 - nyquistPole) * massForce + nyquistPole * s.bendForcePast[i];
                 s.bendVelocityPast[i] = velocity[i];
                 s.bendForcePast[i] = massForce;
             }
@@ -4600,8 +4672,8 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
         // transform compresses toward Nyquist: at 48 kHz each instrument's
         // 10 to 16 kHz fell 3.4 to 3.6 dB below its 4x sound, and the
         // acceleration brought it to 1.7 to 2.0.
-        const double pressureLeft = (radiatedLeft - s.previousLeft) * s.radiationScale - s.pressureLeft;
-        const double pressureRight = (radiatedRight - s.previousRight) * s.radiationScale - s.pressureRight;
+        const double pressureLeft = (radiatedLeft - s.previousLeft) * s.radiationScale - nyquistPole * s.pressureLeft;
+        const double pressureRight = (radiatedRight - s.previousRight) * s.radiationScale - nyquistPole * s.pressureRight;
         s.previousLeft = radiatedLeft;
         s.previousRight = radiatedRight;
         s.pressureLeft = pressureLeft;

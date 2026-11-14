@@ -3,6 +3,73 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-14: 80 dB weak-mode cut, single-precision Float4 modal bank, and touch-scaled soft-pluck release (0.13.7), owner's selection
+
+**What was decided.** Three listening sets, each against the shipping engine
+(A, `main` at `599fa5c`, `0.13.6`), one mechanism changed per set, rendered
+through the Performer at its default controls, 48 kHz (`1x`, 64-frame blocks,
+`Performer::latency()` trimmed, identical MIDI and PRNG seeds, 24-bit stereo
+WAV):
+
+| Question | Material | Letters | Levels |
+| --- | --- | --- | --- |
+| May modes more than 80 dB below the strongest in peak mobility or peak radiation leave the real-time soundbox? | 9.600 s phrase across all three presets: steel Dorian arpeggios and 4-voice chords (`C3-G5`), nylon counterpoint and rolled sixths/sevenths (`C3-G5`), gut archaic fifth/octave cadence (`D3-E5`), Finger | A all 797 designed modes below 20 kHz (`289 / 289 / 219`) in the junction and `ModeBank`; B modes with peak bar mobility `(Q / omega) * \|\|P\|\|^2` or peak radiated pressure `Q * \|\|P\|\| * max(\|rL\|, \|rR\|)` under `1e-4` of the strongest pruned from `immediateMobility` and `ModeBank` (`232 / 232 / 216` padded slots kept; full `s.modes` retained for setup `portLoad`, `tuneByEar`, piezo mount conductance and reports) | unmatched A and B both `-19.869 dBFS` RMS / `-2.100 dBFS` peak; whole-file RMS trim `-0.0001 dB` on B |
+| May `ModeBank` store scaled shapes in `float` (`17 KB`) and accumulate four modes a vector around `double` resonators? | the same 9.600 s three-instrument phrase | A `ModeBank::shape` (`34 KB`) in `double`, two modes a vector (`Pair`), lossless unit-circle bridge/radiation poles at idle; B `ModeBank::shape` (`16,960 B`) and `Group::s1Float` in `float`, four modes a vector (`Float4`, `alignof(ModeBank) == 8`), resonators `(a1, a2, s1, s2)` and radiation `(left, right)` kept in `double`, with a `2.5 Hz` post-string Nyquist pole bleed below `idleEnergy` (`-130 dB`) | unmatched A and B both `-19.869 dBFS` RMS / `-2.100 dBFS` peak; whole-file RMS trim `+0.0000 dB` on B |
+| Should soft Finger plucks below velocity 64 follow each string's calibrated `touch` in their slip release? | 9.600 s delicate `pp-mp` phrase (velocity `31-36`, Finger) across all three presets: gut stepwise melody and fifth/octave arpeggio (`D3-F5`), steel treble/mid melody and chord (`G3-A5`), nylon lyrical cadence (`A3-E5`) | A Finger release scales with MIDI velocity `v` alone; B below `v = 0.5` (`velocity 64`), the clamped release velocity factor scales by `min(max(touch, 0.05)^-1.2, 3.2)^min(1, (0.5 - v) / 0.19)` (`touch^-1.2` capped at `3.2` for `v <= 0.31`, smoothly `1.0` from `v = 0.5` up) | unmatched A `-37.779 dBFS` RMS / `-19.133 dBFS` peak, unmatched B `-42.517 dBFS` RMS; whole-file RMS trim `+4.7383 dB` on B (delivered `B.wav` `-37.779 dBFS` RMS / `-18.367 dBFS` peak) |
+
+**What the measurements said** (each against A before choosing, plus the
+integrated `0.13.7` build).
+
+- **Weak-mode cut (`01`):** null (`B - A`) is `-77.39 dBFS` RMS both before
+  and after 24-bit quantization (`-57.52 dB` relative to A's whole-file RMS,
+  max sample difference `4.784e-03`). Solo `1.0 s dense` retired instructions
+  drop `-7.50% / -7.45% / -0.93%` in the Rack-like build (`-6.59% / -6.48% /
+  -0.79%` natively) on steel / nylon / gut.
+- **Single-precision `Float4` modal bank (`02`):** null (`B - A`) is
+  `-111.38 dBFS` RMS pre-quantization and `-111.37 dBFS` on the 24-bit WAVs
+  (`-91.51 dB` relative to A's whole-file RMS, max sample difference
+  `1.526e-05` / `-96.3 dBFS`). Solo `1.0 s dense` retired instructions drop
+  `-10.79% / -10.72% / -2.90%` in the Rack-like build (`-6.84% / -6.76% /
+  -0.86%` natively). Integrated together in `0.13.7` (keeping the bar bends'
+  DC spring pole exact at `z = +1` during the post-string Nyquist bleed so
+  silent static preload never discharges into fast-decaying high nylon tails),
+  `01` + `02` cut `1.0 s dense` retired instructions by `-16.17% / -15.95% /
+  -3.59%` in the Rack-like build (`-11.85% / -11.73% / -1.64%` natively) and
+  median `1x dense` calling-thread callback time by `-17.77% / -18.84% /
+  -3.63%` in Rack-like (`-16.42% / -17.64% / -6.82%` natively).
+- **Touch-scaled soft-pluck release (`03`):** null (`B - A`) is `-42.80 dBFS`
+  RMS unmatched (`-5.02 dB` relative to A, max sample difference `6.284e-02`)
+  and `-44.01 dBFS` RMS after whole-file RMS matching (`-6.23 dB` relative to
+  `A.wav`). At `velocity = 32` (Finger, `20-300 ms` window, 8-take mean), the
+  gut lyre's 6-neighbour spread halves from `2.37` to `1.30 dB rms` (worst
+  outlier `5.06 -> 3.06 dB`, mean `-42.93 -> -46.80 dBFS`), while the steel
+  and nylon harps — whose `touch` carries an 8:1 bass-to-treble soundbox slope
+  (`1.00 -> 0.11`) — release slower and warmer in the treble (`1.42 ->
+  1.75 dB rms`, worst `5.77 -> 5.64 dB`, mean `-45.02 -> -51.69 dBFS` on
+  steel; `1.38 -> 1.84 dB rms`, worst `5.21 -> 5.11 dB`, mean `-44.52 ->
+  -51.04 dBFS` on nylon). Velocity `64-127`, the `velocity 90` scale-line
+  calibration, Nails and Plectrum are untouched; per-sample CPU impact is
+  `0.0%`.
+
+**Verdict.** The owner chose all three candidates: `"approvel all b and push"`
+(2026-11-14). As with 2026-11-09, the reply does not state a blind listening
+score, so this records the owner's selection. The frozen sets and keys stay in
+the project files (`aculyre/01-weak-mode-pruning-80db/`,
+`aculyre/02-float4-modal-bank/`, `aculyre/03-touch-scaled-pluck-release/`).
+
+**What it licenses.** Leaving modes strictly more than 80 dB (`< 1e-4`) below
+the strongest in peak resonant bar mobility or peak resonant radiated pressure
+out of the real-time bridge junction and `ModeBank` while retaining the full
+mode set in setup, tuning, piezo conductance and structural reports; storing
+`ModeBank::shape` in single precision and accumulating bar-force and bar-pull
+dot products four modes per vector (`Float4`) around 64-bit `double` modal
+resonators and radiation; and scaling soft Finger release below velocity 64 by
+`touch^-1.2` (capped at `3.2`), accepting the harps' warmer soft treble in
+exchange for halving the gut lyre's soft-velocity unevenness. It does not
+license pruning modes above `-80 dB`, moving the recursive modal resonators to
+single precision, or presenting either the assumed soundbox modes or the soft
+touch-release coupling as measured on a physical lyre.
+
 ## 2026-11-09: the causal pluck release and the slip law for soft plucks (0.13.1), owner's selection
 
 **What was decided.** Two listening sets, each against the shipping engine

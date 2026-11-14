@@ -24,6 +24,28 @@ reference recording below.
 
 ## Version history
 
+- **0.13.7** (local candidate): owner-selected soundbox and soft-pluck updates
+  ([decisions](Docs/decisions.md)). Below velocity 64 a finger pluck's slip
+  release now follows each string's calibrated `touch` (`touch^-1.2`, capped
+  at `3.2` below velocity 40 and reaching `1.0` smoothly at velocity 64),
+  halving the gut lyre's velocity-32 note-to-note spread (`2.37` to
+  `1.30 dB rms`, worst outlier `5.06` to `3.06 dB`) while letting the harps'
+  softer-touched upper strings slip off slower and warmer (`1.42` to `1.75`
+  and `1.38` to `1.84 dB rms`); velocity 64 to 127, Nails and Plectrum are
+  unchanged. Soundbox modes more than 80 dB below the strongest in peak bar
+  mobility or peak radiated pressure leave the real-time junction and
+  `ModeBank` (`232`, `232` and `216` padded mode slots kept out of `289`,
+  `289` and `219`, null `-57.5 dB` under the 9.6 s phrase while setup tuning
+  and piezo conductance keep every mode), and `ModeBank` holds its scaled
+  shapes in single precision (`17 KB` in place of `34 KB`) and accumulates bar
+  force and bar pull four modes to a vector (`Float4`) around 64-bit `double`
+  resonators (null `-91.5 dB`). Together they cut another 16.2%, 16.0% and
+  3.6% of Rack-like steady `dense` instructions on the steel harp, nylon harp
+  and gut lyre (11.9%, 11.7% and 1.6% natively) and 17.8%, 18.8% and 3.6% off
+  median `1x dense` calling-thread callback time in Rack-like (16.4%, 17.6%
+  and 6.8% natively)
+  ([measurements](Docs/benchmarks/cpu-optimization-2026-11-14.md)).
+
 - **0.13.6** (local candidate): lower CPU across all three instruments with
   every rendered sample bit-identical across all 72 probe cases, plus
   correctness fixes for ARM64 subnormal exceptions, crossfade note-off
@@ -636,7 +658,11 @@ on the nylon A4 and 0.13 on the gut E3, which the strongest body modes
 favour) that puts its first 300 ms on the
 straight line through every string's level, so the register keeps its
 slope (about -0.3 dB per semitone on the lyre harps) and no string stands
-out of it. The
+out of it. Below velocity 64 a finger pluck's clamped release velocity factor
+also follows that touch (`touch^-1.2`, capped at `3.2` below velocity 40 and
+reaching `1.0` smoothly at velocity 64; [decisions](Docs/decisions.md)), so a
+softly touched string whose fundamental sits on a strong soundbox resonance
+lets go slower than an unfavoured neighbour. The
 piezo hears the force on the bar, not what the soundbox radiates, so it
 favours other strings. It now observes the same physical touch as the
 microphones: capture selection does not alter excitation. A fixed output
@@ -670,7 +696,7 @@ choice by ear there). A spruce plate's modes depart
 from that median by their strain energy along the grain, across it and in
 shear, weighted by Viala, Placet and Cogan's loss factors (J. Cultural
 Heritage, 2020). The
-junction is solved implicitly every sample, so it is passive and every string, played or idle, is coupled to every other.
+junction is solved implicitly every sample, so it is passive and every string, played or idle, is coupled to every other. Modes more than 80 dB below the strongest in peak resonant bar mobility or peak radiated pressure per unit bar force leave the real-time junction and modal bank (from 0.13.7), while staying in string design, ear tuning, piezo mount conductance and the mode reports.
 
 **Radiation and room.** Each mode radiates its net volume change as a
 monopole, plus an equivalent volume for its edge and corner radiation, from
@@ -898,7 +924,11 @@ nothing until the next pluck.
 From 0.13.2 the modes read one table of their shapes at the bridge, each
 mode's state scaled by the root of its gain, and a CPU with AVX2 and FMA3
 runs fused kernels (Reason's build never does; its output differs from
-theirs by about 160 dB under the signal). The engine needs neither
+theirs by about 160 dB under the signal); from 0.13.7 that table drops
+modes more than 80 dB under the strongest and stores its scaled shapes in
+single precision (`17 KB` in place of `34 KB`), accumulating bar force and
+bar pull four modes to a vector (`Float4`) while keeping every mode's
+resonator and radiation in `double`. The engine needs neither
 flush-to-zero nor denormals-are-zero from its host: where a dying tail
 would reach subnormal numbers it writes zeros (0.13.3). On the stress
 phrase the portfolio sets (a chord of eight re-struck note by note under
@@ -907,9 +937,14 @@ block took 11% of a loaded development machine's core in a build with the
 Rack's flags, above the 10% ceiling, and 10% natively
 ([measurements](Docs/benchmarks/cpu-consolidation-2026-11-09.md)). A
 second pass found 0.3% more in the steady state
-([2026-11-10](Docs/benchmarks/cpu-fix-pass-2026-11-10.md)), and 0.13.6 cuts
+([2026-11-10](Docs/benchmarks/cpu-fix-pass-2026-11-10.md)), 0.13.6 cut
 another 9-13% of the Rack-like steady instructions (8-15% off median
-calling-thread callback time on an ARM64 development machine, bit-identical)
+calling-thread callback time on an ARM64 development machine, bit-identical),
+and 0.13.7 cuts a further 16% of the harps' Rack-like steady instructions
+and 4% of the gut lyre's (18-19% and 4% off median calling-thread callback
+time; 12% and 2% instructions, 16-18% and 7% callback time natively),
+bringing the stress phrase's worst 256-frame block to 7.2-7.4% in the
+Rack-like build and 6.6-6.7% natively on that development machine
 ([2026-11-14](Docs/benchmarks/cpu-optimization-2026-11-14.md)).
 
 ## Known gaps
@@ -1114,17 +1149,19 @@ calling-thread callback time on an ARM64 development machine, bit-identical)
   0.7 s, since the
   harps' eleven added strings and every key of the artificial range are
   designed and tuned to the bridge with them.
-- Soft plucks are less even from string to string than hard ones, most on
-  the gut lyre: at velocity 32 its notes' first 300 ms stand 2.4 dB rms
-  from their neighbours' median and F5 6.2 dB, where at velocity 110 they
-  stand 0.3 dB rms. A soft pluck is dark (0.13.1), so its level is its
-  fundamental's, which each string's place against the three lowest
-  soundbox modes sets; the touch that evens the scale is fitted at
-  velocity 90 alone. A release that follows the touch as well as the
-  velocity, which evened Acukoto's soft notes, halves the gut lyre's
-  spread (1.2 dB rms) and un-evens both harps' (0.9 dB rms to 1.2 or
-  more), so it was measured and not taken
-  ([audit](Docs/validation/consolidation-audit-2026-11-09.md)).
+- Soft plucks remain less even from string to string than hard ones. A soft
+  pluck is dark (0.13.1), so its level is its fundamental's, which each
+  string's place against the lowest soundbox modes sets, while the touch that
+  evens the scale is fitted at velocity 90 alone. From 0.13.7 the finger's
+  slip release below velocity 64 follows that touch (`touch^-1.2`, capped at
+  `3.2`), by the owner's selection ([decisions](Docs/decisions.md)): at
+  velocity 32 (first 300 ms, 8-take mean) the gut lyre's 6-neighbour spread
+  halves from `2.37` to `1.30 dB rms` (worst outlier `5.06` to `3.06 dB`),
+  while the steel and nylon harps — whose touch carries an 8:1 bass-to-treble
+  soundbox slope — slip off slower and warmer in the treble (`1.42` to
+  `1.75 dB rms` and `1.38` to `1.84 dB rms`, worst `5.64` and `5.11 dB`,
+  where velocity 110 stands `0.3 dB rms`;
+  [audit](Docs/validation/consolidation-audit-2026-11-09.md)).
 - No plug-in yet. The Rack Extension's 0.4.0d1 has been played in Recon
   from a local build; it has not been through Reason Studios' acceptance.
 

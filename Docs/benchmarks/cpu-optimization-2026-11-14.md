@@ -1,12 +1,19 @@
-# CPU optimization and audit pass, 2026-11-14 (0.13.6)
+# CPU optimization and audit passes, 2026-11-14 (0.13.6 and 0.13.7)
 
-A pass over the engine, modal bank, string loop filters, room FDN and piezo
-circuit for bit-exact CPU reductions and physical/edge-case correctness,
-following [the 2026-11-10 fix pass](cpu-fix-pass-2026-11-10.md). Every default
-72-scenario render in `AculyreCpuProbe` (three instruments, four oversampling
-settings `off/1x/2x/4x`, six scenarios `idle/single/dense/repluck/stress/burst`)
-is 100% bit-identical (`cmp` zero-byte difference over 6,912,000 `float`
-samples) in both the Rack-like and native builds.
+Two passes on 2026-11-14 following [the 2026-11-10 fix pass](cpu-fix-pass-2026-11-10.md):
+
+1. **0.13.6 (`599fa5c`):** bit-exact CPU reductions and physical/edge-case
+   correctness across the engine, modal bank, string loop filters, room FDN and
+   piezo circuit. Every default 72-scenario render in `AculyreCpuProbe` is 100%
+   bit-identical (`cmp` zero-byte difference over 6,912,000 `float` samples) in
+   both the Rack-like and native builds.
+2. **0.13.7:** owner-selected soundbox simplifications ([decisions](../decisions.md))
+   combining an `-80 dB` (`< 1e-4`) weak-mode cut on the real-time bridge
+   junction and `ModeBank` (`232 / 232 / 216` padded mode slots kept out of
+   `289 / 289 / 219` designed modes) with single-precision `Float4` modal shape
+   storage (`16,960 B` vs `33,920 B`) and 4-lane bar-force / bar-pull dot
+   products around 64-bit `double` modal resonators (plus touch-scaled
+   soft-pluck release in `noteOn`, `0.0%` per-sample CPU cost).
 
 All figures below come from a shared 10-core Apple Silicon macOS development
 machine (Apple Clang 17) while three sibling instrument builds and test suites
@@ -109,3 +116,76 @@ nylon harp / gut lyre:
      C library calls in `FingerContact.h`, `PiezoCircuit.h`, and `ModeBank.h`.
    - `StringContact::configure` skips tap-geometry setup when `rate == 0.0`,
      computing geometry lazily only inside `contactReport()`.
+
+---
+
+## Pass 2: 0.13.7 owner-selected soundbox simplifications
+
+Following the 2026-11-14 A/B listening sets ([decisions](../decisions.md)),
+`0.13.7` integrates the `-80 dB` weak-mode cut (`01`) and the single-precision
+`Float4` modal bank (`02`), plus touch-scaled soft-pluck release (`03`, `0.0%`
+per-sample CPU cost), on top of `0.13.6` (`599fa5c`).
+
+### Hardware retired instructions: 0.13.6 to 0.13.7 (1.0 s `dense` at 48 kHz, 1x)
+
+Exact retired instructions over 48,000 rendered frames (`dense` scenario,
+64-frame blocks after warmup), steel harp / nylon harp / gut lyre, in millions
+of instructions:
+
+| Build | 0.13.6 (`599fa5c`) | 0.13.7 | 0.13.6 -> 0.13.7 | Cumulative vs 0.13.5 (`0fb36e6`) |
+| --- | --- | --- | --- | --- |
+| **Rack-like**, `dense`, 1.0 s | 1003.01 / 1013.62 / 585.16 M | 840.85 / 851.93 / 564.12 M | **-16.17% / -15.95% / -3.59%** | **-24.03% / -23.97% / -16.64%** |
+| **Native**, `dense`, 1.0 s | 843.31 / 852.02 / 498.46 M | 743.42 / 752.11 / 490.26 M | **-11.85% / -11.73% / -1.64%** | **-17.79% / -17.91% / -11.70%** |
+
+### Calling-thread CPU: 0.13.6 to 0.13.7 (`CLOCK_THREAD_CPUTIME_ID`, alternating rounds)
+
+`AculyreCpuProbe` at 48 kHz in 64-frame callbacks (`1333.33 µs` deadline),
+alternating `A/B, B/A, A/B...` rounds (`5` rounds for `1x dense`, `3` rounds
+for `1x stress` and `4x dense`), steel harp / nylon harp / gut lyre:
+
+| Build & scenario | 0.13.6 median callback (µs) | 0.13.7 median callback (µs) | Callback change | 0.13.6 `cpu_percent` | 0.13.7 `cpu_percent` |
+| --- | --- | --- | --- | --- | --- |
+| **Rack-like**, `1x dense` | 80.06 / 80.96 / 47.00 | 65.83 / 65.71 / 45.29 | **-17.77% / -18.84% / -3.63%** | 6.15 / 6.18 / 3.61% | 5.01 / 5.04 / 3.45% |
+| **Rack-like**, `1x stress` | 80.04 / 81.10 / 46.98 | 65.83 / 65.79 / 44.96 | **-17.75% / -18.88% / -4.30%** | 6.16 / 6.22 / 3.64% | 5.07 / 5.05 / 3.48% |
+| **Rack-like**, `4x dense` | 325.48 / 332.31 / 196.96 | 271.83 / 272.02 / 192.04 | **-16.48% / -18.14% / -2.50%** | 24.64 / 25.19 / 14.94% | 20.79 / 20.90 / 14.86% |
+| **Native**, `1x dense` | 73.71 / 74.88 / 42.12 | 61.60 / 61.67 / 39.25 | **-16.42% / -17.64% / -6.82%** | 5.67 / 5.81 / 3.29% | 4.72 / 4.69 / 2.99% |
+| **Native**, `1x stress` | 73.17 / 72.96 / 40.50 | 61.96 / 62.08 / 40.38 | **-15.32% / -14.91% / -0.31%** | 5.61 / 5.68 / 3.24% | 4.75 / 4.78 / 3.10% |
+| **Native**, `4x dense` | 301.69 / 305.21 / 179.46 | 255.19 / 261.10 / 173.79 | **-15.41% / -14.45% / -3.16%** | 22.99 / 23.16 / 13.63% | 19.36 / 20.14 / 13.40% |
+
+On the portfolio `stress` phrase (`1x stress`, standard U12 fastest-of-3
+`block256_percent.max`), the worst 256-frame block drops from `8.53 / 8.74 /
+6.82%` to **`7.22 / 7.37 / 6.59%`** in the Rack-like build (`7.52 / 7.60 /
+5.57%` to **`6.56 / 6.74 / 5.44%`** natively; round medians `9.33 / 8.76 /
+7.00%` to **`7.47 / 7.81 / 7.30%`** Rack-like and `7.64 / 8.01 / 6.35%` to
+**`7.18 / 7.32 / 5.79%`** natively).
+
+### What changed in 0.13.7
+
+1. **80 dB weak soundbox mode cut (`AculyreEngine.cpp`).**
+   - `setInstrument` prunes from `immediateMobility` (`y0m`) and `ModeBank`
+     (`s.bank`) those soundbox modes whose peak resonant bar mobility
+     `(Q / omega) * ||P||^2` or peak resonant radiated pressure per unit bar
+     force `Q * ||P|| * max(|rL|, |rR|)` sits more than 80 dB (`< 1e-4`) below
+     the strongest mode (`232 / 232 / 216` padded mode slots kept out of `289 /
+     289 / 219` designed modes; null `-77.39 dBFS` RMS / `-57.52 dB` relative
+     to `0.13.6` on the 9.6 s three-instrument phrase).
+   - The full `s.modes` array remains intact for setup string reflection/ear
+     tuning (`portLoad` / `tuneByEar`), piezo mount conductance, and
+     `modeReport()` / `bridgeMobilityMagnitude()`.
+2. **Single-precision `Float4` modal shape table and bar-force / bar-pull
+   accumulation (`ModeBank.h`, `Pair.h`, `AculyreEngine.cpp`).**
+   - `ModeBank::shape` (`424 x 10` floats = `16,960 B`, down from `33,920 B`)
+     and `Group::s1Float` store scaled modal participations and `s1` copies in
+     32-bit `float` (`Float4`, `aligned(4), may_alias`, `alignof(ModeBank) == 8`,
+     `alignof(State) == 8`), cutting L1D modal bandwidth in half and running
+     both the generalized bar-force dot product (`stepPart<0..10>`) and the
+     bar-pull dot product (`pullOnBarDirect<1..6>`, `pullOnBar<1..5>`) four
+     modes per 128-bit vector.
+   - Every mode's recursive 2nd-order resonator `(a1, a2, s1, s2)` and
+     Nyquist-zero radiation sum `(left, right)` remain in 64-bit `double` (solo
+     null `-111.38 dBFS` RMS / `-91.51 dB` relative to `0.13.6`).
+   - Once all strings decay below `idleEnergy` (`-130 dB`), a `2.5 Hz`
+     sub-audible bleed relaxes only the Nyquist poles (`z = -1 -> -bleedPole`)
+     on the bridge mass/bends and radiation integrator while keeping the bar
+     bends' DC spring pole exact at `z = +1`, draining any 24-bit `Float4`
+     `(-1)^n` deadband without discharging silent static preload.

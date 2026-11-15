@@ -3,7 +3,7 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
-## 2026-11-15: the hardest finger pluck slips 0.2 mm, chosen by ear, and the finger plucks at 80% force (0.13.8), owner's choice and owner's level
+## 2026-11-15: the hardest finger pluck slips 0.2 mm, chosen by ear, and the finger plays at 80% (0.13.8, 0.13.9), owner's choice and owner's level
 
 **What was decided.** Whether the hardest Finger pluck should keep letting
 go like a nail. The owner had found the Finger "too loud, too harsh". One
@@ -35,19 +35,30 @@ after weighing B against C. The set and its key stay in the project files
 (`aculyre/2026-11-15-finger-release-abc/`).
 
 **The finger's level.** With B the owner asked to "lower the overall finger
-pick volume to 80%". The Finger plucks with 80% of the force the nail and
-the plectrum take, on every instrument and patch, so typical finger playing
-reads `-10.9 VU` (`-10.95 / -10.98 / -10.91` on the microphones, steel /
-nylon / gut), 1.9 dB under the `-9 VU` the output gain is still pinned to
-at full force. That is the owner's level, not a listening verdict and not a
-measured force.
+pick volume to 80%", and Nail and Pick were to stay as they are. Typical finger playing reads 80% of the `-9 VU` the gains were
+pinned to, `-10.94 / -10.97 / -10.92 VU` on the microphones (steel / nylon /
+gut; `-10.75 / -10.69 / -11.75` on the piezo), where 0.13.7 read `-9.23 /
+-8.74 / -8.91`. 0.13.8 did this by re-pinning the output and piezo gains for
+the new slip and plucking the finger at 0.8 of the force, which also raised
+the nail and the plectrum `0.93 / 0.42 / 0.73 dB` and left the Rack's Damped
+Steel Pick piezo 1.51 dB under its microphones, past its 1.5 dB bound. 0.13.9
+returns the gains to 0.13.7's values and gives the finger its own share of
+the force, `fingerForce` = 0.8 times the re-pinned gain's ratio
+(`0.891 / 0.840 / 0.870`): the finger plays on the microphones as 0.13.8's
+did, and typical nail
+and plectrum playing reads what 0.13.7 read at the defaults, to the
+thousandth of a dB on both pickups, save the gut plectrum's microphones,
+`0.29 dB` quieter through a re-evened touch. That is the owner's level, not a
+listening verdict and not a measured force.
 
 **What it licenses.** A hardest Finger slip of 0.2 mm, the shortest musical
-slip, with the re-evened touches and re-pinned output and piezo gains it
-needed; and the Finger at 80% of the full force. It does not license
+slip, with the touches it re-evened; and typical finger playing at 80% of
+the level the gains were pinned to, through the finger's share of the force.
+It does not license
 reading the slip's course with velocity as measured (the geometric law
-between 0.2 and 0.8 mm stays authored), presenting the 80% as a measured
-finger force, or changing Nail and Pick, which this set did not test.
+between 0.2 and 0.8 mm stays authored), presenting `fingerForce` as a
+measured finger force, or changing Nail and Pick, which this set did not
+test.
 
 ## 2026-11-14: 80 dB weak-mode cut, single-precision Float4 modal bank, and touch-scaled soft-pluck release (0.13.7), owner's selection
 

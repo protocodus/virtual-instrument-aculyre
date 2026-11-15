@@ -1191,6 +1191,11 @@ Rack-like build and 6.6-6.7% natively on that development machine
   `1.75 dB rms` and `1.38` to `1.84 dB rms`, worst `5.64` and `5.11 dB`,
   where velocity 110 stands `0.3 dB rms`;
   [audit](Docs/validation/consolidation-audit-2026-11-09.md)).
+- The 10% ceiling is not held on every CI runner. `Aculyre.CpuBudget` put
+  the worst 256-frame block of the demos and the stress phrase at 5.8% of a
+  core in CI run 4 but at 12.6% in run 5 (the nylon harp's first notes), on
+  `ubuntu-24.04` runners whose medians differed by 1.6 times (0.039x and
+  0.063x realtime). These are development-machine figures, not Reason's.
 - No plug-in yet. The Rack Extension's 0.4.0d1 has been played in Recon
   from a local build; it has not been through Reason Studios' acceptance.
 

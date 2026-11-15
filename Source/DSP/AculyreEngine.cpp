@@ -4085,7 +4085,12 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     const bool lever = raise && instrument.leverTouch[at] > 0.0;
     const double touch = lever ? instrument.leverTouch[at] : string.touch;
     const double forceDraw = s.random.gaussian();
-    const double force = instrument.pluckForce * touch * std::pow(v, 1.4) * std::exp(0.14 * forceDraw);
+    // The finger plucks with 80% of the force a nail or a plectrum takes:
+    // the owner's level for a finger that was too loud (2026-11-15), not a
+    // measured force. outputGain still puts typical playing at full force
+    // at -9 VU, so typical finger playing reads 1.9 dB under it.
+    const double techniqueForce = controls.technique == Technique::Finger ? 0.8 : 1.0;
+    const double force = instrument.pluckForce * techniqueForce * touch * std::pow(v, 1.4) * std::exp(0.14 * forceDraw);
     const double angle = std::asin(detail::squareRoot(std::clamp(controls.normalShare, 0.0, 1.0)))
                        + 4.0 * pi / 180.0 * s.random.gaussian();
     const double normalShare = std::clamp(std::sin(angle) * std::sin(angle), 0.01, 0.9);
@@ -4096,24 +4101,32 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // string and so take the pluck as a point (JASA 131 (2012) 844,
     // Sec. IV.A.5, Table V); the string leaves the fingertip's edge wrapped
     // round it only over its kink angle, at most a few hundredths of a
-    // radian, so the finger is a point here too. A harpist's string slips
-    // 0.04 mm along the harder fingertip before it leaves at about 1.5 m/s
-    // (Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444); accelerating
-    // evenly, that slip lasts 0.053 ms. Chosen by ear over the pad's 0.2 mm
-    // and an authored 0.10 ms (Docs/decisions.md, 2026-10-28). That slip's
+    // radian, so the finger is a point here too. In the lab a harpist's
+    // string slipped 0.04 mm along the harder fingertip before it left at
+    // about 1.5 m/s (Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444);
+    // in music none of ten harpists' strings slipped less than 0.2 mm (the
+    // same paper, Table V), and the hardest pluck takes that shortest
+    // musical slip. At the lab's 0.04 mm a pluck from velocity 100 up let
+    // go as abruptly as a nail: on the Lyre Harp patch, within 0.5 dB of the
+    // Nail below 4 kHz at velocity 100 and at every band at 127 (first 50 ms,
+    // median of every other string); the musical slip leaves it 3.5 to
+    // 3.9 dB under the Nail from 2 to 16 kHz at velocity 100 and 1.7 to
+    // 3.4 dB at 127. Accelerating evenly, the lab's slip lasts 0.053 ms, and
+    // one at the same speed in proportion to its length. That slip's
     // duration is not the exponential's time constant: one that slow has
     // unloaded only 63% when the slip ends, and passes a third of the band
     // of a force let go over the slip (a linear unloading over T is 3 dB
     // down at 0.443 / T, the exponential at 1 / (2 pi tau)). The same band
-    // takes tau = T / 2.78, 0.019 ms (Docs/decisions.md, 2026-10-30). A
-    // nail's or a plectrum's hard edge has no flesh for the string to slip
-    // along, so both release at once,
-    // the ideal pluck: authored, as their 0.035 and 0.025 ms were, which
-    // with a 1.2 and 0.8 mm rounding had left them within 2 dB of the finger
-    // at every band. At velocity 90 the instant release is 2 to 4 dB
-    // brighter from 3 to 10 kHz, and more for softer plucks, whose finger
-    // slips off slower (below).
-    double release = controls.technique == Technique::Finger ? 0.053e-3 / (2.0 * pi * 0.443) : 0.0;
+    // takes tau = T / 2.78, 0.095 ms for the 0.2 mm slip (Docs/decisions.md,
+    // 2026-10-30). A nail's or a plectrum's hard edge has no flesh for the
+    // string to slip along, so both release at once, the ideal pluck:
+    // authored, as their 0.035 and 0.025 ms were, which with a 1.2 and
+    // 0.8 mm rounding had left them within 2 dB of the finger at every band.
+    // The instant release is brighter than the finger's at every velocity,
+    // the more for softer plucks, whose finger slips off slower (below).
+    constexpr double hardestSlip = 0.2, softestSlip = 0.8; // mm
+    double release = controls.technique == Technique::Finger
+                   ? 0.053e-3 * (hardestSlip / 0.04) / (2.0 * pi * 0.443) : 0.0;
     // A harder stroke slips off faster, so it leaves brighter. Harpists'
     // release velocity rises with the string's displacement, about as D^1.2
     // from 0.5 mm at 0.2 m/s to 7 mm at 5 m/s around an average of 4 mm at
@@ -4128,13 +4141,14 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // slip runs from 0.8 mm at the softest, the middle of the 0.5 to 1.2 mm
     // most of ten harpists' slips in chords and arpeggios fell in
     // (Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444, Table V: 0.2 to
-    // 1.5 mm), to the lab's 0.04 mm at the hardest, geometrically with
-    // velocity: authored, between two measured slips. Until the time
-    // constant took the slip's band (above) the softest stopped at 0.2 mm,
-    // the shortest, since longer slips left the strings darker than any
-    // recording. From velocity 64 to 127 a steel E4's 6th and 10th partials
-    // gain 4.9 and 5.2 dB against the fundamental (2.5 before 0.6.2), and at
-    // velocity 90 the finger lets go in 0.025 ms (median; 0.05 before).
+    // 1.5 mm), to their shortest, 0.2 mm, at the hardest (the lab's 0.04 mm
+    // until 0.13.8), geometrically with velocity: authored, between two
+    // measured slips. Until the time constant took the slip's band (above)
+    // the softest stopped at 0.2 mm, since longer slips left the strings
+    // darker than any recording. From velocity 64 to 127 a bare steel E4's
+    // 6th and 10th partials gain 6.7 and 6.5 dB against the fundamental
+    // (eight takes; 3.4 and 4.9 with the lab's slip), and at velocity 90 the
+    // finger lets go in 0.079 ms (median; 0.025 with the lab's slip).
     // Each pluck's slip follows its own displacement, the force's 14% draw
     // through the D^1.2 law, as one harpist's release velocity scattered by
     // 25% and the displacement by 14% (Fig. 8). The slip scatters by 40% on
@@ -4151,7 +4165,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     // (capped at 3.2, after Acukoto 0.25.11; Docs/decisions.md, 2026-11-14).
     const double softRamp = v < 0.5 ? std::min(1.0, (0.5 - v) / 0.19) : 0.0;
     const double softTouch = softRamp > 0.0 ? std::pow(std::min(std::pow(std::max(touch, 0.05), -1.2), 3.2), softRamp) : 1.0;
-    release *= std::clamp(std::pow(v / 0.5, -1.4 * 1.2), 0.4, 10.0) * std::pow(20.0, 1.0 - v) * softTouch
+    release *= std::clamp(std::pow(v / 0.5, -1.4 * 1.2), 0.4, 10.0) * std::pow(softestSlip / hardestSlip, 1.0 - v) * softTouch
              * std::exp(0.4 * s.random.gaussian() - 1.2 * 0.14 * forceDraw);
     if (realismEnhancements_ && release > 0.0)
     {

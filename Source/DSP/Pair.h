@@ -19,6 +19,7 @@ struct Pair
     Pair operator*(Pair o) const noexcept { return { { v[0] * o.v[0], v[1] * o.v[1] } }; }
     Pair operator-() const noexcept { return { { -v[0], -v[1] } }; }
     Pair& operator+=(Pair o) noexcept { return *this = *this + o; }
+    Pair& operator-=(Pair o) noexcept { return *this = *this - o; }
     double operator[](int i) const noexcept { return v[i]; }
 };
 #endif

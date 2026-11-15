@@ -13,9 +13,15 @@ hold the pedal through a harmony and lift it where the hand would damp.
 Strings: the lyre harps (presets 0 and 1) are C major from G3 to A5; the gut
 lyre (preset 2) is D3 E3 G3 A3 B3 D4. Every phrase is original.
 
-songs/ holds longer public-domain pieces played with a person's timing
-(Performance, below), one file per part. Tools/render_songs.py plays each
-part on the preset SONGS gives it and mixes them.
+The top folder holds one README demo per preset, <NN>-<preset-slug>.mid
+numbered from 01 in program order, and more/ the README's More demos, whose
+presets Tools/RenderPresetDemos.cpp names in file order. comparison/ holds
+the phrases Tools/render_demo_set.sh renders only for the listening set: the
+shared phrase on every preset side by side, and the A4 of the CC0 reference
+recording, rendered dry. songs/ holds longer public-domain pieces played
+with a person's timing (Performance, below), one file per part.
+Tools/render_songs.py plays each part on the preset SONGS gives it and
+mixes them.
 """
 
 import argparse
@@ -514,14 +520,14 @@ SONGS = {
 
 
 DEMOS = {
-    "00-lyre-harp.mid": lyre_harp_steel,
-    "01-nylon-lyre-harp.mid": lyre_harp_nylon,
-    "02-gut-lyre.mid": gut_lyre,
+    "01-lyre-harp.mid": lyre_harp_steel,
+    "02-nylon-lyre-harp.mid": lyre_harp_nylon,
+    "03-gut-lyre.mid": gut_lyre,
     "more/01-single-notes.mid": single_notes,
     "more/02-glissando.mid": glissando,
     "more/03-dynamics.mid": dynamics,
-    "more/04-shared-phrase.mid": shared_phrase,
-    "more/05-reference-a4.mid": reference_note,
+    "comparison/shared-phrase.mid": shared_phrase,
+    "comparison/reference-a4.mid": reference_note,
 }
 for _song, (_build, _parts) in SONGS.items():
     for _part in _parts:

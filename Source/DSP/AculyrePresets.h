@@ -236,8 +236,14 @@ constexpr BodySpec gutLyreBody {
 // 0.2 mm slip (0.13.8) had left typical finger playing at -9.93/-9.42/-9.73
 // VU by the microphones (-9.74/-9.38/-10.54 by the piezo), and 0.13.8
 // re-pinned outputGain to 2.429/2.582/2.716 on the same protocol to give
-// that back; each fingerForce is 0.8 times that ratio. The piezo stays
-// within 1 dB of the microphones (0.83 dB under on the gut lyre).
+// that back; each fingerForce is 0.8 times that ratio. The slower slip
+// also left the gut lyre's piezo 0.83 dB under its microphones for typical
+// finger playing (0.57 in 0.13.7), and its full-room Gut Lyre patch in the
+// Rack 1.91 dB under (1.26), past that device's 1.5 dB bound; so the gut
+// lyre's piezoGain puts its piezo back on its microphones' level
+// (0.13.10), as the 2026-11-08 protocol set it, and its nail and plectrum
+// read 0.83 dB louder by the piezo than 0.13.7's. The harps' piezos sit
+// 0.20 and 0.28 dB over their microphones and keep 0.13.7's gains.
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 27, detail::lyreHarpSteel, detail::lyreHarpBody,
     Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.182, 0.744327071, 0.8 * 2.429 / 2.182,
@@ -254,7 +260,7 @@ inline constexpr InstrumentSpec lyreHarpNylon {
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 16, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.498, 0.545578595, 0.8 * 2.716 / 2.498,
+    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.498, 0.600530, 0.8 * 2.716 / 2.498,
     // leverTouch (above)
     {{ 0.50, 0.42, 0, 0.51, 0.86, 0, 0.58, 0.46, 0.45, 0, 0.52, 0.82, 0, 0.81, 0.61, 1.00 }}
 };

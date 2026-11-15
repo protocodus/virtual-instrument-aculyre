@@ -88,7 +88,10 @@ constexpr double inch = 0.0254;
 //
 // AculyreEngineTests holds every string within 1 dB of the line by each
 // microphone pickup and reports the touch each would need after a change to
-// the strings or the body. The piezo now observes that same performance,
+// the strings or the body. The 0.2 mm hardest finger slip (0.13.8) left four
+// notes outside it, which took the touch it reported: the steel G6 (0.24 to
+// 0.28) and its lever note (0.23 to 0.27), the nylon G6's lever note (0.23
+// to 0.28) and the gut D5 (0.64 to 0.57). The piezo now observes that same performance,
 // including its natural note-to-note level differences.
 //
 // Each instrument's lever touches are the same voicing for the lever notes,
@@ -115,7 +118,7 @@ constexpr std::array<StringSpec, maxStrings> lyreHarpSteel {{
     { 79, 0.235, 0.010 * inch, 0.23 }, { 81, 0.220, 0.010 * inch, 0.56 },
     { 83, 0.205, 0.0095 * inch, 0.19 }, { 84, 0.191, 0.0095 * inch, 0.16 },
     { 86, 0.176, 0.009 * inch, 0.15 }, { 88, 0.161, 0.009 * inch, 0.33 },
-    { 89, 0.147, 0.009 * inch, 0.37 }, { 91, 0.132, 0.009 * inch, 0.24 }
+    { 89, 0.147, 0.009 * inch, 0.37 }, { 91, 0.132, 0.009 * inch, 0.28 }
 }};
 
 // The same frame strung with nylon at 45 N in the bass falling to 23 N at
@@ -187,7 +190,7 @@ constexpr std::array<StringSpec, maxStrings> gutLyreStrings {{
     { 55, 0.500, 0.96e-3, 0.45 }, { 57, 0.500, 0.86e-3, 0.62 }, { 59, 0.500, 0.76e-3, 0.79 },
     { 60, 0.500, 0.72e-3, 0.63 }, { 62, 0.500, 0.64e-3, 0.47 }, { 64, 0.445, 0.64e-3, 0.37 },
     { 66, 0.397, 0.63e-3, 0.76 }, { 67, 0.375, 0.62e-3, 0.51 }, { 69, 0.334, 0.61e-3, 0.70 },
-    { 71, 0.297, 0.60e-3, 1.00 }, { 72, 0.281, 0.60e-3, 0.78 }, { 74, 0.250, 0.59e-3, 0.64 },
+    { 71, 0.297, 0.60e-3, 1.00 }, { 72, 0.281, 0.60e-3, 0.78 }, { 74, 0.250, 0.59e-3, 0.57 },
     { 76, 0.223, 0.58e-3, 0.84 }
 }};
 // The carved back is too thick to move (backThickness 0).
@@ -225,23 +228,26 @@ constexpr BodySpec gutLyreBody {
 // kHz, shipping Performer. Raw piezo medians with the old gains were
 // -12.929/-14.377/-10.749 VU against mic -9.191/-8.704/-8.901. These are
 // digital output trims, not physical body or per-string force calibration.
+// 2026-11-15 (0.13.8): the hardest finger pluck's 0.2 mm slip left typical
+// playing at -9.93/-9.42/-9.73 VU by the microphones and -9.74/-9.38/-10.54
+// by the piezo; both gains were re-pinned on the same protocol.
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 27, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.182, 0.744327071,
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.429, 0.810800139,
     // leverTouch (above)
-    {{ 0, 0.83, 0.92, 0, 0.57, 0.29, 0.48, 0, 0.30, 0.41, 0, 0.25, 0.16, 0.26, 0, 0.11, 0.25, 0, 0.27, 0.32, 0.37, 0, 0.20, 0.20, 0, 0.35, 0.23 }}
+    {{ 0, 0.83, 0.92, 0, 0.57, 0.29, 0.48, 0, 0.30, 0.41, 0, 0.25, 0.16, 0.26, 0, 0.11, 0.25, 0, 0.27, 0.32, 0.37, 0, 0.20, 0.20, 0, 0.35, 0.27 }}
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {
     "Nylon Lyre Harp", nylonMonofilament, 27, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.459, 0.851306602,
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.582, 0.889172457,
     // leverTouch (above)
-    {{ 0, 0.78, 0.89, 0, 0.58, 0.27, 0.54, 0, 0.32, 0.45, 0, 0.25, 0.14, 0.25, 0, 0.10, 0.23, 0, 0.27, 0.30, 0.35, 0, 0.17, 0.14, 0, 0.29, 0.23 }}
+    {{ 0, 0.78, 0.89, 0, 0.58, 0.27, 0.54, 0, 0.32, 0.45, 0, 0.25, 0.14, 0.25, 0, 0.10, 0.23, 0, 0.27, 0.30, 0.35, 0, 0.17, 0.14, 0, 0.29, 0.28 }}
 };
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 16, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.498, 0.545578595,
+    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.716, 0.672291039,
     // leverTouch (above)
     {{ 0.50, 0.42, 0, 0.51, 0.86, 0, 0.58, 0.46, 0.45, 0, 0.52, 0.82, 0, 0.81, 0.61, 1.00 }}
 };

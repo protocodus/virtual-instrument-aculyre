@@ -532,8 +532,10 @@ int main()
     // the pluck point by 0.012 of the length on a 17.6 cm string to 0.022 on
     // a 97.5 cm one (Fig. 7), the force by 14% and the release time by 20%
     // (Fig. 8), the angle from the top by 4 degrees (Table VI), each about
-    // the control. A finger's release at velocity 0.7 is 0.053 ms x
-    // (0.7 / 0.5)^-1.68 x 5^0.3, the slip lengthening for a softer pluck;
+    // the control. A finger's release at velocity 0.7 is 0.265 ms / 2.783
+    // x (0.7 / 0.5)^-1.68 x 4^0.3, the 0.2 mm slip of the hardest pluck
+    // lengthening towards 0.8 mm for a softer one (0.13.8; the lab's 0.04 mm,
+    // 0.053 ms and 20^0.3 before);
     // it scatters by 40% on its own and by 1.2 times the force's 14%
     // through the displacement (owner request, 2026-10-29), so by
     // sqrt(0.4^2 + 0.168^2) in all.
@@ -555,8 +557,8 @@ int main()
             const double deviation[4] = { pluck.position - controls.pluckPosition,
                                           std::log(pluck.force / (aculyre::lyreHarpSteel.pluckForce * string.touch * std::pow(0.7, 1.4))),
                                           std::asin(std::sqrt(pluck.normalShare)) - angle,
-                                          std::log(pluck.release / (0.053e-3 / 2.783 * std::pow(0.7 / 0.5, -1.68)
-                                                                    * std::pow(20.0, 0.3))) };
+                                          std::log(pluck.release / (0.053e-3 * 5.0 / 2.783 * std::pow(0.7 / 0.5, -1.68)
+                                                                    * std::pow(4.0, 0.3))) };
             for (int i = 0; i < 4; ++i)
             {
                 sum[i] += deviation[i];
@@ -591,7 +593,7 @@ int main()
             return engine.lastPluck().release;
         };
         const auto law = [] (double v)
-        { return std::clamp(std::pow(v / 0.5, -1.68), 0.4, 10.0) * std::pow(20.0, 1.0 - v); };
+        { return std::clamp(std::pow(v / 0.5, -1.68), 0.4, 10.0) * std::pow(0.8 / 0.2, 1.0 - v); };
         const double expected = law(static_cast<double>(0.1f)) / law(static_cast<double>(0.3f));
         check(std::abs(release(0.1f) / release(0.3f) / expected - 1.0) < 1e-9,
               "soft plucks slip off slower as velocity falls");

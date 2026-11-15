@@ -24,6 +24,17 @@ reference recording below.
 
 ## Version history
 
+- **0.13.8** (local candidate): a hard finger pluck no longer lets go like a
+  nail. The hardest pluck's string slips 0.2 mm along the fingertip, the
+  shortest slip ten harpists made in music, in place of a lab
+  measurement's 0.04 mm; the softest still slips 0.8 mm. From velocity 100
+  up the finger had sat within 0.5 dB of the Nail below 4 kHz; on the Lyre
+  Harp patch it now sits 3.5 to 3.9 dB under it from 2 to 16 kHz at
+  velocity 100 and 1.7 to 3.4 dB at 127, and a steel melody at velocity 88
+  to 112 is 2 to 3 dB softer from 2 to 8 kHz. Four touches were re-evened
+  and the output and piezo gains re-pinned, so typical playing still reads
+  -9 VU. Nail and Pick are unchanged.
+
 - **0.13.7** (local candidate): owner-selected soundbox and soft-pluck updates
   ([decisions](Docs/decisions.md)). Below velocity 64 a finger pluck's slip
   release now follows each string's calibrated `touch` (`touch^-1.2`, capped
@@ -603,17 +614,20 @@ hard edge has no flesh for the string to slip along, so it lets go at once,
 the ideal pluck, and a plectrum meets the string nearer the bridge than the
 hand's place: at 0.40 of the finger's distance, Acustra's plectrum fitted on
 picked archtop recordings. A finger's held force unloads exponentially over
-the release time as the string slides off, as Acustra's slip does. A harpist's
-string slips 0.04 mm along the fingertip and leaves at about 1.5 m/s
-(Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444), a slip lasting
-0.053 ms. The exponential takes that slip's band rather than its length:
-a force let go evenly over a time T is 3 dB down at 0.443/T, so the time
-constant is T/2.78, 0.019 ms (one as long as the slip would have unloaded
-only 63% by its end). A harder pluck slips off faster: the release velocity rises with
+the release time as the string slides off, as Acustra's slip does. In the
+lab a harpist's string slipped 0.04 mm along the fingertip and left at about
+1.5 m/s (Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444), a slip
+lasting 0.053 ms; in music none of ten harpists' strings slipped less than
+0.2 mm (the same paper, Table V), and the hardest pluck takes that 0.2 mm,
+a slip lasting 0.27 ms at the same speed. At the lab's slip a finger from
+velocity 100 up let go as abruptly as a nail. The exponential takes the
+slip's band rather than its length: a force let go evenly over a time T is
+3 dB down at 0.443/T, so the time constant is T/2.78, 0.095 ms (one as long
+as the slip would have unloaded only 63% by its end). A harder pluck slips off faster: the release velocity rises with
 the string's displacement, about as its 1.2th power, from 0.2 m/s at
 0.5 mm to 5 m/s at 7 mm (Chadefaux et al. 2012), so the release time runs
 as the velocity to the -1.68 about the middle of its range. A softer pluck
-also slips further, from the lab's 0.04 mm at the hardest to 0.8 mm, the
+also slips further, from 0.2 mm at the hardest to 0.8 mm, the
 middle of the 0.5 to 1.2 mm most of ten harpists' slips in chords and
 arpeggios fell in (the same paper, Table V), geometrically with velocity: an authored law between two measured
 slips, at the owner's request that the tone follow velocity more. Only the

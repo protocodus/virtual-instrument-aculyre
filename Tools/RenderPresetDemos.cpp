@@ -106,8 +106,11 @@ int main(int argc, char** argv)
             instrument.presets.emplace_back(aculyre::presets[preset]->name);
             presetFor.push_back(static_cast<int>(preset));
         }
-    // U7 perf budget: about 3x the slowest demo's median realtime factor.
-    instrument.cpuBudget = 0.0;
+    // U7 perf budget: about 3x the slowest demo's median realtime factor on
+    // the CI runner, 0.0391 (02-nylon-lyre-harp) in ci.yml run 4
+    // (ubuntu-24.04, three repeats), 2026-11-15. The worst block there was
+    // 5.8% of a core, under U12's 10%.
+    instrument.cpuBudget = 0.12;
     instrument.open = [presetFor](std::size_t demo, double sampleRate, int, std::uint32_t)
     {
         // The engine's plucks vary by a fixed-seed sequence of its own that

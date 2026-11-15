@@ -31,9 +31,12 @@ reference recording below.
   up the finger had sat within 0.5 dB of the Nail below 4 kHz; on the Lyre
   Harp patch it now sits 3.5 to 3.9 dB under it from 2 to 16 kHz at
   velocity 100 and 1.7 to 3.4 dB at 127, and a steel melody at velocity 88
-  to 112 is 2 to 3 dB softer from 2 to 8 kHz. Four touches were re-evened
-  and the output and piezo gains re-pinned, so typical playing still reads
-  -9 VU. Nail and Pick are unchanged.
+  to 112 is 2 to 3 dB softer from 2 to 8 kHz (chosen by ear over a 0.5 mm
+  slip). The finger also plucks at 80% of the force a nail or a plectrum
+  takes, at the owner's request: typical finger playing reads -10.9 VU
+  where it read -9, 1.9 dB quieter. Four touches were re-evened and the
+  output and piezo gains re-pinned for the new slip. Nail and Pick are
+  unchanged.
 
 - **0.13.7** (local candidate): owner-selected soundbox and soft-pluck updates
   ([decisions](Docs/decisions.md)). Below velocity 64 a finger pluck's slip
@@ -890,7 +893,10 @@ below 12.5 kHz and 2 dB short at 20 kHz.
 300 ms with 0 VU at -12 dBFS (the Big Meter's default offset). `outputGain`
 puts each instrument's typical playing, each string alone and three- and
 four-note chords at velocities 70-110, at a median of -9 VU at its own
-controls; `piezoGain` puts the piezo alone within 1 dB of that. Unchecked,
+controls and full force; `piezoGain` puts the piezo alone within 1 dB of
+that. The finger plucks at 80% of that force, the owner's level for a
+finger that was too loud (2026-11-15), so typical finger playing reads
+-10.9 VU and the nail and the plectrum keep the full force. Unchecked,
 the hardest playing, chords of up to six strings at full velocity with a
 plectrum, would read up to +8 VU and peak at +10 dBFS. So the Performer
 ends in the portfolio's shared output stage (`OutputStage.h`, the same in

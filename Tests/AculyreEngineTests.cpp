@@ -555,7 +555,8 @@ int main()
             engine.noteOn(note, 0.7f);
             const auto pluck = engine.lastPluck();
             const double deviation[4] = { pluck.position - controls.pluckPosition,
-                                          std::log(pluck.force / (aculyre::lyreHarpSteel.pluckForce * string.touch * std::pow(0.7, 1.4))),
+                                          // The finger's 80% of the full force (owner, 2026-11-15).
+                                          std::log(pluck.force / (aculyre::lyreHarpSteel.pluckForce * 0.8 * string.touch * std::pow(0.7, 1.4))),
                                           std::asin(std::sqrt(pluck.normalShare)) - angle,
                                           std::log(pluck.release / (0.053e-3 * 5.0 / 2.783 * std::pow(0.7 / 0.5, -1.68)
                                                                     * std::pow(4.0, 0.3))) };
@@ -1193,7 +1194,8 @@ int main()
     // -12 dBFS (the Big Meter's default offset). Typical playing, each
     // string alone and three- and four-note chords at velocities 70, 90 and
     // 110, has a median of -9 VU on each instrument at its own controls
-    // (outputGain), and the piezo alone reads within 1 dB of the
+    // and full force (outputGain), so -10.9 VU with the finger's 80%
+    // (owner, 2026-11-15), and the piezo alone reads within 1 dB of the
     // microphones (piezoGain). The hardest playing, chords of up to six
     // strings at full velocity with a plectrum, stays out of the red: under
     // 0 VU, every sample under -1.5 dBFS. The piezo is mono and hears no
@@ -1294,7 +1296,10 @@ int main()
             }
             std::printf("%-16s typical: microphones %+.1f VU, piezo %+.1f VU; hardest chords %+.1f VU, peak %+.1f dBFS\n",
                         preset.name, mics, pickup, redVu, redPeak);
-            check(std::abs(mics + 9.0) < 0.5, "typical playing reads -9 VU on the microphones");
+            // Every preset plays the finger, at 80% of the force outputGain
+            // is calibrated for (owner, 2026-11-15): 1.94 dB under -9 VU.
+            const double typicalTarget = -9.0 + 20.0 * std::log10(0.8);
+            check(std::abs(mics - typicalTarget) < 0.5, "typical finger playing reads -10.9 VU on the microphones");
             check(std::abs(pickup - mics) <= 1.0, "the piezo reads within 1 dB of the microphones");
             check(redVu < 0.0, "the hardest chords stay under 0 VU");
             // The stage's own contract (the portfolio's ToyOutputStage):

@@ -4085,7 +4085,12 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     const bool lever = raise && instrument.leverTouch[at] > 0.0;
     const double touch = lever ? instrument.leverTouch[at] : string.touch;
     const double forceDraw = s.random.gaussian();
-    const double force = instrument.pluckForce * touch * std::pow(v, 1.4) * std::exp(0.14 * forceDraw);
+    // The finger plucks with 80% of the force a nail or a plectrum takes:
+    // the owner's level for a finger that was too loud (2026-11-15), not a
+    // measured force. outputGain still puts typical playing at full force
+    // at -9 VU, so typical finger playing reads 1.9 dB under it.
+    const double techniqueForce = controls.technique == Technique::Finger ? 0.8 : 1.0;
+    const double force = instrument.pluckForce * techniqueForce * touch * std::pow(v, 1.4) * std::exp(0.14 * forceDraw);
     const double angle = std::asin(detail::squareRoot(std::clamp(controls.normalShare, 0.0, 1.0)))
                        + 4.0 * pi / 180.0 * s.random.gaussian();
     const double normalShare = std::clamp(std::sin(angle) * std::sin(angle), 0.01, 0.9);

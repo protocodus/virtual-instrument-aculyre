@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the older, still-running check.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Aculyre is a prototype with no plug-in yet, so there is no plugin-macos job,
+# no package and no main-build or release workflow: every job builds the
+# JUCE-free engine. Its tests carry the unit and audio tiers only; it has no
+# perf or fuzz test yet, so those tiers are not run.
+jobs:
+  dsp-tests:
+    name: DSP unit and audio tiers, Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build
+
+      # The Python checks and the demo phrases use only the standard library.
+      - name: Set up Python for the demo-source check
+        id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build-dsp -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          "-DPython3_EXECUTABLE=${{ steps.python.outputs.python-path }}"
+
+      # The default build includes AculyreDSPCxx17, the Rack toolchain's C++17 check.
+      - name: Build
+        run: cmake --build build-dsp --parallel
+
+      # CMakeLists.txt registers Aculyre.DemoMidiSources only when it finds
+      # Python, and has no option to require it, so make sure it is there.
+      - name: Require the demo-source check
+        run: |
+          ctest --test-dir build-dsp -N -R '^Aculyre\.DemoMidiSources$' | grep -q 'Total Tests: 1$'
+
+      - name: Unit tier
+        run: ctest --test-dir build-dsp -L '^unit$' --no-tests=error --output-on-failure
+
+      - name: Audio tier
+        run: ctest --test-dir build-dsp -L '^audio$' --no-tests=error --output-on-failure
+
+      - name: Render the demos for review
+        run: sh Tools/render_demo_set.sh build-dsp build-dsp/demo-audio
+
+      - name: Upload demo audio
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-audio-aculyre-build-${{ github.run_number }}
+          path: |
+            build-dsp/demo-audio/**/*.wav
+          if-no-files-found: error
+          retention-days: 7
+
+  dsp-tests-macos:
+    name: DSP unit tier, macOS
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python for the demo-source check
+        id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure, build and run the unit tier
+        run: |
+          cmake -S . -B build-dsp -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON "-DPython3_EXECUTABLE=${{ steps.python.outputs.python-path }}"
+          cmake --build build-dsp --parallel
+          ctest --test-dir build-dsp -N -R '^Aculyre\.DemoMidiSources$' | grep -q 'Total Tests: 1$'
+          ctest --test-dir build-dsp -L '^unit$' --no-tests=error --output-on-failure
+
+  dsp-tests-windows:
+    name: DSP unit tier, Windows
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python for the demo-source check
+        id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure
+        run: |
+          cmake -S "." -B "build-win" -A x64 -DBUILD_TESTING=ON "-DPython3_EXECUTABLE=${{ steps.python.outputs.python-path }}"
+
+      - name: Build and run the unit tier
+        run: |
+          cmake --build "build-win" --config Release --parallel
+          $listed = ctest --test-dir "build-win" -C Release -N -R "^Aculyre\.DemoMidiSources$" | Out-String
+          if ($listed -notmatch "Total Tests: 1\r?\n") { throw "Aculyre.DemoMidiSources is not registered" }
+          ctest --test-dir "build-win" -C Release -L "^unit$" --no-tests=error --output-on-failure
+
+  # CMakeLists.txt has no sanitizer option, so this job instruments the whole
+  # build with the standard's flags through CMAKE_CXX_FLAGS. The libFuzzer
+  # target (ACULYRE_BUILD_FUZZER) is built so it keeps compiling; no test runs
+  # it yet, so there is no fuzz tier to run.
+  sanitizers:
+    name: Unit tier under ASan + UBSan, Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Clang's sanitizer and libFuzzer runtimes ship in libclang-rt-18-dev.
+      - name: Install Ninja and Clang's runtimes
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build libclang-rt-18-dev
+
+      - name: Set up Python for the demo-source check
+        id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure the instrumented DSP, tests and libFuzzer target
+        run: >-
+          cmake -S . -B build-san -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_CXX_COMPILER=clang++
+          "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined,float-cast-overflow -fno-sanitize-recover=all -fno-omit-frame-pointer"
+          "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined,float-cast-overflow"
+          -DACULYRE_BUILD_FUZZER=ON -DBUILD_TESTING=ON
+          "-DPython3_EXECUTABLE=${{ steps.python.outputs.python-path }}"
+
+      - name: Build
+        run: cmake --build build-san --parallel
+
+      - name: Unit tier
+        run: ctest --test-dir build-san -L '^unit$' --no-tests=error --output-on-failure

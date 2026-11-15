@@ -218,36 +218,43 @@ constexpr BodySpec gutLyreBody {
 // to 12th partials against the fundamental sit 3.5 dB rms from the
 // recording's, where 0.27 left 10.4 (0.09 4.7, 0.10 4.0, 0.12 4.2, 0.16
 // 7.4). outputGain and piezoGain are the
-// free gains, not loudness claims: outputGain puts the preset's typical
-// playing at a median of -9 on Reason's VU meter at its own controls, and
-// piezoGain puts the piezo alone within 1 dB of that (AculyreEngineTests,
-// README Level).
+// free gains, not loudness claims: outputGain put the preset's typical
+// playing at a median of -9 on Reason's VU meter at its own controls
+// (0.13.7), and piezoGain the piezo alone within 1 dB of that; the finger now
+// plays at 80% of it (fingerForce, below; AculyreEngineTests, README Level).
 // 2026-11-08: the fixed pickup gains were rebalanced after removing capture
 // from excitation, on the same public test protocol: median 300 ms VU over
 // individual strings and native thirds/sevenths, velocities 70/90/110, 48
 // kHz, shipping Performer. Raw piezo medians with the old gains were
 // -12.929/-14.377/-10.749 VU against mic -9.191/-8.704/-8.901. These are
 // digital output trims, not physical body or per-string force calibration.
-// 2026-11-15 (0.13.8): the hardest finger pluck's 0.2 mm slip left typical
-// playing at -9.93/-9.42/-9.73 VU by the microphones and -9.74/-9.38/-10.54
-// by the piezo; both gains were re-pinned on the same protocol.
+// fingerForce is the owner's level for a finger that was too loud
+// (2026-11-15), not a measured force: typical finger playing reads 80% of
+// the -9 VU the gains were pinned to, -10.9 VU by the microphones. The gains
+// stay where 0.13.7 pinned them, so the nail and the plectrum, which pluck
+// with the whole pluckForce, keep their level. The hardest finger pluck's
+// 0.2 mm slip (0.13.8) had left typical finger playing at -9.93/-9.42/-9.73
+// VU by the microphones (-9.74/-9.38/-10.54 by the piezo), and 0.13.8
+// re-pinned outputGain to 2.429/2.582/2.716 on the same protocol to give
+// that back; each fingerForce is 0.8 times that ratio. The piezo stays
+// within 1 dB of the microphones (0.83 dB under on the gut lyre).
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 27, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.429, 0.810800139,
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.182, 0.744327071, 0.8 * 2.429 / 2.182,
     // leverTouch (above)
     {{ 0, 0.83, 0.92, 0, 0.57, 0.29, 0.48, 0, 0.30, 0.41, 0, 0.25, 0.16, 0.26, 0, 0.11, 0.25, 0, 0.27, 0.32, 0.37, 0, 0.20, 0.20, 0, 0.35, 0.27 }}
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {
     "Nylon Lyre Harp", nylonMonofilament, 27, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.582, 0.889172457,
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.459, 0.851306602, 0.8 * 2.582 / 2.459,
     // leverTouch (above)
     {{ 0, 0.78, 0.89, 0, 0.58, 0.27, 0.54, 0, 0.32, 0.45, 0, 0.25, 0.14, 0.25, 0, 0.10, 0.23, 0, 0.27, 0.30, 0.35, 0, 0.17, 0.14, 0, 0.29, 0.28 }}
 };
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 16, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.716, 0.672291039,
+    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.498, 0.545578595, 0.8 * 2.716 / 2.498,
     // leverTouch (above)
     {{ 0.50, 0.42, 0, 0.51, 0.86, 0, 0.58, 0.46, 0.45, 0, 0.52, 0.82, 0, 0.81, 0.61, 1.00 }}
 };

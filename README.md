@@ -24,6 +24,16 @@ reference recording below.
 
 ## Version history
 
+- **0.13.9** (local candidate): the nail and the plectrum keep 0.13.7's
+  level again. 0.13.8 re-pinned the output and piezo gains for the finger's
+  new slip, which raised the nail and the plectrum 0.9, 0.4 and 0.7 dB on
+  the steel, nylon and gut instruments and pushed a Rack pick patch's piezo
+  out of balance. The gains are back where 0.13.7 pinned them, and the
+  finger's own share of the force (`fingerForce`, 0.89, 0.84 and 0.87)
+  carries the owner's 80% and the level the slip took, so typical finger
+  playing still reads -10.9 VU. The four touches 0.13.8 re-evened move those
+  notes on the nail and the plectrum too, by up to 1.7 dB.
+
 - **0.13.8** (local candidate): a hard finger pluck no longer lets go like a
   nail. The hardest pluck's string slips 0.2 mm along the fingertip, the
   shortest slip ten harpists made in music, in place of a lab
@@ -35,8 +45,8 @@ reference recording below.
   slip). The finger also plucks at 80% of the force a nail or a plectrum
   takes, at the owner's request: typical finger playing reads -10.9 VU
   where it read -9, 1.9 dB quieter. Four touches were re-evened and the
-  output and piezo gains re-pinned for the new slip. Nail and Pick are
-  unchanged.
+  output and piezo gains re-pinned for the new slip; Nail and Pick pluck as
+  before, but the gains made them up to 0.9 dB louder (undone in 0.13.9).
 
 - **0.13.7** (local candidate): owner-selected soundbox and soft-pluck updates
   ([decisions](Docs/decisions.md)). Below velocity 64 a finger pluck's slip
@@ -891,12 +901,13 @@ below 12.5 kHz and 2 dB short at 20 kHz.
 
 **Level.** Levels are set on Reason's VU meter, which reads the RMS over
 300 ms with 0 VU at -12 dBFS (the Big Meter's default offset). `outputGain`
-puts each instrument's typical playing, each string alone and three- and
-four-note chords at velocities 70-110, at a median of -9 VU at its own
-controls and full force; `piezoGain` puts the piezo alone within 1 dB of
-that. The finger plucks at 80% of that force, the owner's level for a
-finger that was too loud (2026-11-15), so typical finger playing reads
--10.9 VU and the nail and the plectrum keep the full force. Unchecked,
+was pinned so each instrument's typical playing, each string alone and
+three- and four-note chords at velocities 70-110, read a median of -9 VU at
+its own controls (0.13.7), and `piezoGain` the piezo alone within 1 dB of
+that. Typical finger playing now reads 80% of it, -10.9 VU, the owner's
+level for a finger that was too loud (2026-11-15): `fingerForce`, the
+finger's share of the force, gives it that level, and the nail and the
+plectrum pluck with the whole force at the level 0.13.7 gave them. Unchecked,
 the hardest playing, chords of up to six strings at full velocity with a
 plectrum, would read up to +8 VU and peak at +10 dBFS. So the Performer
 ends in the portfolio's shared output stage (`OutputStage.h`, the same in

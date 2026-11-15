@@ -24,6 +24,13 @@ reference recording below.
 
 ## Version history
 
+- **0.13.10** (local candidate): the gut lyre's piezo reads its
+  microphones' level again for typical finger playing. The slower slip had
+  left it 0.83 dB under (0.57 in 0.13.7), and 1.9 dB under on the Rack's
+  full-room Gut Lyre patch, so turning PIEZO up there dropped the level.
+  The gut lyre's nail and plectrum read up to 0.83 dB louder by the piezo;
+  by the microphones, and on the harps, nothing changes.
+
 - **0.13.9** (local candidate): the nail and the plectrum keep 0.13.7's
   level again. 0.13.8 re-pinned the output and piezo gains for the finger's
   new slip, which raised the nail and the plectrum 0.9, 0.4 and 0.7 dB on

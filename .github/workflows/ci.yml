@@ -58,8 +58,9 @@ jobs:
 
       # Aculyre.CpuBudget: the demos' realtime factor against the budget in
       # Tools/RenderPresetDemos.cpp; a worst block above 10% only warns (U12).
+      # Verbose, so the run's log carries the figures the budget is set from.
       - name: Perf tier
-        run: ctest --test-dir build-dsp -L '^perf$' --no-tests=error --output-on-failure
+        run: ctest --test-dir build-dsp -L '^perf$' --no-tests=error -V
 
       - name: Render the demos for review
         run: |

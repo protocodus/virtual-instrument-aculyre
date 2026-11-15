@@ -5,8 +5,11 @@ compile_commands.json
 __pycache__/
 *.py[cod]
 
-# Audio is rendered locally (Tools/render_demo_set.sh) and never committed.
+# Audio is rendered locally (Tools/render_demo_set.sh) and never committed,
+# except the README's demos (RenderAculyrePresetDemos, see README Build).
 *.[wW][aA][vV]
+!/Docs/audio/[0-9][0-9]-*.wav
+!/Docs/audio/more/[0-9][0-9]-*.wav
 
 .DS_Store
 .idea/

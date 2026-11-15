@@ -15,12 +15,41 @@ against the SDK).
 
 ## Audio demos
 
-No audio is committed. `Tools/render_demo_set.sh <build> <out>` renders the
-listening set from the phrases `Tools/write_preset_midi.py` writes (committed in
-`Docs/audio/midi/`): one demo per
-preset, single notes with and without sympathetic strings, a glissando, a
-dynamics ladder on A4, one phrase on all three presets, and the A4 of the
-reference recording below.
+One phrase per preset, each written for what its instrument is played for and
+rendered from [`Docs/audio/midi/`](Docs/audio/midi) through the shipping
+Performer as a freshly loaded instrument plays it: its own playing controls,
+the lowest oversampling and no trim. There is no main build yet, so
+`RenderAculyrePresetDemos` renders them locally and they are committed from
+that render (see Build).
+
+<!-- audio-demos-begin -->
+
+| # | Preset | Demo | Length | Peak |
+| --- | --- | --- | --- | --- |
+| 1 | Lyre Harp | [01-lyre-harp.wav](Docs/audio/01-lyre-harp.wav) | 12.0 s | -7.2 dBFS |
+| 2 | Nylon Lyre Harp | [02-nylon-lyre-harp.wav](Docs/audio/02-nylon-lyre-harp.wav) | 11.9 s | -8.1 dBFS |
+| 3 | Gut Lyre | [03-gut-lyre.wav](Docs/audio/03-gut-lyre.wav) | 9.8 s | -5.6 dBFS |
+
+<!-- audio-demos-end -->
+
+### More demos
+
+Three things the preset demos do not show, each played from its phrase in
+[`Docs/audio/midi/more/`](Docs/audio/midi/more) through the Lyre Harp:
+
+- [Single notes](Docs/audio/more/01-single-notes.wav): C4, G4, C5 and G5
+  plucked once each under the pedal and left to ring, so each note's decay
+  and the idle strings ringing in sympathy stand alone.
+- [Glissando](Docs/audio/more/02-glissando.wav): a sweep up the strings from
+  G3 to A5 and back down, then a rolled C major chord.
+- [Dynamics](Docs/audio/more/03-dynamics.wav): A4 alone from the softest
+  pluck to the hardest, velocity 25 to 127, damped between.
+
+`Tools/render_demo_set.sh <build> <out>` renders a wider listening set from
+the same phrases and from `Docs/audio/midi/comparison/`, none of it
+committed: the single notes without sympathetic strings, the glissando on the
+nylon harp, one phrase on all three presets side by side, and the A4 of the
+reference recording below, dry.
 
 ## Version history
 
@@ -1170,11 +1199,14 @@ Rack-like build and 6.6-6.7% natively on that development machine
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel 2
-ctest --test-dir build --output-on-failure
+ctest --test-dir build -L '^unit$' --output-on-failure
+ctest --test-dir build -L '^audio$' --output-on-failure
+ctest --test-dir build -L '^perf$' --output-on-failure
 Tools/render_demo_set.sh build <output-directory>
 build/RenderAculyreDemo --report 0
 ```
 
+Every test carries one tier label: `unit`, `audio`, `perf` or `fuzz`.
 `AculyreDSPCxx17` builds the engine as C++17 without exceptions, as the Rack
 toolchain would. `Aculyre.Engine` checks tuning, the bass string's partials,
 the pluck point's missing harmonic, stability, determinism, block-size
@@ -1183,7 +1215,43 @@ committed phrases are what `Tools/write_preset_midi.py` writes. `Aculyre.ModeBan
 holds the soundbox's kernels to a mode-by-mode sum, `Aculyre.Denormals`
 plays dying tails with flush-to-zero off and requires the CPU's
 subnormal flags to stay clear, and `Aculyre.DspFuzzReplay` runs the fuzz
-target on seeded inputs.
+target on any reproducers committed in `Tests/Fixtures/fuzz/`, then on seeded
+inputs. In the
+`audio` tier, `Aculyre.AudioDemos` and `Aculyre.MoreDemos` render every
+README demo twice and require it finite, audible, under the output ceiling,
+8–12 s long and bit-identical, and `Aculyre.Keyboard0` to `2` play every key
+through each preset. `Aculyre.CpuBudget` (`perf`, Release without sanitizers
+only) times the demos and the portfolio's stress phrase on one thread against
+the budget in `Tools/RenderPresetDemos.cpp`, and warns when a 256-frame block
+takes more than 10% of a core; these are development-machine figures, not
+Reason's.
+
+The options: `ACULYRE_BUILD_TOOLS` (on) builds the renderers and analysis
+tools with their `audio` and `perf` tests; `ACULYRE_ENABLE_SANITIZERS` builds
+everything with AddressSanitizer and UndefinedBehaviorSanitizer;
+`ACULYRE_BUILD_FUZZER` (Clang with libFuzzer) builds `AculyreDspFuzz` and
+its two-minute `fuzz` test `Aculyre.DspFuzz`; `ACULYRE_REQUIRE_PYTHON_TESTS`
+fails the configuration when Python 3 is missing rather than leaving
+`Aculyre.DemoMidiSources` out. CI runs the `unit`, `audio` and `perf` tiers on
+Linux, the `unit` tier on macOS and Windows, and the `unit` and `fuzz` tiers
+under the sanitizers:
+
+```sh
+cmake -S . -B build-san -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++ \
+  -DACULYRE_ENABLE_SANITIZERS=ON -DACULYRE_BUILD_FUZZER=ON
+cmake --build build-san --parallel 2
+ctest --test-dir build-san -L '^(unit|fuzz)$' --output-on-failure
+```
+
+The README demos and their table come from the shared renderer, and are
+committed from its render until a main build renders them:
+
+```sh
+build/RenderAculyrePresetDemos --jobs 2 Docs/audio/midi "$staging"
+build/RenderAculyrePresetDemos --more --jobs 2 Docs/audio/midi/more "$staging/more"
+python3 Tools/update_readme_blocks.py demos --readme README.md --manifest "$staging/demos.json"
+cp "$staging"/[0-9][0-9]-*.wav Docs/audio/ && cp "$staging"/more/[0-9][0-9]-*.wav Docs/audio/more/
+```
 
 `RenderAculyreNotes` plucks every string of a preset alone, one WAV per note,
 and `Tools/compare_lyre_harp_samples.py` (NumPy and SciPy) measures those

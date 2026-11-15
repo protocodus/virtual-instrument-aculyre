@@ -4,8 +4,9 @@
 
 This is Aculyre's canonical repository: an experimental physically modelled
 lyre whose DSP engine and its Performer live in `Source/DSP/`. It is a
-feasibility prototype (README, Known gaps): there is no JUCE plug-in, no CI
-and no release yet. The Reason Rack Extension in the private
+feasibility prototype (README, Known gaps): there is no JUCE plug-in and no
+release yet; `.github/workflows/ci.yml` builds and tests the engine on every
+push. The Reason Rack Extension in the private
 `protocodus/reason-rack-extensions` repository is a thin adapter that mounts
 this repository as the pinned submodule `Examples/Aculyre/Instrument` and
 compiles `Source/DSP/*.cpp` directly, playing through `aculyre::Performer`.
@@ -16,8 +17,8 @@ stay in the adapter.
 Repository layout, naming, CI, versions and the `Docs/` taxonomy follow the
 Protocodus portfolio standard kept in the project, not in this repository;
 `python3 Tools/check_repo_standard.py <checkout>` in the Rack repository
-reports what the prototype does not yet meet (the plug-in, CI and generated
-README parts).
+reports what the repository does not meet. As a Rack-first checkout (P4, no
+plug-in front end yet) its plug-in rules do not apply.
 
 - The DSP version is the product version: `project(Aculyre VERSION X.Y.Z)` in
   `CMakeLists.txt`. Any DSP or behaviour change bumps it, and versions only go
@@ -204,15 +205,29 @@ it is the owner's step.
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel 2
-ctest --test-dir build --output-on-failure
+ctest --test-dir build -L '^unit$' --output-on-failure
+ctest --test-dir build -L '^audio$' --output-on-failure
+ctest --test-dir build -L '^perf$' --output-on-failure
 ```
 
 `Aculyre.Engine` (`unit`) checks tuning, the stiff-string partials, the pluck
 point, stability, determinism, block-size invariance and sympathetic
-coupling. `Tools/render_demo_set.sh build <out>` renders the listening set to
-a directory outside the checkout; `build/RenderAculyreDemo --report <preset>`
+coupling. The `fuzz` tier, `Aculyre.DspFuzz`, needs a Clang with libFuzzer
+(not Apple's): configure with `-DACULYRE_ENABLE_SANITIZERS=ON
+-DACULYRE_BUILD_FUZZER=ON`, as CI's `sanitizers` job does.
+`Tools/render_demo_set.sh build <out>` renders the listening set to a
+directory outside the checkout; `build/RenderAculyreDemo --report <preset>`
 prints each string's tension, inharmonicity, losses and dispersion design and
 the soundbox's modes.
+
+The README demos are `RenderAculyrePresetDemos` (`Tools/RenderPresetDemos.cpp`
+on the shared `Tools/PresetDemoRenderer.h`): one per preset from
+`Docs/audio/midi/<NN>-<preset-slug>.mid`, and with `--more` the More demos
+from `Docs/audio/midi/more/`, whose presets that file names. There is no main
+build yet, so after a change that alters them, render them, rewrite the table
+with `Tools/update_readme_blocks.py` and commit the WAVs (README, Build).
+`Aculyre.CpuBudget`'s budget is about three times the slowest demo's median
+on the CI runner, with that run and its date beside it.
 
 ## Aculyre specifics
 

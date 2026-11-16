@@ -1004,15 +1004,19 @@ struct Loop
         bendingLoss.reset();
     }
 
+    // Real time: an instrument switch and the host's audio reset run it.
+    // Clearing both whole 64 KB rings of every loop here cost each reset of
+    // a harp about 1 ms (9 MB of stores), within one host block.
     void reset() noexcept
     {
         silence();
-        // A new instrument's reach may be longer than the last one's.
-        std::fill_n(line, delayCapacity, 0.0f);
-        std::fill_n(pending, delayCapacity, 0.0f);
         // Back to where prepare() leaves the line, so a reset plays as a
-        // fresh instance does, sample for sample.
+        // fresh instance does, sample for sample: nothing older than reach
+        // behind the new write is ever read, and silence() leaves pending
+        // all zero. setInstrument(), whose reach may be longer than the last
+        // one's, clears the whole rings.
         write = 0;
+        clearRing(line, write - reach, reach);
         hand = {};
         damping = dampingTarget = 1.0;
         dampingRate = dampingFrequency = 0.0;
@@ -1880,18 +1884,34 @@ struct Room
             earlyGainsRight[static_cast<std::size_t>(index)] = -earlyGain[5 - index];
         }
         predelay = static_cast<int>(9.0e-3 * sampleRate);
-        reset();
-    }
-    void reset() noexcept
-    {
+        // reset() clears only what the new delays read.
         for (auto& line : lines)
             line.fill(0.0f);
-        position = 0;
-        filterStates.fill(0.0);
         early.fill(0.0f);
-        earlyPosition = 0;
         for (auto& diffuser : diffusers)
             diffuser.fill(0.0f);
+        reset();
+    }
+    // Back to position 0, as prepare() leaves the room. A ring is read only
+    // its own delay behind where it is written, so only that much before 0
+    // is cleared: the whole 0.6 MB took a share of every reset and sleep.
+    void reset() noexcept
+    {
+        const auto clearBefore = [] (float* ring, int capacity, int delay) noexcept
+        {
+            std::fill(ring + capacity - std::clamp(delay, 0, capacity), ring + capacity, 0.0f);
+        };
+        for (std::size_t index = 0; index < lineCount; ++index)
+            clearBefore(lines[index].data(), capacity, lengths[index]);
+        position = 0;
+        filterStates.fill(0.0);
+        int earlyReach = predelay;
+        for (std::size_t tap = 0; tap < earlyTapsLeft.size(); ++tap)
+            earlyReach = std::max({ earlyReach, earlyTapsLeft[tap], earlyTapsRight[tap] });
+        clearBefore(early.data(), earlyCapacity, earlyReach);
+        earlyPosition = 0;
+        for (std::size_t index = 0; index < diffuserCount; ++index)
+            clearBefore(diffusers[index].data(), diffuserCapacity, diffuserLengths[index]);
         diffuserPosition = 0;
     }
     void process(double input, double& left, double& right) noexcept
@@ -2262,6 +2282,10 @@ struct AculyreEngine::State
         PitchDesign* pitch { nullptr };
         Loop normal {};
         Loop parallel {};
+
+        // Only the energy window's reach behind squaresIndex is ever read
+        // (Loop::reach): older squares are overwritten before that.
+        void clearSquares() noexcept { Loop::clearRing(squares, squaresIndex - normal.reach, normal.reach); }
 
         // How the bar's coordinates move the string's end normal to the top:
         // the heave, the rock at its lever, no sway, and each bend where it
@@ -3676,6 +3700,14 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     controls.normalShare = instrument.normalShare;
     controls.room = instrument.room;
     setControls(controls);
+    // reset() clears only what a read can reach, and this instrument's reach
+    // may be longer than the last one's.
+    for (auto& ring : s.loopLines)
+        ring.fill(0.0f);
+    for (auto& ring : s.loopPending)
+        ring.fill(0.0f);
+    for (auto& ring : s.stringSquares)
+        ring.fill(0.0f);
     reset();
 }
 
@@ -3689,9 +3721,9 @@ void AculyreEngine::reset() noexcept
         applyPitch(index, false);
         voice.normal.reset();
         voice.parallel.reset();
-        std::fill_n(voice.squares, delayCapacity, 0.0f);
-        voice.squaresSum = 0.0;
         voice.squaresIndex = 0;
+        voice.clearSquares();
+        voice.squaresSum = 0.0;
         voice.keyDown = voice.sustained = voice.plucked = false;
         voice.keyPresses = 0;
         voice.ownerNote = -1;
@@ -4389,7 +4421,7 @@ void AculyreEngine::sleep() noexcept
         auto& voice = s.strings[static_cast<std::size_t>(index)];
         voice.normal.silence();
         voice.parallel.silence();
-        std::fill_n(voice.squares, delayCapacity, 0.0f);
+        voice.clearSquares();
         voice.squaresSum = 0.0;
         if (voice.plucked)
         {

@@ -1,13 +1,13 @@
 // The mode bank's kernels (Source/DSP/ModeBank.h) against an independent
-// mode-by-mode sum in long double, straight from each mode's definition
-// (force b0 sum(participation force), unscaled state, pull
-// sum(participation state)): the portable kernel, and the AVX2 + FMA one
-// where the CPU has it. So the bank's scaled state is held to the definition
-// too. Each layout puts modes in all three parts with a different number of
-// listed coordinates, so every width of the kernels' coordinate loops runs
-// (pairs and the odd one out; five at a time and each remainder), and every
-// listed coordinate carries a mode nothing else drives: a kernel that leaves
-// one out fails here.
+// mode-by-mode sum in long double, straight from each mode's definition (force
+// b0 sum(participation force), unscaled state, pull sum(participation state)):
+// the portable kernel, the one that runs once the strings have died away, and
+// the AVX2 + FMA one where the CPU has it. So the bank's scaled state is held
+// to the definition too. Each layout puts modes in all three parts with a
+// different number of listed coordinates, so every width of the kernels'
+// coordinate loops runs (pairs and the odd one out; five at a time and each
+// remainder), and every listed coordinate carries a mode nothing else drives:
+// a kernel that leaves one out fails here.
 #include "CpuFeatures.h"
 #include "ModeBank.h"
 
@@ -196,6 +196,7 @@ int main()
     for (const auto& layout : layouts)
     {
         compare("portable", aculyre::detail::runModes, layout[0], layout[1]);
+        compare("precise", aculyre::detail::runModesPrecise, layout[0], layout[1]);
 #if defined(ACULYRE_HAS_FUSED_KERNELS)
         if (instrumentCpu::hasAvx2Fma())
             compare("fused", aculyre::detail::runModesFused, layout[0], layout[1]);

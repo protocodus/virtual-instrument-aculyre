@@ -37,6 +37,15 @@ inline Float4 packFloat4(Pair lo, Pair hi) noexcept
     return __builtin_shufflevector(__builtin_convertvector(lo, Float2),
                                    __builtin_convertvector(hi, Float2), 0, 1, 2, 3);
 }
+// widenLo() and widenHi() at once: one conversion of all four, which GCC
+// turns into two cvtps2pd where it converts each half a float at a time.
+inline void widen(Float4 v, Pair& lo, Pair& hi) noexcept
+{
+    typedef double Double4Wide __attribute__((vector_size(32), aligned(8)));
+    const Double4Wide d = __builtin_convertvector(v, Double4Wide);
+    lo = Pair { d[0], d[1] };
+    hi = Pair { d[2], d[3] };
+}
 #else
 struct Float4
 {
@@ -52,6 +61,11 @@ inline Float4 packFloat4(Pair lo, Pair hi) noexcept
 {
     return Float4 { static_cast<float>(lo[0]), static_cast<float>(lo[1]),
                     static_cast<float>(hi[0]), static_cast<float>(hi[1]) };
+}
+inline void widen(Float4 v, Pair& lo, Pair& hi) noexcept
+{
+    lo = widenLo(v);
+    hi = widenHi(v);
 }
 #endif
 inline Float4* float4s(float* p) noexcept { return reinterpret_cast<Float4*>(p); }
@@ -71,7 +85,8 @@ inline Float4 splatFloat4(float x) noexcept { return Float4 { x, x, x, x }; }
 // strings) and accumulated 4 lanes per vector (`Float4`) for both the
 // generalized bar-force dot product and the bar-pull dot product, while each
 // mode's recursive biquad state `(a1, a2, s1, s2)` and Nyquist-zero radiation
-// sum `(left, right)` stay in 64-bit `double`.
+// sum `(left, right)` stay in 64-bit `double`. Once the strings have died
+// away, both dot products are summed in `double` too (runModesPrecise).
 struct ModeBank
 {
     static constexpr int lanes = 8;
@@ -417,6 +432,109 @@ inline void runModes(ModeBank& bank, const ModeBank::BarVector& force, double& l
             default: break;
         }
     }
+}
+
+// One part of runModesPrecise(): `width` coordinates, so that their forces
+// and pull sums stay in registers.
+template <int width>
+inline void stepPartPrecise(ModeBank& bank, const std::size_t* coords, const ModeBank::BarVector& force,
+                            int begin, int end, Pair (&accLeft)[ModeBank::lanes / 2],
+                            Pair (&accRight)[ModeBank::lanes / 2], ModeBank::BarVector& pull) noexcept
+{
+    constexpr int slots = width > 0 ? width : 1;
+    Pair f[slots], partPull[slots];
+    for (int n = 0; n < slots; ++n)
+    {
+        f[n] = splat(n < width ? force[coords[n]] : 0.0);
+        partPull[n] = splat(0.0);
+    }
+    for (; begin < end; begin += ModeBank::lanes)
+    {
+        Pair shape[slots][4];
+        Pair sum[4] { splat(0.0), splat(0.0), splat(0.0), splat(0.0) };
+        for (int n = 0; n < width; ++n)
+        {
+            const Float4* const p = float4s(bank.shape[coords[n]].data() + begin);
+            widen(p[0], shape[n][0], shape[n][1]);
+            widen(p[1], shape[n][2], shape[n][3]);
+            for (int v = 0; v < 4; ++v)
+                sum[v] += shape[n][v] * f[n];
+        }
+        ModeBank::Group& g = bank.groups[static_cast<std::size_t>(begin / ModeBank::lanes)];
+        Pair* const s1 = pairs(g.s1.data());
+        Pair* const s2 = pairs(g.s2.data());
+        const Pair* const a1 = pairs(g.a1.data());
+        const Pair* const a2 = pairs(g.a2.data());
+        const Pair* const toLeft = pairs(g.left.data());
+        const Pair* const toRight = pairs(g.right.data());
+        for (int v = 0; v < 4; ++v)
+        {
+            const Pair y = sum[v] + s1[v];
+            const Pair next = s2[v] - a1[v] * y;
+            s2[v] = -sum[v] - a2[v] * y;
+            s1[v] = next;
+            accLeft[v] += toLeft[v] * y;
+            accRight[v] += toRight[v] * y;
+        }
+        // Kept current for the Float4 kernels' pull when a pluck wakes the
+        // strings.
+        Float4* const s1f = float4s(g.s1Float.data());
+        s1f[0] = packFloat4(s1[0], s1[1]);
+        s1f[1] = packFloat4(s1[2], s1[3]);
+        for (int n = 0; n < width; ++n)
+            partPull[n] += (shape[n][0] * s1[0] + shape[n][1] * s1[1]) + (shape[n][2] * s1[2] + shape[n][3] * s1[3]);
+    }
+    for (int n = 0; n < width; ++n)
+        pull[coords[n]] += partPull[n][0] + partPull[n][1];
+}
+
+// runModes() with the force on each mode and its pull on the bar summed in
+// double precision, two modes to a vector (`Pair`); process() runs it once
+// the strings have died away. The modes go on holding the bar's static
+// preload while everything else decays, and Float4's rounding is relative to
+// that, not to the tail: it stops shrinking at about 1e-7 of the preload and
+// keeps the near-lossless Nyquist poles (the bilinear masses, the radiation)
+// ringing at 24 kHz around -130 dBFS. From 0.13.7 to 0.13.10 that kept the
+// engine from sleeping after a phrase, often for as long as a key was held
+// or longer, on every build. Here the tail decays to sleep as 0.13.6's did.
+// Float4 stays while any string sounds. The shapes are still the
+// single-precision ones the other kernels use.
+inline void runModesPrecise(ModeBank& bank, const ModeBank::BarVector& force, double& left, double& right,
+                            ModeBank::BarVector& pull) noexcept
+{
+    constexpr int vectors = ModeBank::lanes / 2;
+    const int bounds[4] { 0, bank.evenEnd, bank.oddEnd, bank.count };
+    Pair accLeft[vectors] { splat(0.0), splat(0.0), splat(0.0), splat(0.0) };
+    Pair accRight[vectors] { splat(0.0), splat(0.0), splat(0.0), splat(0.0) };
+    pull.fill(0.0);
+    for (std::size_t part = 0; part < 3; ++part)
+    {
+        const int begin = bounds[part], end = bounds[part + 1];
+        if (begin >= end)
+            continue;
+        const std::size_t* const coords = bank.coordinates[part].data();
+        switch (bank.coordinateCount[part])
+        {
+            case 0:  stepPartPrecise<0>(bank, coords, force, begin, end, accLeft, accRight, pull); break;
+            case 1:  stepPartPrecise<1>(bank, coords, force, begin, end, accLeft, accRight, pull); break;
+            case 2:  stepPartPrecise<2>(bank, coords, force, begin, end, accLeft, accRight, pull); break;
+            case 3:  stepPartPrecise<3>(bank, coords, force, begin, end, accLeft, accRight, pull); break;
+            case 4:  stepPartPrecise<4>(bank, coords, force, begin, end, accLeft, accRight, pull); break;
+            case 5:  stepPartPrecise<5>(bank, coords, force, begin, end, accLeft, accRight, pull); break;
+            case 6:  stepPartPrecise<6>(bank, coords, force, begin, end, accLeft, accRight, pull); break;
+            case 7:  stepPartPrecise<7>(bank, coords, force, begin, end, accLeft, accRight, pull); break;
+            case 8:  stepPartPrecise<8>(bank, coords, force, begin, end, accLeft, accRight, pull); break;
+            case 9:  stepPartPrecise<9>(bank, coords, force, begin, end, accLeft, accRight, pull); break;
+            default: stepPartPrecise<10>(bank, coords, force, begin, end, accLeft, accRight, pull); break;
+        }
+    }
+    left = right = 0.0;
+    for (int v = 0; v < vectors; ++v)
+        for (int i = 0; i < 2; ++i)
+        {
+            left += accLeft[v][i];
+            right += accRight[v][i];
+        }
 }
 
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__)) && !defined(ACULYRE_DISABLE_AVX2)

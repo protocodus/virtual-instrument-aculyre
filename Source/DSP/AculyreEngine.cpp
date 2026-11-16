@@ -1305,6 +1305,20 @@ struct LoopFilters
             section.u1 = u1[i];
             section.u2 = u2[i];
         }
+        // A recursion state 300 dB under a pluck's wave is zero. Once the
+        // soundbox's tail settles exactly (runModesPrecise), a dead string's
+        // wave can stand still in its float line: the section's input
+        // difference is then exactly zero, and its recursion would fall
+        // into subnormals within a few hundred samples, slow on x86. Checked
+        // every control step: the fastest decay of any preset's section,
+        // 40 dB a sample (the steel harp's treble at 44.1 kHz), takes a
+        // state from here only to 1e-94 in a step's 16 samples.
+        void flushTiny() noexcept
+        {
+            for (std::size_t i = 0; i < capacity; ++i)
+                if (detail::magnitude(u1[i]) < 1.0e-30 && detail::magnitude(u2[i]) < 1.0e-30)
+                    u1[i] = u2[i] = 0.0;
+        }
         // UnitDcSection::process on every loop; an inactive one passes its
         // input and keeps its state.
         void process(double* wave, int count) noexcept
@@ -4470,6 +4484,8 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
         {
             s.controlCountdown = controlPeriod - 1;
             s.bend += (s.bendTarget - s.bend) * s.bendSmoothing;
+            filters.constantLoss.flushTiny();
+            filters.bendingLoss.flushTiny();
             bool anyActive = false;
             for (int index = 0; index < count; ++index)
             {
@@ -4637,11 +4653,15 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
         }
 
         double radiatedLeft = 0.0, radiatedRight = 0.0;
+        // Once the strings have died away, double precision, so that the
+        // tail can reach the sleep threshold (ModeBank.h).
+        if (!s.stringsActive)
+            detail::runModesPrecise(bank, plateForce, radiatedLeft, radiatedRight, s.modalPast);
 #if defined(ACULYRE_HAS_FUSED_KERNELS)
-        if (fused)
+        else if (fused)
             detail::runModesFused(bank, plateForce, radiatedLeft, radiatedRight, s.modalPast);
-        else
 #endif
+        else
             detail::runModes(bank, plateForce, radiatedLeft, radiatedRight, s.modalPast);
 
         alignas(16) double normalPort[maxStrings];

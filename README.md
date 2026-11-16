@@ -53,6 +53,22 @@ reference recording below, dry.
 
 ## Version history
 
+- **0.13.11** (local candidate): the engine sleeps again after a phrase.
+  From 0.13.7 the soundbox's single-precision modes kept a 24 kHz residual
+  around -130 dBFS once every string had died away, so after a phrase the
+  engine often never slept, a key held or not, on every build (Windows CI
+  caught it on a held gut A3). Once the strings have died away the modes now
+  sum in double precision, and the tail sleeps when 0.13.6's did: after a
+  phrase over every third string, with the middle string's key held, in
+  29.0, 23.5 and 10.5 s on the steel, nylon and gut instruments, where
+  0.13.10's harps never slept. The settled tail can leave a dead string's
+  wave standing exactly still, and under a full palm mute its loss filters
+  then fell into subnormal numbers; their state is now zero 300 dB under a
+  pluck. While any string sounds nothing changes: the README demos, the More
+  demos and the listening set render bit-identical to 0.13.10's but for the
+  single notes without sympathy, whose strings all die before the end; that
+  render differs only in the residual, -135 dBFS RMS.
+
 - **0.13.10** (local candidate): the gut lyre's piezo reads its
   microphones' level again for typical finger playing. The slower slip had
   left it 0.83 dB under (0.57 in 0.13.7), and 1.9 dB under on the Rack's
@@ -995,9 +1011,10 @@ theirs by about 160 dB under the signal); from 0.13.7 that table drops
 modes more than 80 dB under the strongest and stores its scaled shapes in
 single precision (`17 KB` in place of `34 KB`), accumulating bar force and
 bar pull four modes to a vector (`Float4`) while keeping every mode's
-resonator and radiation in `double`. The engine needs neither
-flush-to-zero nor denormals-are-zero from its host: where a dying tail
-would reach subnormal numbers it writes zeros (0.13.3). On the stress
+resonator and radiation in `double`; once every string has died away it sums
+them in `double` too, so that the tail decays to sleep (0.13.11). The engine
+needs neither flush-to-zero nor denormals-are-zero from its host: where a
+dying tail would reach subnormal numbers it writes zeros (0.13.3). On the stress
 phrase the portfolio sets (a chord of eight re-struck note by note under
 the pedal, a second chord on top, then again) the harps' worst 256-frame
 block took 11% of a loaded development machine's core in a build with the

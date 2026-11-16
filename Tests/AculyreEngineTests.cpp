@@ -1028,6 +1028,38 @@ int main()
         check(rms(l, 0, 24000) > 1.0e-3, "a pluck after a held string has slept sounds");
     }
 
+    // Nor after a phrase: every third string up, then the middle string's key
+    // held. From 0.13.7 to 0.13.10 the single-precision modes left a 24 kHz
+    // residual near -130 dBFS once the strings had died, and the steel and
+    // nylon harps never slept, on every build (ModeBank.h, runModesPrecise).
+    for (const aculyre::InstrumentSpec* preset : aculyre::presets)
+    {
+        aculyre::AculyreEngine engine;
+        engine.prepare(48000.0);
+        engine.setInstrument(*preset);
+        std::vector<int> notes;
+        for (int note = 21; note <= 108; ++note)
+            if (engine.stringForNote(note) >= 0)
+                notes.push_back(note);
+        std::vector<float> l(24000), r(24000);
+        for (std::size_t i = 0; i < notes.size(); i += 3)
+        {
+            engine.noteOn(notes[i], 0.8f);
+            engine.process(l.data(), r.data(), 12000);
+            engine.noteOff(notes[i]);
+        }
+        engine.noteOn(notes[notes.size() / 2], 0.8f);
+        double held = -1.0;
+        for (int half = 1; half <= 90 && held < 0.0; ++half)
+        {
+            engine.process(l.data(), r.data(), 24000);
+            if (engine.idle())
+                held = 0.5 * half;
+        }
+        std::printf("after a phrase, a held key sends the %s to sleep after %.1f s\n", preset->name, held);
+        check(held > 0.0, "a held key lets the engine sleep after a phrase");
+    }
+
     // The Performer switches instruments in real time: the old one fades,
     // the output stays finite and does not depend on the block size.
     {

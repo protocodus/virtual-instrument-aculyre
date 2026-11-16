@@ -244,23 +244,30 @@ constexpr BodySpec gutLyreBody {
 // (0.13.10), as the 2026-11-08 protocol set it, and its nail and plectrum
 // read 0.83 dB louder by the piezo than 0.13.7's. The harps' piezos sit
 // 0.20 and 0.28 dB over their microphones and keep 0.13.7's gains.
+// 0.13.12: the piezo now hears each pluck's held force come off it
+// (AculyreEngine::noteOn), a thump its preamp passes that the meter reads
+// too: typical finger playing rose 0.55/0.60/1.92 dB by the piezo, the gut
+// lyre's past the 1 dB bound. Each piezoGain comes down by that much, to
+// 0.699058973/0.794668506/0.481265475, so each piezo reads where it did
+// against its microphones (+0.20/+0.28/0.00 dB) and its strings sound that
+// much quieter under the thump.
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 27, detail::lyreHarpSteel, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.182, 0.744327071, 0.8 * 2.429 / 2.182,
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.182, 0.699058973, 0.8 * 2.429 / 2.182,
     // leverTouch (above)
     {{ 0, 0.83, 0.92, 0, 0.57, 0.29, 0.48, 0, 0.30, 0.41, 0, 0.25, 0.16, 0.26, 0, 0.11, 0.25, 0, 0.27, 0.32, 0.37, 0, 0.20, 0.20, 0, 0.35, 0.27 }}
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {
     "Nylon Lyre Harp", nylonMonofilament, 27, detail::lyreHarpNylon, detail::lyreHarpBody,
-    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.459, 0.851306602, 0.8 * 2.582 / 2.459,
+    Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.459, 0.794668506, 0.8 * 2.582 / 2.459,
     // leverTouch (above)
     {{ 0, 0.78, 0.89, 0, 0.58, 0.27, 0.54, 0, 0.32, 0.45, 0, 0.25, 0.14, 0.25, 0, 0.10, 0.23, 0, 0.27, 0.30, 0.35, 0, 0.17, 0.14, 0, 0.29, 0.28 }}
 };
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 16, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.498, 0.600530, 0.8 * 2.716 / 2.498,
+    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.498, 0.481265475, 0.8 * 2.716 / 2.498,
     // leverTouch (above)
     {{ 0.50, 0.42, 0, 0.51, 0.86, 0, 0.58, 0.46, 0.45, 0, 0.52, 0.82, 0, 0.81, 0.61, 1.00 }}
 };

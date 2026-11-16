@@ -144,6 +144,20 @@ public:
         piezoQuiet_ = true;
     }
 
+    // Adds a force that has been resting on the element: the next process()
+    // meets it as one held all along, not as a step. Under a resting force
+    // the IN node is back at its bias and C1 holds the element's voltage
+    // (w = -kin V_oc); the stages after U1A see nothing of it.
+    void rest(double elementForceNewtons) noexcept
+    {
+        if (!detail::isFinite(elementForceNewtons) || piezoMidbandGain_ <= 0.0)
+            return;
+        const double open = Design::voltsPerNewton * elementForceNewtons;
+        piezoFrontW_ -= piezoInputShare_ * open;
+        piezoLastOpen_ += open;
+        piezoQuiet_ = false;
+    }
+
     double process(double elementForceNewtons) noexcept
     {
         using D = Design;

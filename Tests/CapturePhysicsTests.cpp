@@ -1,8 +1,11 @@
 #include "AculyreEngine.h"
 #include "AculyrePresets.h"
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <memory>
+#include <vector>
 
 int main()
 {
@@ -62,6 +65,34 @@ int main()
                               "capture leaves both mechanical travelling waves bit-identical");
                 }
         }
+    }
+    // The piezo was under the finger's held force before the string slipped
+    // off, so a pluck reaches it only when the released wave reaches the
+    // bridge, a share `position` of half a period later. Until then it is
+    // silent: to 0.13.11 it opened with a step of the whole held force.
+    for (const auto* preset : aculyre::presets)
+    {
+        auto engine = std::make_unique<aculyre::AculyreEngine>();
+        engine->prepare(48000.0);
+        engine->setInstrument(*preset);
+        auto controls = engine->controls();
+        controls.piezo = 1.0;
+        controls.room = 0.0;
+        engine->setControls(controls);
+        engine->noteOn(preset->strings[0].midiNote, 1.0f);
+        const int arrival = static_cast<int>(engine->lastPluck().position * 48000.0
+                                             / (2.0 * engine->stringReport(0).frequency));
+        std::vector<float> left(4800), right(4800);
+        engine->process(left.data(), right.data(), 4800);
+        const int quiet = aculyre::AculyreEngine::latencySamples + arrival / 2;
+        float before = 0.0f, peak = 0.0f;
+        for (int i = 0; i < 4800; ++i)
+        {
+            float& loudest = i < quiet ? before : peak;
+            loudest = std::max(loudest, std::abs(left[static_cast<std::size_t>(i)]));
+        }
+        check(arrival >= 8 && before < 0.01f * peak,
+              "the piezo is silent until the plucked wave reaches the bridge");
     }
     std::printf(failures == 0 ? "all passed\n" : "%d failed\n", failures);
     return failures == 0 ? 0 : 1;

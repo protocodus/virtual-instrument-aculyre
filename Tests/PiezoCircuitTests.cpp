@@ -685,12 +685,39 @@ void testSilenceAndGuards()
            "an infinite force reached the piezo output");
 }
 
+void testRestingForce()
+{
+    // A force that rested on the element before the first sample is no
+    // signal: the chain stays silent under it, where the same force arriving
+    // as a step is heard, and a tone on top of it comes out as the tone alone.
+    for (int rate : { 44100, 48000, 96000, 192000 })
+    {
+        auto rested = engineAt(rate), stepped = engineAt(rate), alone = engineAt(rate);
+        rested->rest(2.0);
+        double held = 0.0, step = 0.0, apart = 0.0;
+        for (int i = 0; i < rate / 10; ++i)
+        {
+            held = std::max(held, std::abs(Access::volts(*rested, 2.0)));
+            step = std::max(step, std::abs(Access::volts(*stepped, 2.0)));
+        }
+        expect(step > 0.1 && held < 1.0e-9 * step,
+               "a resting force was heard at " + std::to_string(rate));
+        for (int i = 0; i < rate / 10; ++i)
+        {
+            const double tone = 0.5 * std::sin(2.0 * pi * 440.0 * i / rate);
+            apart = std::max(apart, std::abs(Access::volts(*rested, 2.0 + tone)
+                                             - Access::volts(*alone, tone)));
+        }
+        expect(apart < 1.0e-9, "a resting force changed the tone on it at " + std::to_string(rate));
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
     // With arguments, only the named parts run (dc units small harmonics
-    // aliasing overload silence).
+    // aliasing overload silence rest).
     const auto wanted = [&] (const std::string& name)
     {
         if (argc < 2)
@@ -707,6 +734,7 @@ int main(int argc, char** argv)
     if (wanted("aliasing")) testAliasing();
     if (wanted("overload")) testOverload();
     if (wanted("silence")) testSilenceAndGuards();
+    if (wanted("rest")) testRestingForce();
     if (failures == 0)
         std::cout << "All Aculyre piezo circuit tests passed\n";
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

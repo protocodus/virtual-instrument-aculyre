@@ -4304,6 +4304,18 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     voice.squaresSum = 0.0;
     for (int k = 1; k <= voice.roundTrip; ++k)
         voice.squaresSum += voice.squares[static_cast<std::size_t>((voice.squaresIndex - k) & (delayCapacity - 1))];
+    // The piezo strip was under the held force too. Its seat and its preamp
+    // take it as resting on them, as the body does below: a finger holds a
+    // string 56 ms at least (Chadefaux, above), ten of the 5 ms the preamp's
+    // coupling takes to forget a force. Left out, every pluck opened on the
+    // piezo with a step of the whole held force that no string made.
+    {
+        const std::array<double, 5>& mount = s.piezoMount;
+        const double resting = preload[0] * (mount[0] + mount[1] + mount[2]) / (1.0 + mount[3] + mount[4]);
+        s.piezoMountZ1 += resting - mount[0] * preload[0];
+        s.piezoMountZ2 += mount[2] * preload[0] - mount[4] * resting;
+        s.piezoCircuit.rest(resting);
+    }
     ModeBank& bank = s.bank;
     detail::Float4 pre[barCoordinates];
     for (std::size_t c = 0; c < barCoordinates; ++c)

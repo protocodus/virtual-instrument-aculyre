@@ -53,6 +53,26 @@ reference recording below, dry.
 
 ## Version history
 
+- **0.13.12** (local candidate, waiting on the owner's choice by ear): the
+  piezo no longer opens every pluck with a step no string made. A pluck
+  starts with the finger's held force already on the bridge, and the
+  soundbox was given it as resting there, but the piezo's seat and its
+  preamp were not: on the piezo the whole held force arrived as a step at
+  the note-on, 0.9 ms before the released wave reaches the bridge on the
+  steel D3, and that step's overshoot was the loudest sample of the note
+  (0.63 against 0.40 for the wave's own plateau, velocity 110). The seat and
+  the preamp now take the held force as resting on them, so the piezo is
+  silent until the wave arrives, and what it hears of the release is the
+  force coming off the strip, a thump under 100 Hz its preamp passes: on the
+  single notes at half piezo the 20-100 Hz band rises from 53 to 25 dB under
+  the file's level, on the gut lyre's demo from 41 to 24 dB under. The meter
+  reads the thump too (typical finger playing by the piezo alone rose 0.55,
+  0.60 and 1.92 dB on the steel, nylon and gut instruments), so each
+  `piezoGain` comes down by that much and each piezo reads where it did
+  against its microphones; its strings sound that much quieter. The
+  microphones are bit-identical to 0.13.11's, and so are the README demos,
+  which play them alone.
+
 - **0.13.11** (local candidate): the engine sleeps again after a phrase.
   From 0.13.7 the soundbox's single-precision modes kept a 24 kHz residual
   around -130 dBFS once every string had died away, so after a phrase the
@@ -828,7 +848,13 @@ alone. The element is wired so that a blend adds in the low mids instead of
 cancelling there; half and half is about 2 dB quieter than either alone on
 the steel lyre harp phrase. `PlayingControls::piezoInverted` wires it the
 other way round: alone it sounds the same, with its sign changed, and in a
-blend it cancels the microphones where it otherwise adds to them. Against the
+blend it cancels the microphones where it otherwise adds to them. The strip
+was under the finger's held force before the string slipped off, as the
+soundbox was, so its seat and the preamp's input begin each pluck with that
+force resting on them: a finger holds a string 56 ms or more, ten of the
+5 ms the preamp's 31 Hz coupling takes to forget a force. The piezo is then
+silent until the released wave reaches the bridge, and hears the force fall
+from the held one: the thump of a pluck under 100 Hz (0.13.12). Against the
 microphones, the piezo carries more of the strings' fundamentals and of the
 top two octaves.
 
@@ -1220,6 +1246,10 @@ Rack-like build and 6.6-6.7% natively on that development machine
 - The gut lyre's ten added strings are no reconstruction's: their gauges,
   the slanted yoke and the 6 mm spacing are assumed, and the box and bridge
   bar are still the six-string lyre's.
+- The piezo takes every pluck's held force as long held. A plectrum pushes
+  a string for less time than a finger holds it, perhaps no longer than the
+  preamp's coupling takes to forget a force, and how long is not modelled: its
+  thump on the piezo may be too large.
 - The piezo's mechanical seat is still a one-way observation filter on the
   rigid-junction force; it is not a reciprocal compliant bridge termination.
   Its stiffness is Acustra's scaled to the bar length, while the electrical

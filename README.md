@@ -63,6 +63,7 @@ reference recording below, dry.
   reach, as a fresh instrument plays, in 7 µs to 15 µs, and those worst blocks
   fall to 4.6% to 8.3%. Every sample of 24 Performer scenarios is
   byte-identical to 0.13.12 in a Reason-like and a native build.
+  [Measurements](Docs/benchmarks/cpu-reset-2026-11-16.md).
 
 - **0.13.12** (local candidate): the
   piezo no longer opens every pluck with a step no string made. A pluck

@@ -3,6 +3,72 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-15: the hardest finger pluck slips 0.2 mm, chosen by ear, and the finger plays at 80% (0.13.8 to 0.13.10), owner's choice and owner's level
+
+**What was decided.** Whether the hardest Finger pluck should keep letting
+go like a nail. The owner had found the Finger "too loud, too harsh". One
+listening set against the shipping engine (A, `main` at `c1bc946`,
+`0.13.7`), only the hardest Finger slip changed, rendered through the
+Performer with its output stage at 48 kHz in 64-frame blocks, latency
+trimmed, identical MIDI, seeds and controls, 24-bit stereo WAV:
+
+| Material | Letters | Levels |
+| --- | --- | --- |
+| two 9.6 s phrases, each a melody at velocity 88-112, one note at velocity 70, 90, 110 and 127, a rolled chord at 100 and a struck chord at 115: steel lyre harp at the Rack's Lyre Harp patch (`E5-G4`, `C3-C5`, `F3-A4`) and gut lyre at its Gut Lyre patch (`A4-D4`, D chords) | A the hardest slip 0.04 mm (the lab's slip); B 0.2 mm (the shortest slip ten harpists played in music, Chadefaux, Le Carrou and Fabre, JASA 133 (2013) 2444, Table V); C 0.5 mm (the lower edge of where most musical slips fell). The softest slip stays 0.8 mm and the geometric law between the two ends is unchanged in all three | whole-file stereo RMS matched to A (steel `-22.26 dBFS`, gut `-23.83 dBFS`): B `+0.05 / +0.15 dB`, C `+0.12 / +0.45 dB` |
+
+**What the measurements said** (against A, before choosing). With the
+release velocity at its 5 m/s ceiling, A's hardest finger let go in
+0.008 ms. On the steel harp, every other string alone, first 50 ms, the
+Finger sat within 0.5 dB of the Nail below 4 kHz at velocity 100 and in
+every band at 127. B left it 3.5 to 3.9 dB under the Nail from 2 to 16 kHz
+at velocity 100 and 1.7 to 3.4 dB at 127; C 5.4 to 7.4 dB and 4.7 to
+5.4 dB. Single notes (K-weighted level over 400 ms, 4-8 kHz share of the
+first 50 ms) against A: B `-0.4 / -2.7 dB` at velocity 100 and
+`-0.3 / -2.1 dB` at 127; C `-1.3 / -4.1 dB` and `-0.9 / -4.2 dB`. At
+velocity 70 B slips 0.37 mm where A slips 0.15 mm. Nulls against A: B
+`-18.8 dB` (steel) and `-15.4 dB` (gut), C `-12.3 dB` and `-9.2 dB`. A
+bisect over the releases found no recent change that made the Finger
+louder or brighter: it had played this way since 0.10.0.
+
+**Verdict.** The owner chose B by ear: "ok lets go with B" (2026-11-15),
+after weighing B against C. The set and its key stay in the project files
+(`aculyre/2026-11-15-finger-release-abc/`).
+
+**The finger's level.** With B the owner asked to "lower the overall finger
+pick volume to 80%", and Nail and Pick were to stay as they are. Typical
+finger playing reads 80% of the `-9 VU` the gains were pinned to,
+`-10.94 / -10.97 / -10.92 VU` on the microphones (steel / nylon / gut),
+where 0.13.7 read `-9.23 / -8.74 / -8.91`. That is the owner's level, not a
+listening verdict and not a measured force.
+
+- 0.13.8 re-pinned the output and piezo gains for the new slip and plucked
+  the finger at 0.8 of the force. That also raised the nail and the
+  plectrum `0.93 / 0.42 / 0.73 dB` and left the Rack's Damped Steel Pick
+  piezo 1.51 dB under its microphones, past that device's 1.5 dB bound.
+- 0.13.9 returns the gains to 0.13.7's values and gives the finger its own
+  share of the force, `fingerForce` = 0.8 times the re-pinned gain's ratio
+  (`0.891 / 0.840 / 0.870`). The finger plays on the microphones as
+  0.13.8's did, and typical nail and plectrum playing reads what 0.13.7
+  read at the defaults to the thousandth of a dB on both pickups, save the
+  gut plectrum's microphones, `0.29 dB` quieter through a re-evened touch.
+- The slower slip also left the gut lyre's finger `0.83 dB` under its
+  microphones by the piezo (`0.57` in 0.13.7), and the Rack's full-room Gut
+  Lyre patch `1.91 dB` under (`1.26`), past the same bound. 0.13.10 re-pins
+  the gut lyre's piezo gain (`0.5456` to `0.6005`) to put its finger's piezo
+  on its microphones' level, as the 2026-11-08 protocol set the gains; its
+  nail and plectrum then read `0.54` and `0.83 dB` louder by the piezo than
+  0.13.7's. The harps' piezos sit `0.20` and `0.28 dB` over their
+  microphones and keep 0.13.7's gains.
+
+**What it licenses.** A hardest Finger slip of 0.2 mm, the shortest musical
+slip, with the touches it re-evened; and typical finger playing at 80% of
+the level the gains were pinned to, through the finger's share of the force.
+It does not license
+reading the slip's course with velocity as measured (the geometric law
+between 0.2 and 0.8 mm stays authored), presenting `fingerForce` as a
+measured finger force, or changing Nail and Pick, which this set did not
+test.
+
 ## 2026-11-14: 80 dB weak-mode cut, single-precision Float4 modal bank, and touch-scaled soft-pluck release (0.13.7), owner's selection
 
 **What was decided.** Three listening sets, each against the shipping engine

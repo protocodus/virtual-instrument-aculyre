@@ -61,7 +61,10 @@ reference recording below, dry.
   by fading in from the steel harp: 22% to 27% of a core at 256 frames on a
   4-core Xeon development machine. A reset now clears only what a read can
   reach, as a fresh instrument plays, in 7 µs to 15 µs, and those worst blocks
-  fall to 4.6% to 8.3%. Every sample of 24 Performer scenarios is
+  fall to 4.6% to 8.3%. On the CI runner the worst block of the demos and
+  the stress phrase is 7.8% (run 15, 0.058x realtime), where run 5 had put
+  the nylon harp's first notes at 12.6%, so the 10% ceiling now holds and
+  is no longer a Known gap. Every sample of 24 Performer scenarios is
   byte-identical to 0.13.12 in a Reason-like and a native build.
   [Measurements](Docs/benchmarks/cpu-reset-2026-11-16.md).
 
@@ -1289,15 +1292,6 @@ Rack-like build and 6.6-6.7% natively on that development machine
   `1.75 dB rms` and `1.38` to `1.84 dB rms`, worst `5.64` and `5.11 dB`,
   where velocity 110 stands `0.3 dB rms`;
   [audit](Docs/validation/consolidation-audit-2026-11-09.md)).
-- The 10% ceiling was not held on every CI runner. `Aculyre.CpuBudget` put
-  the worst 256-frame block of the demos and the stress phrase at 5.8% of a
-  core in CI run 4 but at 12.6% in run 5 (the nylon harp's first notes), on
-  `ubuntu-24.04` runners whose medians differed by 1.6 times (0.039x and
-  0.063x realtime). That block was the reset of the steel harp the nylon
-  harp's demo fades in from, which 0.13.13 cuts from 0.4 ms to 15 µs; on a
-  4-core Xeon development machine the worst block is now 8.3% (it was 27%).
-  It has not yet been measured again on a CI runner. These are
-  development-machine figures, not Reason's.
 - No plug-in yet. The Rack Extension's 0.4.0d1 has been played in Recon
   from a local build; it has not been through Reason Studios' acceptance.
 

@@ -3,6 +3,59 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-16: the piezo begins each pluck with the held force resting on it (0.13.12), owner's choice on an A/B set
+
+**What was decided.** Whether the piezo should keep opening every pluck as
+0.13.11 did. `noteOn` gives the soundbox the finger's held force as its
+static deflection, but the piezo's seat and preamp were left at rest, so on
+the piezo the whole held force arrived as a step at the note-on, before the
+released wave had reached the bridge. That step is a modelling error, not a
+candidate: the question put to the owner was whether the corrected piezo,
+which also hears the held force come off the strip, should ship. One
+listening set against the shipping engine (A, `main` at `b711603`,
+`0.13.11`), rendered by `RenderAculyreDemo` through the Performer with its
+output stage at 48 kHz, `--room 1.0 --tail 1.2`, identical MIDI and controls,
+24-bit stereo WAV:
+
+| Set | Material | Pickup | Trim on B | 20-100 Hz re the file's RMS, A / B |
+| --- | --- | --- | --- | --- |
+| 1 | Lyre Harp, `Docs/audio/midi/more/01-single-notes.mid` | half piezo (the Rack's default) | `+0.19 dB` | `-53.1 / -24.6 dB` |
+| 2 | Lyre Harp, `more/03-dynamics.mid` | piezo alone | `+0.26 dB` | `-36.1 / -15.1 dB` |
+| 3 | Gut Lyre, `03-gut-lyre.mid` | half piezo | `+0.23 dB` | `-41.2 / -23.6 dB` |
+| 4 | Gut Lyre, `03-gut-lyre.mid` | piezo alone | `+0.34 dB` | `-37.7 / -19.9 dB` |
+
+A is the shipping engine, untouched. B gives the seat and the preamp's input
+the held force as resting on them and re-pins each `piezoGain`, and is
+trimmed to A's whole-file RMS.
+
+**What the measurements said** (before choosing). On A the piezo reached the
+held force's plateau within three samples of the note-on (steel D3, velocity
+110: -0.19, -0.50, -0.63, then about -0.40), 0.9 ms before the wave arrives,
+and that step's overshoot was the note's loudest sample. On B the piezo is
+exactly silent until the wave arrives, and the wave then rides on an
+offset the size of the held force that decays with the preamp's 5 ms
+coupling: the thump in the table. The microphones are bit-identical in A and B. Typical
+finger playing by the piezo alone rose `0.55 / 0.60 / 1.92 dB` (steel /
+nylon / gut) on the meter with the thump, the gut lyre's past the 1 dB the
+piezo is held to against its microphones.
+
+**Verdict.** The owner chose B on the set's decision card (2026-11-16). The
+set and its key stay in the project files
+(`aculyre/2026-11-16-piezo-pluck-ab/`).
+
+**The piezo's gains.** Each `piezoGain` comes down by the thump's rise on the
+meter (`0.744327071 / 0.851306602 / 0.600530` to `0.699058973 / 0.794668506
+/ 0.481265475`), so each piezo reads where 0.13.11's did against its
+microphones for typical finger playing (`+0.20 / +0.28 / 0.00 dB`). That is
+the 2026-11-08 protocol applied again, not a second verdict: B was heard
+with these gains.
+
+**What it licenses.** The piezo's seat and preamp starting every pluck with
+the held force at rest on them, and the re-pinned piezo gains. It does not
+license reading the thump's size as measured: the strip is rigid in the
+model, the preamp is the documented guitar reference, and a plectrum's
+shorter push is taken as long held like a finger's (README, Known gaps).
+
 ## 2026-11-15: the hardest finger pluck slips 0.2 mm, chosen by ear, and the finger plays at 80% (0.13.8 to 0.13.10), owner's choice and owner's level
 
 **What was decided.** Whether the hardest Finger pluck should keep letting

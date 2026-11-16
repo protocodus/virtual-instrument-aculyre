@@ -53,7 +53,7 @@ reference recording below, dry.
 
 ## Version history
 
-- **0.13.12** (local candidate, waiting on the owner's choice by ear): the
+- **0.13.12** (local candidate): the
   piezo no longer opens every pluck with a step no string made. A pluck
   starts with the finger's held force already on the bridge, and the
   soundbox was given it as resting there, but the piezo's seat and its
@@ -71,7 +71,8 @@ reference recording below, dry.
   `piezoGain` comes down by that much and each piezo reads where it did
   against its microphones; its strings sound that much quieter. The
   microphones are bit-identical to 0.13.11's, and so are the README demos,
-  which play them alone.
+  which play them alone. The owner chose it over 0.13.11 on an A/B set
+  ([decisions](Docs/decisions.md)).
 
 - **0.13.11** (local candidate): the engine sleeps again after a phrase.
   From 0.13.7 the soundbox's single-precision modes kept a 24 kHz residual

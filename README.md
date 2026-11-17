@@ -53,6 +53,19 @@ reference recording below, dry.
 
 ## Version history
 
+- **0.13.15** (local candidate): another 7% less CPU on the harps and 5% on
+  the gut lyre, the owner's choice on an A/B set ([decisions](Docs/decisions.md)).
+  The soundbox now keeps only the modes within 60 dB of the strongest in its
+  real-time path: 145 of the harps' 289 and 156 of the gut lyre's 219. On
+  its own that left the steel harp's B2 6.25 cents flat late in its decay,
+  so the bridge keeps the stiffness the dropped modes gave it below their
+  resonances, and B2 reads 5.50 cents flat where 0.13.14 read 4.75. The
+  steel A5 and the F#6 lever note are plucked a little harder to stay on
+  the even-touch line. The median 64-frame callback of steady dense playing
+  falls from 75.9 to 70.7 µs on the steel harp and from 50.0 to 47.5 µs on
+  the gut lyre (79.7 and 51.4 µs in 0.13.13), in a Reason-like build on a
+  4-core Xeon development machine.
+
 - **0.13.14** (local candidate): about 5% less CPU on the harps and 2% on
   the gut lyre, the owner's choice on an A/B set ([decisions](Docs/decisions.md)).
   Soundbox modes more than 70 dB below the strongest in peak bar mobility or
@@ -824,7 +837,7 @@ choice by ear there). A spruce plate's modes depart
 from that median by their strain energy along the grain, across it and in
 shear, weighted by Viala, Placet and Cogan's loss factors (J. Cultural
 Heritage, 2020). The
-junction is solved implicitly every sample, so it is passive and every string, played or idle, is coupled to every other. Modes more than 70 dB below the strongest in peak resonant bar mobility or peak radiated pressure per unit bar force leave the real-time junction and modal bank (80 dB from 0.13.7, 70 dB from 0.13.14), while staying in string design, ear tuning, piezo mount conductance and the mode reports.
+junction is solved implicitly every sample, so it is passive and every string, played or idle, is coupled to every other. Modes more than 60 dB below the strongest in peak resonant bar mobility or peak radiated pressure per unit bar force leave the real-time junction and modal bank (80 dB from 0.13.7, 70 dB from 0.13.14, 60 dB from 0.13.15), the bridge keeping the stiffness they give it below their resonances as a spring, while staying in string design, ear tuning, piezo mount conductance and the mode reports.
 
 **Radiation and room.** Each mode radiates its net volume change as a
 monopole, plus an equivalent volume for its edge and corner radiation, from
@@ -1063,7 +1076,7 @@ From 0.13.2 the modes read one table of their shapes at the bridge, each
 mode's state scaled by the root of its gain, and a CPU with AVX2 and FMA3
 runs fused kernels (Reason's build never does; its output differs from
 theirs by about 160 dB under the signal); from 0.13.7 that table drops
-modes more than 80 dB under the strongest (70 dB from 0.13.14) and stores its scaled shapes in
+modes more than 80 dB under the strongest (70 dB from 0.13.14, 60 dB from 0.13.15) and stores its scaled shapes in
 single precision (`17 KB` in place of `34 KB`), accumulating bar force and
 bar pull four modes to a vector (`Float4`) while keeping every mode's
 resonator and radiation in `double`; once every string has died away it sums

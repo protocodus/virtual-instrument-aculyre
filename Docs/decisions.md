@@ -3,6 +3,55 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-17: a 60 dB soundbox mode cut with the dropped modes' stiffness (0.13.15), owner's choice on an A/B set
+
+**What was decided.** Whether the 60 dB cut the owner first chose (above)
+should ship once corrected for what it failed. A is the shipping engine
+(`bd6cbce`, `0.13.14`, the 70 dB cut: 188 of the harps' 289 modes kept, 198
+of the gut lyre's 219). B keeps only the modes within 60 dB (145 and 156)
+and puts back what the dropped modes do at the strings below their
+resonances: their static compliance, `sum P P^T / omega^2` over the dropped
+modes (mass-normalized), as a spring at the bridge beside the kept modes,
+taken as a first difference `C fs (1 - z^-1)`. Taken bilinear, like the
+modes, that spring's mobility is unbounded at Nyquist, and the steel harp
+then never fell asleep after a phrase. The steel A5's touch (`0.56` to
+`0.63`) and the F#6 lever note's (`0.35` to `0.40`) take what the even-touch
+check reports. Rendered by `RenderAculyreDemo` through the Performer, 48 kHz,
+24 bit, `--tail 1.2`, each preset's own controls, identical MIDI:
+
+| Set | Preset | Phrase (`Docs/audio/midi/`) | Trim on B | Null B-A re A | Null peak |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Lyre Harp | `more/01-single-notes.mid` | `+0.063 dB` | `-29.5 dB` | `-38.7 dBFS` |
+| 2 | Nylon Lyre Harp | `02-nylon-lyre-harp.mid` | `-0.028 dB` | `-27.4 dB` | `-37.1 dBFS` |
+| 3 | Gut Lyre | `03-gut-lyre.mid` | `-0.001 dB` | `-47.8 dB` | `-42.0 dBFS` |
+| 4 | Lyre Harp | `01-lyre-harp.mid` | `+0.011 dB` | `-26.4 dB` | `-35.7 dBFS` |
+
+B was trimmed to A's whole-file RMS; A is untouched.
+
+**What the measurements said.** With the spring the steel B2 reads `-5.50`
+cents at 2.5 s (A `-4.75`, the 60 dB cut alone `-6.25`, the check under 6);
+every steel string sits within `0.69 dB` of the even-touch line and every
+lever note within `0.80 dB`; each instrument falls asleep after a phrase
+when A does (29.0, 23.5 and 10.5 s). Every unit and audio test passes. The
+chord-linearity residual is `-124.2 dB`. Median 64-frame callback of steady
+`dense` playing, Reason-like build, 4-core Xeon development machine, three
+alternating rounds: A `75.9 / 50.0 µs`, B `70.7 / 47.5 µs` on the steel
+harp and the gut lyre (`-6.8% / -4.9%`; against 0.13.13's 80 dB cut,
+`79.7 / 51.4 µs`, `-11.3% / -7.6%`). Retired instructions over 0.3 s:
+`-4.5% / -3.8%` against A.
+
+**Verdict.** The owner listened and wrote "candidate b is ok" (2026-11-17):
+chosen by ear. The set and its key are in the project files
+(`aculyre/2026-11-17-mode-cut-corrected-ab/`).
+
+**What it licenses.** Leaving modes more than 60 dB (`< 1e-3`) under the
+strongest, by either measure, out of the real-time junction and `ModeBank`,
+on the condition that their static compliance stays at the bridge as above;
+and the two re-evened touches. It does not license the 60 dB cut without
+the spring, or present the spring as more than the dropped modes'
+low-frequency limit: above a dropped mode's resonance the spring is not
+what that mode would do, which the checks above bound but do not remove.
+
 ## 2026-11-17: a 70 dB soundbox mode cut (0.13.14), the owner's choice after the 60 dB cut failed a tuning check
 
 **What was decided.** How far under the strongest soundbox mode a mode may

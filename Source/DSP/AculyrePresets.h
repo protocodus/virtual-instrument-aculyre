@@ -91,7 +91,9 @@ constexpr double inch = 0.0254;
 // the strings or the body. The 0.2 mm hardest finger slip (0.13.8) left four
 // notes outside it, which took the touch it reported: the steel G6 (0.24 to
 // 0.28) and its lever note (0.23 to 0.27), the nylon G6's lever note (0.23
-// to 0.28) and the gut D5 (0.64 to 0.57). The piezo now observes that same performance,
+// to 0.28) and the gut D5 (0.64 to 0.57). The 60 dB soundbox mode cut moved
+// two more, which took the touch it reported: the steel A5 (0.56 to 0.63)
+// and the F#6 lever note (0.35 to 0.40). The piezo now observes that same performance,
 // including its natural note-to-note level differences.
 //
 // Each instrument's lever touches are the same voicing for the lever notes,
@@ -115,7 +117,7 @@ constexpr std::array<StringSpec, maxStrings> lyreHarpSteel {{
     { 69, 0.323, 0.014 * inch, 0.25 }, { 71, 0.308, 0.013 * inch, 0.19 },
     { 72, 0.293, 0.012 * inch, 0.14 }, { 74, 0.279, 0.012 * inch, 0.23 },
     { 76, 0.264, 0.011 * inch, 0.34 }, { 77, 0.249, 0.011 * inch, 0.32 },
-    { 79, 0.235, 0.010 * inch, 0.23 }, { 81, 0.220, 0.010 * inch, 0.56 },
+    { 79, 0.235, 0.010 * inch, 0.23 }, { 81, 0.220, 0.010 * inch, 0.63 },
     { 83, 0.205, 0.0095 * inch, 0.19 }, { 84, 0.191, 0.0095 * inch, 0.16 },
     { 86, 0.176, 0.009 * inch, 0.15 }, { 88, 0.161, 0.009 * inch, 0.33 },
     { 89, 0.147, 0.009 * inch, 0.37 }, { 91, 0.132, 0.009 * inch, 0.28 }
@@ -255,7 +257,7 @@ inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 27, detail::lyreHarpSteel, detail::lyreHarpBody,
     Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.182, 0.699058973, 0.8 * 2.429 / 2.182,
     // leverTouch (above)
-    {{ 0, 0.83, 0.92, 0, 0.57, 0.29, 0.48, 0, 0.30, 0.41, 0, 0.25, 0.16, 0.26, 0, 0.11, 0.25, 0, 0.27, 0.32, 0.37, 0, 0.20, 0.20, 0, 0.35, 0.27 }}
+    {{ 0, 0.83, 0.92, 0, 0.57, 0.29, 0.48, 0, 0.30, 0.41, 0, 0.25, 0.16, 0.26, 0, 0.11, 0.25, 0, 0.27, 0.32, 0.37, 0, 0.20, 0.20, 0, 0.40, 0.27 }}
 };
 
 inline constexpr InstrumentSpec lyreHarpNylon {

@@ -2339,10 +2339,12 @@ struct AculyreEngine::State
     BarVector modalPast {};
     BarVector massImpedance {};
     BarVector massPast {};
+    BarVector residualPast {};
     BarVector bendVelocityPast {}, bendForcePast {}, bendTap1 {}, bendTap2 {};
     std::array<double, maxBends> bendFrequency {};
 
     BarMatrix immediateMobilityColumns {};
+    BarMatrix residualColumns {};
     BarMatrix stringImpedanceColumns {};
     BarMatrix solveColumns {};
     BarMatrix immediateMobility {};
@@ -3227,10 +3229,10 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     // Prune soundbox modes from the real-time junction and ModeBank when their
     // peak resonant bar mobility (Q / omega * ||P||^2) or peak resonant
     // radiated pressure per unit bar force (Q * ||P|| * max(|rL|, |rR|)) sits
-    // more than 70 dB (factor 10^-3.5) below the strongest mode's: 188 of the
-    // harps' 289 modes stay, 198 of the gut lyre's 219 (Docs/decisions.md,
-    // 2026-11-17). A 60 dB floor, which the owner preferred by ear, left the
-    // steel B2 6.25 cents flat late in its decay (AculyreEngineTests).
+    // more than 60 dB (factor 1e-3) below the strongest mode's: 145 of the
+    // harps' 289 modes stay, 156 of the gut lyre's 219. Alone, that left the
+    // steel B2 6.25 cents flat late in its decay (AculyreEngineTests allows
+    // 6); the dropped modes' static compliance below restores -5.50.
     std::array<bool, maxModes> keepInBank {};
     {
         std::array<double, maxModes> peakMobility {}, peakRadiation {};
@@ -3250,8 +3252,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             maxMobility = std::max(maxMobility, mob);
             maxRadiation = std::max(maxRadiation, rad);
         }
-        const double mobilityFloor = 3.1622776601683794e-4 * maxMobility;
-        const double radiationFloor = 3.1622776601683794e-4 * maxRadiation;
+        const double mobilityFloor = 1.0e-3 * maxMobility;
+        const double radiationFloor = 1.0e-3 * maxRadiation;
         for (int index = 0; index < s.modeCount; ++index)
         {
             const auto m = static_cast<std::size_t>(index);
@@ -3268,6 +3270,29 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             for (std::size_t j = 0; j < barCoordinates; ++j)
                 y0m.m[i][j] += mode.b0 * mode.participation[i] * mode.participation[j];
     }
+    // The modes left out still give the bridge their static compliance below
+    // their resonances, sum P P^T / omega^2 (mass-normalized), which is most
+    // of what they do at the strings: a spring in parallel with the kept
+    // modes, v = C dF/dt taken as a first difference, C fs (1 - z^-1). Made
+    // bilinear like the modes, its mobility would be unbounded at Nyquist,
+    // where the strings would then drive the bridge freely and the steel
+    // harp never fell asleep; the first difference is passive and bounded.
+    BarMatrix residual {};
+    for (int index = 0; index < s.modeCount; ++index)
+    {
+        if (keepInBank[static_cast<std::size_t>(index)])
+            continue;
+        const Mode& mode = s.modes[static_cast<std::size_t>(index)];
+        const double omega = 2.0 * pi * mode.frequency;
+        const double compliance = fs / (omega * omega);
+        for (std::size_t i = 0; i < barCoordinates; ++i)
+            for (std::size_t j = 0; j < barCoordinates; ++j)
+                residual.m[i][j] += compliance * mode.participation[i] * mode.participation[j];
+    }
+    for (std::size_t i = 0; i < barCoordinates; ++i)
+        for (std::size_t j = 0; j < barCoordinates; ++j)
+            y0m.m[i][j] += residual.m[i][j];
+    s.residualColumns = residual.transposed();
     s.immediateMobility = y0m;
     ModeBank& bank = s.bank;
     bank = {};
@@ -3740,6 +3765,7 @@ void AculyreEngine::reset() noexcept
     s.modalPast = {};
     s.modalPastStale = true;
     s.massPast = {};
+    s.residualPast = {};
     s.bendVelocityPast = {};
     s.bendForcePast = {};
     s.previousLeft = s.previousRight = 0.0;
@@ -4351,6 +4377,11 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         s.piezoMountZ2 += mount[2] * preload[0] - mount[4] * resting;
         s.piezoCircuit.rest(resting);
     }
+    {
+        const BarVector spring = applyColumns(s.residualColumns, preload);
+        for (std::size_t c = 0; c < barCoordinates; ++c)
+            s.residualPast[c] -= spring[c];
+    }
     ModeBank& bank = s.bank;
     detail::Float4 pre[barCoordinates];
     for (std::size_t c = 0; c < barCoordinates; ++c)
@@ -4435,6 +4466,7 @@ void AculyreEngine::sleep() noexcept
     s.bank.clearState();
     s.modalPastStale = true;
     s.massPast = {};
+    s.residualPast = {};
     s.bendVelocityPast = {};
     s.bendForcePast = {};
     s.previousLeft = s.previousRight = 0.0;
@@ -4675,7 +4707,7 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
 #pragma unroll
 #endif
         for (std::size_t p = 0; p < barCoordinates / 2; ++p)
-            pairs(rhs.data())[p] += pairs(past.data())[p];
+            pairs(rhs.data())[p] += pairs(past.data())[p] + pairs(s.residualPast.data())[p];
         const BarVector velocity = applyColumns(solve, rhs);
         const BarVector stringLoad = applyColumns(zg, velocity);
         alignas(16) BarVector plateForce;
@@ -4699,6 +4731,11 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
             }
         }
 
+        {
+            const BarVector spring = applyColumns(s.residualColumns, plateForce);
+            for (std::size_t p = 0; p < barCoordinates / 2; ++p)
+                pairs(s.residualPast.data())[p] = -pairs(spring.data())[p];
+        }
         double radiatedLeft = 0.0, radiatedRight = 0.0;
         // Once the strings have died away, double precision, so that the
         // tail can reach the sleep threshold (ModeBank.h).

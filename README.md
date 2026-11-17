@@ -27,7 +27,7 @@ that render (see Build).
 | # | Preset | Demo | Length | Peak |
 | --- | --- | --- | --- | --- |
 | 1 | Lyre Harp | [01-lyre-harp.wav](Docs/audio/01-lyre-harp.wav) | 12.0 s | -8.6 dBFS |
-| 2 | Nylon Lyre Harp | [02-nylon-lyre-harp.wav](Docs/audio/02-nylon-lyre-harp.wav) | 11.9 s | -10.4 dBFS |
+| 2 | Nylon Lyre Harp | [02-nylon-lyre-harp.wav](Docs/audio/02-nylon-lyre-harp.wav) | 11.9 s | -10.5 dBFS |
 | 3 | Gut Lyre | [03-gut-lyre.wav](Docs/audio/03-gut-lyre.wav) | 9.8 s | -7.4 dBFS |
 
 <!-- audio-demos-end -->

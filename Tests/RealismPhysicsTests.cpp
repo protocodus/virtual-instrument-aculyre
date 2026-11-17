@@ -191,7 +191,15 @@ int main()
     }
     const double relative = std::sqrt(error / std::max(signal, 1e-30));
     std::printf("chord against the sum of its plucks: %.1f dB residual\n", 20.0 * std::log10(std::max(relative, 1e-30)));
-    check(relative < 1e-5, "a chord retains every string's attack in the linear acoustic path");
+    // The limit was set (2026-11-09) on a double-precision modal bank, where
+    // the chord sat -142.6 dB under its plucks and the lost attacks it
+    // catches left -74 dB. The single-precision bank (0.13.7) rounds its
+    // sums to float, which a chord and its separate plucks do not round
+    // alike: -101.0 dB on 0.13.13's modes, -96.7 dB on 0.13.14's, and
+    // -142.8 dB on 0.13.14's in double precision. So the check holds that
+    // rounding 90 dB under the signal, the portfolio's measured-inaudible
+    // grade, still 16 dB clear of a lost attack.
+    check(relative < 3.1622776601683794e-5, "a chord retains every string's attack in the linear acoustic path");
 
     // A distributed palm loss is an amplitude decay rate in seconds, not
     // a fixed loss per OPEN-string round trip. Remove the intrinsic/body

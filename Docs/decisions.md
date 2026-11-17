@@ -3,6 +3,69 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-17: a 70 dB soundbox mode cut (0.13.14), the owner's choice after the 60 dB cut failed a tuning check
+
+**What was decided.** How far under the strongest soundbox mode a mode may
+sit, in peak bar mobility `(Q / omega) * ||P||^2` or peak radiated pressure
+`Q * ||P|| * max(|rL|, |rR|)`, and still stay in the real-time junction and
+`ModeBank`; 0.13.7 drops those more than 80 dB under (2026-11-14). One set per
+preset against the shipping engine (A, `claude/project-thread-19xadq` at
+`1c6c0e9`, `0.13.13`), rendered by `RenderAculyreDemo` through the Performer
+at 48 kHz, 24 bit, `--tail 1.2`, each preset's own controls and identical
+MIDI; only the floor differs, for both measures:
+
+| Letter | Floor | Modes kept, harps / gut lyre |
+| --- | --- | --- |
+| A | 80 dB (`1e-4`) | 224 of 289 / 211 of 219 |
+| B | 60 dB (`1e-3`) | 145 / 156 |
+| C | 70 dB (`10^-3.5`) | 188 / 198 |
+
+| Set | Preset | Phrase (`Docs/audio/midi/`) | Trim on B | Trim on C | Null B-A re A | Null C-A re A |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Lyre Harp | `more/01-single-notes.mid` | `+0.060 dB` | `-0.001 dB` | `-29.4 dB` | `-50.8 dB` |
+| 2 | Nylon Lyre Harp | `02-nylon-lyre-harp.mid` | `-0.040 dB` | `-0.002 dB` | `-27.3 dB` | `-54.4 dB` |
+| 3 | Gut Lyre | `03-gut-lyre.mid` | `-0.000 dB` | `+0.000 dB` | `-47.8 dB` | `-65.2 dB` |
+
+B and C were trimmed to A's whole-file RMS; A is untouched. Every mode still
+sets the strings' tuning, the piezo's mount and the reports, as in A.
+
+**What the measurements said.** Median 64-frame callback of steady `dense`
+playing in the Reason-like build, on a 4-core Xeon development machine, three
+alternating rounds: A `79.7 / 51.4 µs` on the steel harp and the gut lyre, B
+`70.7 / 46.9 µs` (`-11.3% / -8.8%`), C `75.7 / 50.3 µs` (`-5.0% / -2.1%`);
+retired instructions over 0.3 s fall `9.7% / 6.9%` for B and `4.0% / 1.2%`
+for C. The nylon harp shares the steel harp's soundbox and saves as it does.
+
+After the choice below, `AculyreEngineTests` on B failed two checks:
+
+- The steel harp's B2 reads `-6.25` cents at 2.5 s, where A reads `-4.75` and
+  the check holds it under 6; a second after the pluck, where the strings
+  are tuned, both read `-0.25`. Of the 144 modes B drops, all but one go for
+  weak peak mobility, nearly all far above B2; together they carry up to
+  0.9% of the bridge's reactance at B2 on one coordinate, and the plane the
+  body drains least, which is what sounds late in the decay, moves with it.
+- The steel A5 sits `1.06 dB` and the F#6 lever note `1.08 dB` off the
+  even-touch line, where the check allows 1 dB (they report touches of
+  `0.63` and `0.40`, from `0.56` and `0.35`).
+
+C reads as A on both: B2 `-4.75` cents, every steel string within `0.74 dB`
+of the line and every lever note within `0.81 dB`.
+
+**Verdict.** The owner listened to the three sets and wrote "i hear no major
+diff between a b c" (2026-11-17), then chose B on a decision card. When B
+failed the checks above, the owner chose "Ship C now, then try fixing B". So
+the cut itself, against A, is chosen by ear; C over B was settled by the
+tuning check, not by ear. The set and its key stay in the project files
+(`aculyre/2026-11-16-mode-cut-abc/`).
+
+**What it licenses.** Leaving modes more than 70 dB (`< 10^-3.5`) under the
+strongest, by either measure, out of the real-time junction and `ModeBank`,
+while setup, tuning, the piezo's mount and the reports keep every mode. It
+does not license the 60 dB floor as it was heard, which the tuning check
+rejects: a 60 dB cut corrected for what its dropped modes do at the strings
+is a new candidate and needs its own A/B. Nor does it make the soundbox's
+modes measured.
+
 ## 2026-11-16: the piezo begins each pluck with the held force resting on it (0.13.12), owner's choice on an A/B set
 
 **What was decided.** Whether the piezo should keep opening every pluck as

@@ -53,6 +53,19 @@ reference recording below, dry.
 
 ## Version history
 
+- **0.13.14** (local candidate): about 5% less CPU on the harps and 2% on
+  the gut lyre, the owner's choice on an A/B set ([decisions](Docs/decisions.md)).
+  Soundbox modes more than 70 dB below the strongest in peak bar mobility or
+  peak radiated pressure now leave the real-time junction and modal bank,
+  where 0.13.7 kept every mode within 80 dB: 188 of the harps' 289 modes
+  stay (224 before) and 198 of the gut lyre's 219 (211). The output nulls
+  against 0.13.13 at 51 to 65 dB under the signal, and the median 64-frame
+  callback of steady dense playing falls from 79.7 to 75.7 µs on the steel
+  harp and from 51.4 to 50.3 µs on the gut lyre, in a Reason-like build on a
+  4-core Xeon development machine. A 60 dB cut would have saved 11% and 9%,
+  but it left the steel harp's B2 6.25 cents flat late in its decay, past
+  the 6 cents the tuning check allows.
+
 - **0.13.13** (local candidate): lower CPU where the blocks were worst, every
   sample unchanged. Switching instrument, and the host's audio reset, cleared
   every delay line in full on the audio thread, 9 MB on a harp, and took
@@ -811,7 +824,7 @@ choice by ear there). A spruce plate's modes depart
 from that median by their strain energy along the grain, across it and in
 shear, weighted by Viala, Placet and Cogan's loss factors (J. Cultural
 Heritage, 2020). The
-junction is solved implicitly every sample, so it is passive and every string, played or idle, is coupled to every other. Modes more than 80 dB below the strongest in peak resonant bar mobility or peak radiated pressure per unit bar force leave the real-time junction and modal bank (from 0.13.7), while staying in string design, ear tuning, piezo mount conductance and the mode reports.
+junction is solved implicitly every sample, so it is passive and every string, played or idle, is coupled to every other. Modes more than 70 dB below the strongest in peak resonant bar mobility or peak radiated pressure per unit bar force leave the real-time junction and modal bank (80 dB from 0.13.7, 70 dB from 0.13.14), while staying in string design, ear tuning, piezo mount conductance and the mode reports.
 
 **Radiation and room.** Each mode radiates its net volume change as a
 monopole, plus an equivalent volume for its edge and corner radiation, from
@@ -1050,7 +1063,7 @@ From 0.13.2 the modes read one table of their shapes at the bridge, each
 mode's state scaled by the root of its gain, and a CPU with AVX2 and FMA3
 runs fused kernels (Reason's build never does; its output differs from
 theirs by about 160 dB under the signal); from 0.13.7 that table drops
-modes more than 80 dB under the strongest and stores its scaled shapes in
+modes more than 80 dB under the strongest (70 dB from 0.13.14) and stores its scaled shapes in
 single precision (`17 KB` in place of `34 KB`), accumulating bar force and
 bar pull four modes to a vector (`Float4`) while keeping every mode's
 resonator and radiation in `double`; once every string has died away it sums

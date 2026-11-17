@@ -3227,7 +3227,10 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
     // Prune soundbox modes from the real-time junction and ModeBank when their
     // peak resonant bar mobility (Q / omega * ||P||^2) or peak resonant
     // radiated pressure per unit bar force (Q * ||P|| * max(|rL|, |rR|)) sits
-    // more than 80 dB (factor 1e-4) below the strongest mode's.
+    // more than 70 dB (factor 10^-3.5) below the strongest mode's: 188 of the
+    // harps' 289 modes stay, 198 of the gut lyre's 219 (Docs/decisions.md,
+    // 2026-11-17). A 60 dB floor, which the owner preferred by ear, left the
+    // steel B2 6.25 cents flat late in its decay (AculyreEngineTests).
     std::array<bool, maxModes> keepInBank {};
     {
         std::array<double, maxModes> peakMobility {}, peakRadiation {};
@@ -3247,8 +3250,8 @@ void AculyreEngine::setInstrument(const InstrumentSpec& instrument)
             maxMobility = std::max(maxMobility, mob);
             maxRadiation = std::max(maxRadiation, rad);
         }
-        const double mobilityFloor = 1.0e-4 * maxMobility;
-        const double radiationFloor = 1.0e-4 * maxRadiation;
+        const double mobilityFloor = 3.1622776601683794e-4 * maxMobility;
+        const double radiationFloor = 3.1622776601683794e-4 * maxRadiation;
         for (int index = 0; index < s.modeCount; ++index)
         {
             const auto m = static_cast<std::size_t>(index);

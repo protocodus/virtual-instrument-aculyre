@@ -121,6 +121,7 @@ private:
     int silentPushes_ { 0 };
     int factor_ { 1 };
     PlayingControls controls_ {};
+    bool sustain_ { false };
     int active_ { 0 };
     // Each instrument's level in steps of the fade, 0 to fadeLength_ (engine
     // samples); fading_ while any but the active one's is above 0 or the

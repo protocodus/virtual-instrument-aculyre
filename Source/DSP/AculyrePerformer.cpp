@@ -31,6 +31,7 @@ void Performer::prepare(double sampleRate, int oversampling)
 {
     sampleRate = std::isfinite(sampleRate) && sampleRate >= 22050.0 && sampleRate <= maxEngineRate
         ? sampleRate : 48000.0;
+    sustain_ = false;
     factor_ = 1;
     while (factor_ * 2 <= std::min(oversampling, maxOversampling) && sampleRate * factor_ * 2 <= maxEngineRate)
         factor_ *= 2;
@@ -65,6 +66,7 @@ void Performer::endFades() noexcept
 
 void Performer::reset() noexcept
 {
+    sustain_ = false;
     for (auto& engine : engines_)
         engine->reset();
     for (auto& decimator : decimators_)
@@ -112,6 +114,7 @@ void Performer::noteOff(int midiNote) noexcept
 
 void Performer::setSustain(bool down) noexcept
 {
+    sustain_ = down;
     for (auto& engine : engines_)
         engine->setSustain(down);
 }
@@ -234,7 +237,13 @@ void Performer::render(float* left, float* right, int numSamples) noexcept
         }
         // A faded instrument is reset: its strings do not ring on unheard.
         if (step < 0 && level == 0)
+        {
             engines_[index]->reset();
+            // The fade clears this instrument's voices while the player can
+            // still be holding the pedal across the instrument change.
+            if (sustain_)
+                engines_[index]->setSustain(true);
+        }
     };
     if (level_[active] < fadeLength_)
     {

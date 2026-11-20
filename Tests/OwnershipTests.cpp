@@ -120,6 +120,18 @@ int main()
     performer->process(left.data(), right.data(), 64);
     performer->setInstrument(0);
     check(!held(string), "Note Off during an instrument crossfade releases the outgoing instrument's owner");
+    // A finished fade clears the outgoing instrument's notes. The pedal
+    // still belongs to the player when that instrument is selected again.
+    performer->setSustain(true);
+    performer->setInstrument(1);
+    for (int batch = 0; batch < 20; ++batch)
+        performer->process(left.data(), right.data(), 64);
+    performer->setInstrument(0);
+    performer->noteOn(60, 0.5f);
+    performer->noteOff(60);
+    check(held(string), "the held sustain pedal survives a completed instrument fade");
+    performer->setSustain(false);
+    check(!held(string), "pedal-up releases the newly selected instrument");
     performer->process(left.data(), right.data(), 0);
     return failures ? 1 : 0;
 }

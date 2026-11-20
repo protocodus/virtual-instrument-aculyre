@@ -193,6 +193,8 @@ public:
     // press needs its Note Off. A different pitch taking the same physical
     // string replaces that ownership. Nonpositive/NaN velocities are ignored.
     void noteOn(int midiNote, float velocity) noexcept;
+    // Report whether this pitch and velocity acquired a string in the current preset.
+    bool tryNoteOn(int midiNote, float velocity) noexcept;
     // The playing hand damps the string (PlayingControls::release), unless
     // sustain holds it; overlapping presses release only on their last Off.
     void noteOff(int midiNote) noexcept;

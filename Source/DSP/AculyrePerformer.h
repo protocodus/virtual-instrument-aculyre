@@ -107,6 +107,21 @@ private:
     void endFades() noexcept;
     void downsample(float& left,float& right) const noexcept;
 
+    // A release belongs to the oldest outstanding press of its pitch, even
+    // if the tuning changed in between. The Rack can send 256 repeats plus
+    // a CV gate on one pitch. Keep the queue bounded for other callers too.
+    static constexpr unsigned maxPresses = 512;
+    struct KeyQueue
+    {
+        unsigned first = 0;
+        unsigned size = 0;
+        unsigned retired = 0;
+        std::array<unsigned, instrumentCount> beforeReset {};
+    };
+    std::array<KeyQueue, 128> keys_ {};
+    std::array<std::array<unsigned char, maxPresses>, 128> keyTunings_ {};
+    void releaseOldest(int note) noexcept;
+
     std::array<std::unique_ptr<AculyreEngine>, instrumentCount> engines_;
     std::array<Decimator, 2> decimators_ {};
     // Round the electrical delay up to a whole host sample before decimating;

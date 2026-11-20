@@ -120,6 +120,44 @@ int main()
     performer->process(left.data(), right.data(), 64);
     performer->setInstrument(0);
     check(!held(string), "Note Off during an instrument crossfade releases the outgoing instrument's owner");
+
+    performer->noteOn(60, .7f);
+    performer->setInstrument(1);
+    performer->noteOn(60, .5f);
+    const int secondString = performer->engine().stringForNote(60);
+    check(held(secondString), "the second instrument plays the overlap");
+    performer->noteOff(60);
+    check(held(secondString), "the first release must leave the newer instrument playing");
+    performer->setInstrument(0);
+    check(!held(string), "the first release must reach the older instrument");
+    performer->noteOff(60);
+    performer->setInstrument(1);
+    check(!held(secondString), "the second release ends the second instrument's note");
+
+    performer->noteOn(60, .7f);
+    performer->setInstrument(0);
+    for (int batch = 0; batch < 20; ++batch)
+        performer->process(left.data(), right.data(), 64);
+    performer->setInstrument(1);
+    performer->noteOn(60, .5f);
+    performer->noteOff(60);
+    check(held(secondString), "a release from before the fade must not take a newly started note");
+    performer->noteOff(60);
+    check(!held(secondString), "the new note receives its own release");
+
+    performer->setInstrument(0);
+    performer->reset();
+    controls.levers = false;
+    performer->setControls(controls);
+    performer->noteOn(61, .5f);
+    check(!held(string), "C sharp is unavailable with the lever down");
+    controls.levers = true;
+    performer->setControls(controls);
+    performer->noteOn(61, .5f);
+    check(held(string), "the raised lever plays C sharp");
+    performer->noteOff(61);
+    check(!held(string), "a skipped note does not consume a later release");
+
     // A finished fade clears the outgoing instrument's notes. The pedal
     // still belongs to the player when that instrument is selected again.
     performer->setSustain(true);

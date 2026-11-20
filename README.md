@@ -55,7 +55,8 @@ reference recording below, dry.
 
 - **0.13.16** (local candidate): holding the sustain pedal across an instrument
   change now sustains notes when returning to the original instrument after
-  its 20 ms fade. Lifting the pedal releases them normally.
+  its 20 ms fade. Lifting the pedal releases them normally. When two instruments
+  have played the same MIDI key, each key-up releases its matching press in order.
 
 - **0.13.15** (local candidate): another 7% less CPU on the harps and 5% on
   the gut lyre, the owner's choice on an A/B set ([decisions](Docs/decisions.md)).

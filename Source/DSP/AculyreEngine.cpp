@@ -3974,8 +3974,13 @@ void AculyreEngine::setControls(const PlayingControls& controls) noexcept
 
 void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
 {
+    tryNoteOn(midiNote, velocity);
+}
+
+bool AculyreEngine::tryNoteOn(int midiNote, float velocity) noexcept
+{
     if (midiNote < 0 || midiNote > 127)
-        return;
+        return false;
     int index = stringForNote(midiNote);
     bool raise = false;
     if (index < 0 && controls_.levers)
@@ -3993,7 +3998,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         extensionKey = midiNote;
     }
     if (index < 0 || !(velocity > 0.0f))
-        return;
+        return false;
     State& s = *state_;
     if (s.idle)
     {
@@ -4408,6 +4413,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             static_cast<float>(group.s1[lane + 2]), static_cast<float>(group.s1[lane + 3]) };
     }
     s.modalPastStale = true;
+    return true;
 }
 
 void AculyreEngine::noteOff(int midiNote) noexcept

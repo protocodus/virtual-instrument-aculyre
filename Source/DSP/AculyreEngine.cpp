@@ -3974,8 +3974,13 @@ void AculyreEngine::setControls(const PlayingControls& controls) noexcept
 
 void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
 {
+    tryNoteOn(midiNote, velocity);
+}
+
+AculyreEngine::PressResult AculyreEngine::tryNoteOn(int midiNote, float velocity) noexcept
+{
     if (midiNote < 0 || midiNote > 127)
-        return;
+        return PressResult::ignored;
     int index = stringForNote(midiNote);
     bool raise = false;
     if (index < 0 && controls_.levers)
@@ -3993,7 +3998,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
         extensionKey = midiNote;
     }
     if (index < 0 || !(velocity > 0.0f))
-        return;
+        return PressResult::ignored;
     State& s = *state_;
     if (s.idle)
     {
@@ -4248,7 +4253,8 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
     s.lastPluck = { position, force, normalShare, release };
     voice.handPoint = position;
 
-    if (voice.keyDown && voice.ownerNote == midiNote)
+    const bool repeat = voice.keyDown && voice.ownerNote == midiNote;
+    if (repeat)
     {
         if (voice.keyPresses < std::numeric_limits<std::uint16_t>::max())
             ++voice.keyPresses;
@@ -4408,6 +4414,7 @@ void AculyreEngine::noteOn(int midiNote, float velocity) noexcept
             static_cast<float>(group.s1[lane + 2]), static_cast<float>(group.s1[lane + 3]) };
     }
     s.modalPastStale = true;
+    return repeat ? PressResult::repeated : PressResult::fresh;
 }
 
 void AculyreEngine::noteOff(int midiNote) noexcept

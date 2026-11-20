@@ -88,6 +88,21 @@ int main()
         check(!held(index), "returning to an old pitch does not restore stale owners");
     }
 
+    for (int repeats : {1, 512})
+    {
+        performer->reset();
+        for (int press = 0; press < repeats; ++press)
+            performer->noteOn(60, 0.5f);
+        performer->noteOn(61, 0.5f);  // raised lever takes the C string
+        performer->noteOn(60, 0.5f);  // reacquires it, with all old key-ups still pending
+        check(held(string), "retiring an overflowed press leaves the reacquired string held");
+        for (int release = 0; release < repeats; ++release)
+            performer->noteOff(60);
+        check(held(string), "old key-ups leave the reacquired string held");
+        performer->noteOff(60);
+        check(!held(string), "the reacquired string releases on its own key-up");
+    }
+
     // Silence/CPU sleep is an acoustic state, not a synthetic key-up. Keep
     // the ownership ledger until the sources themselves let their keys go.
     performer->reset();
@@ -120,6 +135,56 @@ int main()
     performer->process(left.data(), right.data(), 64);
     performer->setInstrument(0);
     check(!held(string), "Note Off during an instrument crossfade releases the outgoing instrument's owner");
+
+    performer->noteOn(60, .7f);
+    performer->setInstrument(1);
+    performer->noteOn(60, .5f);
+    const int secondString = performer->engine().stringForNote(60);
+    check(held(secondString), "the second instrument plays the overlap");
+    performer->noteOff(60);
+    check(held(secondString), "the first release must leave the newer instrument playing");
+    performer->setInstrument(0);
+    check(!held(string), "the first release must reach the older instrument");
+    performer->noteOff(60);
+    performer->setInstrument(1);
+    check(!held(secondString), "the second release ends the second instrument's note");
+
+    performer->noteOn(60, .7f);
+    performer->setInstrument(0);
+    for (int batch = 0; batch < 20; ++batch)
+        performer->process(left.data(), right.data(), 64);
+    performer->setInstrument(1);
+    performer->noteOn(60, .5f);
+    performer->noteOff(60);
+    check(held(secondString), "a release from before the fade must not take a newly started note");
+    performer->noteOff(60);
+    check(!held(secondString), "the new note receives its own release");
+
+    performer->setInstrument(0);
+    performer->reset();
+    controls.levers = false;
+    performer->setControls(controls);
+    performer->noteOn(61, .5f);
+    check(!held(string), "C sharp is unavailable with the lever down");
+    controls.levers = true;
+    performer->setControls(controls);
+    performer->noteOn(61, .5f);
+    check(held(string), "the raised lever plays C sharp");
+    performer->noteOff(61);
+    check(!held(string), "a skipped note does not consume a later release");
+
+    // A finished fade clears the outgoing instrument's notes. The pedal
+    // still belongs to the player when that instrument is selected again.
+    performer->setSustain(true);
+    performer->setInstrument(1);
+    for (int batch = 0; batch < 20; ++batch)
+        performer->process(left.data(), right.data(), 64);
+    performer->setInstrument(0);
+    performer->noteOn(60, 0.5f);
+    performer->noteOff(60);
+    check(held(string), "the held sustain pedal survives a completed instrument fade");
+    performer->setSustain(false);
+    check(!held(string), "pedal-up releases the newly selected instrument");
     performer->process(left.data(), right.data(), 0);
     return failures ? 1 : 0;
 }

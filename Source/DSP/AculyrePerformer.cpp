@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace aculyre
 {
@@ -31,6 +32,8 @@ void Performer::prepare(double sampleRate, int oversampling)
 {
     sampleRate = std::isfinite(sampleRate) && sampleRate >= 22050.0 && sampleRate <= maxEngineRate
         ? sampleRate : 48000.0;
+    sustain_ = false;
+    keys_ = {};
     factor_ = 1;
     while (factor_ * 2 <= std::min(oversampling, maxOversampling) && sampleRate * factor_ * 2 <= maxEngineRate)
         factor_ *= 2;
@@ -65,6 +68,8 @@ void Performer::endFades() noexcept
 
 void Performer::reset() noexcept
 {
+    sustain_ = false;
+    keys_ = {};
     for (auto& engine : engines_)
         engine->reset();
     for (auto& decimator : decimators_)
@@ -101,17 +106,54 @@ void Performer::setControls(const PlayingControls& controls) noexcept
 
 void Performer::noteOn(int midiNote, float velocity) noexcept
 {
-    engines_[static_cast<std::size_t>(active_)]->noteOn(midiNote, velocity);
+    const auto instrument = static_cast<std::size_t>(active_);
+    const auto result = engines_[instrument]->tryNoteOn(midiNote, velocity);
+    if (result == AculyreEngine::PressResult::ignored)
+        return;
+    const auto note = static_cast<std::size_t>(midiNote);
+    auto& key = keys_[note];
+    // If another pitch took the string, its old presses still await their
+    // key-ups. Neither a key-up nor queue eviction can release this new owner.
+    if (result == AculyreEngine::PressResult::fresh)
+        key.stalePrefix[instrument] = key.size;
+    if (key.size == maxPresses)
+    {
+        releaseOldest(midiNote);
+        if (key.retired < std::numeric_limits<unsigned>::max())
+            ++key.retired;
+    }
+    keyTunings_[note][(key.first + key.size) % maxPresses] = static_cast<unsigned char>(active_);
+    ++key.size;
 }
 
 void Performer::noteOff(int midiNote) noexcept
 {
-    for (auto& engine : engines_)
-        engine->noteOff(midiNote);
+    if (midiNote < 0 || midiNote >= static_cast<int>(keys_.size()))
+        return;
+    auto& key = keys_[static_cast<std::size_t>(midiNote)];
+    if (key.retired > 0)
+        --key.retired;
+    else if (key.size > 0)
+        releaseOldest(midiNote);
+}
+
+void Performer::releaseOldest(int midiNote) noexcept
+{
+    const auto note = static_cast<std::size_t>(midiNote);
+    auto& key = keys_[note];
+    const auto tuning = keyTunings_[note][key.first];
+    if (key.stalePrefix[tuning] == 0)
+        engines_[tuning]->noteOff(midiNote);
+    key.first = (key.first + 1) % maxPresses;
+    --key.size;
+    for (auto& remaining : key.stalePrefix)
+        if (remaining > 0)
+            --remaining;
 }
 
 void Performer::setSustain(bool down) noexcept
 {
+    sustain_ = down;
     for (auto& engine : engines_)
         engine->setSustain(down);
 }
@@ -234,7 +276,16 @@ void Performer::render(float* left, float* right, int numSamples) noexcept
         }
         // A faded instrument is reset: its strings do not ring on unheard.
         if (step < 0 && level == 0)
+        {
             engines_[index]->reset();
+            // An old release must not end a new press after this preset is revisited.
+            for (auto& key : keys_)
+                key.stalePrefix[index] = key.size;
+            // The fade clears this instrument's voices while the player can
+            // still be holding the pedal across the instrument change.
+            if (sustain_)
+                engines_[index]->setSustain(true);
+        }
     };
     if (level_[active] < fadeLength_)
     {

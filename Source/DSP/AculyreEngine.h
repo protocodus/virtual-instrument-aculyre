@@ -193,6 +193,9 @@ public:
     // press needs its Note Off. A different pitch taking the same physical
     // string replaces that ownership. Nonpositive/NaN velocities are ignored.
     void noteOn(int midiNote, float velocity) noexcept;
+    // A fresh owner replaces the previous key presses on its physical string.
+    enum class PressResult { ignored, fresh, repeated };
+    PressResult tryNoteOn(int midiNote, float velocity) noexcept;
     // The playing hand damps the string (PlayingControls::release), unless
     // sustain holds it; overlapping presses release only on their last Off.
     void noteOff(int midiNote) noexcept;

@@ -116,7 +116,7 @@ private:
         unsigned first = 0;
         unsigned size = 0;
         unsigned retired = 0;
-        std::array<unsigned, instrumentCount> beforeReset {};
+        std::array<unsigned, instrumentCount> stalePrefix {};
     };
     std::array<KeyQueue, 128> keys_ {};
     std::array<std::array<unsigned char, maxPresses>, 128> keyTunings_ {};

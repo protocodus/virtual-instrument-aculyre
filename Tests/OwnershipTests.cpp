@@ -88,6 +88,21 @@ int main()
         check(!held(index), "returning to an old pitch does not restore stale owners");
     }
 
+    for (int repeats : {1, 512})
+    {
+        performer->reset();
+        for (int press = 0; press < repeats; ++press)
+            performer->noteOn(60, 0.5f);
+        performer->noteOn(61, 0.5f);  // raised lever takes the C string
+        performer->noteOn(60, 0.5f);  // reacquires it, with all old key-ups still pending
+        check(held(string), "retiring an overflowed press leaves the reacquired string held");
+        for (int release = 0; release < repeats; ++release)
+            performer->noteOff(60);
+        check(held(string), "old key-ups leave the reacquired string held");
+        performer->noteOff(60);
+        check(!held(string), "the reacquired string releases on its own key-up");
+    }
+
     // Silence/CPU sleep is an acoustic state, not a synthetic key-up. Keep
     // the ownership ledger until the sources themselves let their keys go.
     performer->reset();

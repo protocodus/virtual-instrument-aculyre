@@ -106,10 +106,16 @@ void Performer::setControls(const PlayingControls& controls) noexcept
 
 void Performer::noteOn(int midiNote, float velocity) noexcept
 {
-    if (!engines_[static_cast<std::size_t>(active_)]->tryNoteOn(midiNote, velocity))
+    const auto instrument = static_cast<std::size_t>(active_);
+    const auto result = engines_[instrument]->tryNoteOn(midiNote, velocity);
+    if (result == AculyreEngine::PressResult::ignored)
         return;
     const auto note = static_cast<std::size_t>(midiNote);
     auto& key = keys_[note];
+    // If another pitch took the string, its old presses still await their
+    // key-ups. Neither a key-up nor queue eviction can release this new owner.
+    if (result == AculyreEngine::PressResult::fresh)
+        key.stalePrefix[instrument] = key.size;
     if (key.size == maxPresses)
     {
         releaseOldest(midiNote);
@@ -136,11 +142,11 @@ void Performer::releaseOldest(int midiNote) noexcept
     const auto note = static_cast<std::size_t>(midiNote);
     auto& key = keys_[note];
     const auto tuning = keyTunings_[note][key.first];
-    if (key.beforeReset[tuning] == 0)
+    if (key.stalePrefix[tuning] == 0)
         engines_[tuning]->noteOff(midiNote);
     key.first = (key.first + 1) % maxPresses;
     --key.size;
-    for (auto& remaining : key.beforeReset)
+    for (auto& remaining : key.stalePrefix)
         if (remaining > 0)
             --remaining;
 }
@@ -274,7 +280,7 @@ void Performer::render(float* left, float* right, int numSamples) noexcept
             engines_[index]->reset();
             // An old release must not end a new press after this preset is revisited.
             for (auto& key : keys_)
-                key.beforeReset[index] = key.size;
+                key.stalePrefix[index] = key.size;
             // The fade clears this instrument's voices while the player can
             // still be holding the pedal across the instrument change.
             if (sustain_)

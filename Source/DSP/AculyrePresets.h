@@ -253,6 +253,10 @@ constexpr BodySpec gutLyreBody {
 // 0.699058973/0.794668506/0.481265475, so each piezo reads where it did
 // against its microphones (+0.20/+0.28/0.00 dB) and its strings sound that
 // much quieter under the thump.
+// 0.13.17: the piezo hears half the thump (AculyreEngine::piezoThumpShare),
+// so the meter reads it lower again; the gut lyre's piezo fell 1.1 dB under
+// its microphones, past the 1 dB bound, and its piezoGain comes up 0.2 dB
+// (0.481265475 to 0.492471108). The harps stay inside the bound unchanged.
 inline constexpr InstrumentSpec lyreHarpSteel {
     "Lyre Harp", steelWire, 27, detail::lyreHarpSteel, detail::lyreHarpBody,
     Technique::Finger, 0.27, 0.25, 2.0, 0.35, 2.182, 0.699058973, 0.8 * 2.429 / 2.182,
@@ -269,7 +273,7 @@ inline constexpr InstrumentSpec lyreHarpNylon {
 
 inline constexpr InstrumentSpec gutLyre {
     "Gut Lyre", naturalGut, 16, detail::gutLyreStrings, detail::gutLyreBody,
-    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.498, 0.481265475, 0.8 * 2.716 / 2.498,
+    Technique::Finger, 0.11, 0.3, 2.5, 0.35, 2.498, 0.492471108, 0.8 * 2.716 / 2.498,
     // leverTouch (above)
     {{ 0.50, 0.42, 0, 0.51, 0.86, 0, 0.58, 0.46, 0.45, 0, 0.52, 0.82, 0, 0.81, 0.61, 1.00 }}
 };

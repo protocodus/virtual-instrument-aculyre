@@ -53,6 +53,13 @@ reference recording below, dry.
 
 ## Version history
 
+- **0.13.17** (2026-11-23): the piezo's thump is half as loud (owner: "lower
+  the new bass-y thump by 50%"). The strip hears half of each pluck's held
+  force come off; the other half is pressed back on it as the wave reaches
+  the bridge, so it stays silent until then and the strings on it are
+  unchanged. Under 63 Hz the piezo falls 6 dB, 3 dB at 100 Hz, nothing above
+  160 Hz; the gut lyre's piezo gain comes up 0.2 dB to stay within 1 dB of its
+  microphones. The microphones are bit-identical.
 - **0.13.16** (local candidate): holding the sustain pedal across an instrument
   change now sustains notes when returning to the original instrument after
   its 20 ms fade. Lifting the pedal releases them normally. When two instruments

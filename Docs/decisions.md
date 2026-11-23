@@ -3,6 +3,25 @@
 Accepted choices and listening verdicts, newest first. A direction chosen by
 ear is recorded as chosen by ear.
 
+## 2026-11-23: the piezo hears half the thump (0.13.17), the owner's request
+
+The owner, on the A/B of the Shop version (0.13.5) against 0.13.16: "lower the
+new bass-y thump by 50% - it seems too loud". `AculyreEngine::piezoThumpShare`
+is 0.5: at each pluck the engine queues the other half of the held force the
+piezo rests on, and adds it back to the element force when the released wave
+reaches the bridge (position of half a period), eased in by two 500 Hz
+one-poles and let go over 2 s. At the thump's frequencies the piezo meets a
+step of half the held force; above them the release is the string's own.
+
+Measured on the default patch's demo phrase at Piezo 100% through the Rack
+device: the piezo's third-octaves fall 6.2 dB at 5 Hz, 5.6 dB at 40 Hz,
+4.6 dB at 63 Hz, 3.1 dB at 100 Hz, 2.0 dB at 125 Hz and under 0.05 dB from
+160 Hz up; under 100 Hz its RMS is 0.52 and its peak 0.58 of 0.13.16's. The
+piezo stays silent until the wave arrives (Aculyre.CapturePhysics). The meter
+read the gut lyre's piezo 1.1 dB under its microphones, past the 1 dB bound,
+so its piezoGain comes up 0.2 dB (0.481265475 to 0.492471108); the harps stay
+inside it unchanged.
+
 ## 2026-11-17: a 60 dB soundbox mode cut with the dropped modes' stiffness (0.13.15), owner's choice on an A/B set
 
 **What was decided.** Whether the 60 dB cut the owner first chose (above)

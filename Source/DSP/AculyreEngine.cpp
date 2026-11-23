@@ -2323,6 +2323,14 @@ struct AculyreEngine::State
     double outputGain { 1.0 };
     double piezoGain { 0.0 };
     double piezoMountZ1 { 0.0 }, piezoMountZ2 { 0.0 };
+    // The part of each pluck's held force the piezo is spared hearing come
+    // off (piezoThumpShare, noteOn), eased in and let go slowly.
+    double piezoHeldTarget { 0.0 }, piezoHeldZ1 { 0.0 }, piezoHeldZ2 { 0.0 };
+    double piezoHeldEase { 0.0 }, piezoHeldDecay { 1.0 };
+    // Plucks whose spared force waits for their wave to reach the bridge.
+    struct PiezoHeld { int samples; double force; };
+    std::array<PiezoHeld, 8> piezoHeldQueue {};
+    int piezoHeldCount { 0 };
     double releaseRate { 0.0 };
     double sympathyRate { 0.0 };
     double muteRate { 0.0 };
@@ -2455,6 +2463,12 @@ void AculyreEngine::prepare(double sampleRate)
     // in piezoGain without changing the electrical overload threshold.
     static_assert(AculyreEngine::latencySamples == PiezoCircuit::latencySamples);
     state_->piezoCircuit.prepare(sampleRate_);
+    // Two one-poles at 500 Hz ease the spared force in: flat through the
+    // thump's band (it lies under 130 Hz), and 12 dB an octave down above,
+    // so the half step it makes opens no pluck with a click. It lets go
+    // over 2 s, far under anything the preamp's coupling passes.
+    state_->piezoHeldEase = 1.0 - std::exp(-2.0 * pi * 500.0 / sampleRate_);
+    state_->piezoHeldDecay = std::exp(-1.0 / (2.0 * sampleRate_));
     state_->bendSmoothing = 1.0 - std::exp(-controlPeriod / (0.01 * sampleRate_));
     if (stringCount_ > 0)
     {
@@ -3774,6 +3788,8 @@ void AculyreEngine::reset() noexcept
     s.microphoneDelay = {};
     s.microphoneCursor = 0;
     s.piezoMountZ1 = s.piezoMountZ2 = 0.0;
+    s.piezoHeldTarget = s.piezoHeldZ1 = s.piezoHeldZ2 = 0.0;
+    s.piezoHeldCount = 0;
     s.room.reset();
     s.sustain = false;
     s.idle = true;
@@ -4382,6 +4398,19 @@ AculyreEngine::PressResult AculyreEngine::tryNoteOn(int midiNote, float velocity
         s.piezoMountZ1 += resting - mount[0] * preload[0];
         s.piezoMountZ2 += mount[2] * preload[0] - mount[4] * resting;
         s.piezoCircuit.rest(resting);
+        // 0.13.17 (owner, 2026-11-23: "lower the new bass-y thump by 50%"):
+        // the strip hears only piezoThumpShare of the held force come off.
+        // The rest is pressed back on it, eased in, as the released wave
+        // reaches the bridge (position of half a period after the slip), so
+        // the piezo stays silent until then, at the thump's low frequencies
+        // it meets a step of the held force times the share, and the
+        // strings' own wave on it is unchanged.
+        const double spared = (1.0 - piezoThumpShare) * resting;
+        const int arrival = static_cast<int>(position * sampleRate_ / (2.0 * voice.frequency));
+        if (s.piezoHeldCount < static_cast<int>(s.piezoHeldQueue.size()))
+            s.piezoHeldQueue[static_cast<std::size_t>(s.piezoHeldCount++)] = { std::max(arrival, 0), spared };
+        else
+            s.piezoHeldTarget += spared;
     }
     {
         const BarVector spring = applyColumns(s.residualColumns, preload);
@@ -4482,6 +4511,8 @@ void AculyreEngine::sleep() noexcept
     s.microphoneDelay = {};
     s.microphoneCursor = 0;
     s.piezoMountZ1 = s.piezoMountZ2 = 0.0;
+    s.piezoHeldTarget = s.piezoHeldZ1 = s.piezoHeldZ2 = 0.0;
+    s.piezoHeldCount = 0;
     s.room.reset();
     s.stringsActive = false;
     s.idle = true;
@@ -4820,7 +4851,17 @@ ACULYRE_FORCE_INLINE void AculyreEngine::processSamples(float* left, float* righ
         const double element = mount[0] * plateForce[0] + s.piezoMountZ1;
         s.piezoMountZ1 = mount[1] * plateForce[0] - mount[3] * element + s.piezoMountZ2;
         s.piezoMountZ2 = mount[2] * plateForce[0] - mount[4] * element;
-        const double piezo = s.piezoCircuit.process(element);
+        for (int i = 0; i < s.piezoHeldCount;)
+        {
+            auto& held = s.piezoHeldQueue[static_cast<std::size_t>(i)];
+            if (held.samples-- > 0) { ++i; continue; }
+            s.piezoHeldTarget += held.force;
+            held = s.piezoHeldQueue[static_cast<std::size_t>(--s.piezoHeldCount)];
+        }
+        s.piezoHeldTarget *= s.piezoHeldDecay;
+        s.piezoHeldZ1 += s.piezoHeldEase * (s.piezoHeldTarget - s.piezoHeldZ1);
+        s.piezoHeldZ2 += s.piezoHeldEase * (s.piezoHeldZ1 - s.piezoHeldZ2);
+        const double piezo = s.piezoCircuit.process(element + s.piezoHeldZ2);
         using detail::magnitude;
         const double level = std::max(s.outputGain * std::max(std::max(magnitude(pressureLeft), magnitude(pressureRight)),
                                                               std::max(magnitude(wetLeft), magnitude(wetRight))),

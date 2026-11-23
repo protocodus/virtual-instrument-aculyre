@@ -178,6 +178,9 @@ public:
     ~AculyreEngine();
     // Electrical antialiasing delay; microphones/room are aligned to it.
     static constexpr int latencySamples = 7;
+    // How much of each pluck's held force the piezo hears come off, the
+    // thump under 100 Hz since 0.13.12: half of it since 0.13.17 (owner).
+    static constexpr double piezoThumpShare = 0.5;
 
     // Setup: designs the strings, the body and the room. Not real-time.
     void prepare(double sampleRate);
